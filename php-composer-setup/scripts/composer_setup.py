@@ -5,13 +5,13 @@ only; run as ``python3 -I``. Subcommands:
 
 - ``check``: validates every input before any write and writes the plan
   (``auth-entries``, ``install-command``) to ``$GITHUB_OUTPUT``.
-- ``auth``: merges the HTTP Basic and GitHub credentials into the global
-  Composer ``auth.json``. Values come from the environment, never from the
-  command line.
+- ``auth``: merges the ``composer-auth`` entries, then the HTTP Basic and
+  GitHub credentials, into the global Composer ``auth.json``. Values come from
+  the environment, never from the command line.
 - ``install``: runs ``composer install`` in the working directory.
 
 Secrets are never printed. ``action.yml`` masks them before the ``auth``
-subcommand runs.
+subcommand runs, including each credential inside ``composer-auth``.
 """
 
 import argparse
@@ -31,6 +31,7 @@ BOOLEAN_VALUES = ("true", "false")
 GITHUB_HOST = "github.com"
 AUTH_FILE_MODE = 0o600
 MERGED_AUTH_KEYS = ("http-basic", "github-oauth")
+COMPOSER_AUTH_ENTRY = "composer-auth"
 
 
 class InputError(ValueError):
@@ -83,8 +84,10 @@ def install_command(no_dev, optimize_autoloader):
     return command
 
 
-def auth_entries(http_basic_host, has_github_token):
+def auth_entries(http_basic_host, has_github_token, has_composer_auth=False):
     entries = []
+    if has_composer_auth:
+        entries.append(COMPOSER_AUTH_ENTRY)
     if http_basic_host:
         entries.append(f"http-basic:{http_basic_host}")
     if has_github_token:
@@ -106,11 +109,13 @@ def build_plan(args, root):
     optimize = parse_boolean("optimize-autoloader", args.optimize_autoloader)
     has_password = parse_boolean("has-http-basic-password", args.has_http_basic_password)
     has_github_token = parse_boolean("has-github-token", args.has_github_token)
+    has_composer_auth = parse_boolean("has-composer-auth", args.has_composer_auth)
+    parse_boolean("cache", args.cache)
     check_working_directory(args.working_directory, root)
     host = check_http_basic(args.http_basic_host, args.http_basic_username, has_password, dry_run)
     command = install_command(no_dev, optimize) if install else []
     return {
-        "auth-entries": ",".join(auth_entries(host, has_github_token)),
+        "auth-entries": ",".join(auth_entries(host, has_github_token, has_composer_auth)),
         "install-command": " ".join(command),
     }
 
@@ -124,9 +129,37 @@ def write_outputs(outputs):
             handle.write(f"{key}={value}\n")
 
 
-def merge_auth(existing, host, username, password, github_token):
-    """Returns a new auth.json mapping; the existing one is left unchanged."""
+def parse_composer_auth(value):
+    """Parses the composer-auth input: a JSON object of JSON objects.
+
+    Error messages give the position or the key, never the value.
+    """
+    if not value:
+        return {}
+    try:
+        data = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise InputError(
+            f"composer-auth is not valid JSON (line {error.lineno}, column {error.colno})"
+        ) from None
+    if not isinstance(data, dict):
+        raise InputError("composer-auth must be a JSON object in the COMPOSER_AUTH format")
+    for key, entry in data.items():
+        if not isinstance(entry, dict):
+            raise InputError(f"the {key} entry of composer-auth is not a JSON object")
+    return data
+
+
+def merge_auth(existing, host, username, password, github_token, composer_auth=None):
+    """Returns a new auth.json mapping; the existing one is left unchanged.
+
+    Order, last wins for the same entry: the existing file, composer-auth,
+    then http-basic-host and github-token.
+    """
     merged = {key: dict(value) if isinstance(value, dict) else value for key, value in existing.items()}
+    for key, entry in (composer_auth or {}).items():
+        current = merged.get(key)
+        merged[key] = {**(current if isinstance(current, dict) else {}), **entry}
     if host:
         merged["http-basic"] = {**merged.get("http-basic", {}), host: {"username": username, "password": password}}
     if github_token:
@@ -134,7 +167,7 @@ def merge_auth(existing, host, username, password, github_token):
     return merged
 
 
-def read_auth_file(path):
+def read_auth_file(path, keys=MERGED_AUTH_KEYS):
     if not path.is_file():
         return {}
     try:
@@ -143,7 +176,7 @@ def read_auth_file(path):
         raise InputError(f"the existing Composer auth.json is not valid JSON (line {error.lineno})") from None
     if not isinstance(data, dict):
         raise InputError("the existing Composer auth.json is not a JSON object")
-    for key in MERGED_AUTH_KEYS:
+    for key in keys:
         if key in data and not isinstance(data[key], dict):
             raise InputError(f"the {key} entry of the existing Composer auth.json is not a JSON object")
     return data
@@ -180,13 +213,17 @@ def run_auth(args):
     username = os.environ.get("HTTP_BASIC_USERNAME", "")
     password = os.environ.get("HTTP_BASIC_PASSWORD", "")
     github_token = os.environ.get("COMPOSER_GITHUB_TOKEN", "")
-    if not host and not github_token:
+    composer_auth_value = os.environ.get("COMPOSER_AUTH_INPUT", "")
+    composer_auth = parse_composer_auth(composer_auth_value)
+    if not host and not github_token and not composer_auth:
         print("No Composer credentials to configure.")
         return
     path = (Path(args.composer_home) if args.composer_home else composer_home()) / "auth.json"
-    merged = merge_auth(read_auth_file(path), host, username, password, github_token)
+    keys = tuple(dict.fromkeys(MERGED_AUTH_KEYS + tuple(composer_auth)))
+    merged = merge_auth(read_auth_file(path, keys), host, username, password, github_token, composer_auth)
     write_auth_file(path, merged)
-    print(f"Configured Composer credentials: {', '.join(auth_entries(host, bool(github_token)))}.")
+    entries = auth_entries(host, bool(github_token), bool(composer_auth))
+    print(f"Configured Composer credentials: {', '.join(entries)}.")
 
 
 def run_install(args):
@@ -206,6 +243,8 @@ def run_check(args):
     print(f"{mode} set up PHP {args.php_version} ({args.php_extensions or 'no extra extensions'}, coverage {args.coverage}).")
     print(f"{mode} configure Composer credentials: {entries}.")
     print(f"{mode} run in {args.working_directory}: {command}.")
+    if outputs["install-command"] and args.cache == "true":
+        print(f"{mode} restore and save the Composer download cache, keyed by {args.working_directory}/composer.lock.")
     write_outputs(outputs)
 
 
@@ -221,6 +260,8 @@ def parser():
     check.add_argument("--http-basic-username", default="")
     check.add_argument("--has-http-basic-password", default="false")
     check.add_argument("--has-github-token", default="false")
+    check.add_argument("--has-composer-auth", default="false")
+    check.add_argument("--cache", default="true")
     check.add_argument("--install", default="true")
     check.add_argument("--no-dev", default="false")
     check.add_argument("--optimize-autoloader", default="false")

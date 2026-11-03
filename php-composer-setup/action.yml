@@ -46,6 +46,21 @@ inputs:
       token that shivammathur/setup-php configures is kept.
     required: false
     default: ""
+  composer-auth:
+    description: >-
+      Composer credentials as a JSON object in the COMPOSER_AUTH format (for
+      example {"http-basic": {"<host>": {"username": "<user>", "password":
+      "<password>"}}}), passed from a secret. Each entry is merged into the
+      global Composer auth.json; http-basic-host and github-token win for their
+      own entries. Empty: none.
+    required: false
+    default: ""
+  cache:
+    description: >-
+      Restore and save the Composer download cache, keyed by the composer.lock
+      of the working directory (true or false). Used only when install is true.
+    required: false
+    default: "true"
   install:
     description: Run composer install (true or false).
     required: false
@@ -68,7 +83,7 @@ outputs:
     description: PHP version installed, in SemVer format (empty in a dry run).
     value: ${{ steps.setup-php.outputs.php-version }}
   auth-entries:
-    description: Credentials configured, comma-separated (http-basic:<host>, github-oauth:github.com); planned ones in a dry run.
+    description: Credentials configured, comma-separated (composer-auth, http-basic:<host>, github-oauth:github.com); planned ones in a dry run.
     value: ${{ steps.check.outputs.auth-entries }}
   install-command:
     description: The composer install command, run or planned (empty when install is false).
@@ -89,6 +104,8 @@ runs:
         HTTP_BASIC_USERNAME: ${{ inputs.http-basic-username }}
         HAS_HTTP_BASIC_PASSWORD: ${{ inputs.http-basic-password != '' }}
         HAS_GITHUB_TOKEN: ${{ inputs.github-token != '' }}
+        HAS_COMPOSER_AUTH: ${{ inputs.composer-auth != '' }}
+        CACHE: ${{ inputs.cache }}
         INSTALL: ${{ inputs.install }}
         NO_DEV: ${{ inputs.no-dev }}
         OPTIMIZE_AUTOLOADER: ${{ inputs.optimize-autoloader }}
@@ -103,6 +120,8 @@ runs:
           --http-basic-username="$HTTP_BASIC_USERNAME" \
           --has-http-basic-password="$HAS_HTTP_BASIC_PASSWORD" \
           --has-github-token="$HAS_GITHUB_TOKEN" \
+          --has-composer-auth="$HAS_COMPOSER_AUTH" \
+          --cache="$CACHE" \
           --install="$INSTALL" \
           --no-dev="$NO_DEV" \
           --optimize-autoloader="$OPTIMIZE_AUTOLOADER" \
@@ -117,17 +136,37 @@ runs:
         extensions: ${{ inputs.php-extensions }}
         coverage: ${{ inputs.coverage }}
 
+    - name: Find the Composer cache directory
+      id: cache-dir
+      if: ${{ inputs.dry-run != 'true' && inputs.install == 'true' && inputs.cache == 'true' }}
+      shell: bash
+      run: echo "path=$(composer config --global cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache the Composer downloads
+      if: ${{ inputs.dry-run != 'true' && inputs.install == 'true' && inputs.cache == 'true' }}
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.cache-dir.outputs.path }}
+        key: php-composer-setup-${{ runner.os }}-php${{ inputs.php-version }}-${{ hashFiles(format('{0}/composer.lock', inputs.working-directory)) }}
+        restore-keys: |
+          php-composer-setup-${{ runner.os }}-php${{ inputs.php-version }}-
+
     - name: Write the Composer credentials
-      if: ${{ inputs.dry-run != 'true' && (inputs.http-basic-host != '' || inputs.github-token != '') }}
+      if: ${{ inputs.dry-run != 'true' && (inputs.http-basic-host != '' || inputs.github-token != '' || inputs.composer-auth != '') }}
       shell: bash
       env:
         HTTP_BASIC_HOST: ${{ inputs.http-basic-host }}
         HTTP_BASIC_USERNAME: ${{ inputs.http-basic-username }}
         HTTP_BASIC_PASSWORD: ${{ inputs.http-basic-password }}
         COMPOSER_GITHUB_TOKEN: ${{ inputs.github-token }}
+        COMPOSER_AUTH_INPUT: ${{ inputs.composer-auth }}
       # Mask each line of both values before the script runs, so that no
       # later output of this job shows them, even when they do not come from
-      # a secret (for example an App token from an earlier step).
+      # a secret (for example an App token from an earlier step). The runner
+      # masks composer-auth as one whole string only: mask each credential
+      # inside the JSON object on its own (every non-empty string value
+      # except "username" fields, line by line). An invalid value masks
+      # nothing here; the script then fails without showing it.
       run: |
         for value in "$HTTP_BASIC_PASSWORD" "$COMPOSER_GITHUB_TOKEN"; do
           while IFS= read -r line; do
@@ -136,6 +175,16 @@ runs:
             fi
           done <<<"$value"
         done
+        if [ -n "$COMPOSER_AUTH_INPUT" ]; then
+          command -v jq >/dev/null || { echo "::error::jq is required to mask the credentials of composer-auth"; exit 1; }
+          if jq -e 'type == "object"' >/dev/null 2>&1 <<<"$COMPOSER_AUTH_INPUT"; then
+            jq -r 'def creds($k): if type == "object" then to_entries[] | .key as $c | .value | creds($c) elif type == "array" then .[] | creds($k) elif type == "string" and . != "" and $k != "username" then . else empty end; creds("")' <<<"$COMPOSER_AUTH_INPUT" | while IFS= read -r line; do
+              if [ -n "${line//[[:space:]]/}" ]; then
+                echo "::add-mask::$line"
+              fi
+            done
+          fi
+        fi
         python3 -I "$GITHUB_ACTION_PATH/scripts/composer_setup.py" auth
 
     - name: Install the Composer dependencies

@@ -31,6 +31,8 @@ def check_args(**overrides):
         "http_basic_username": "",
         "has_http_basic_password": "false",
         "has_github_token": "false",
+        "has_composer_auth": "false",
+        "cache": "true",
         "install": "true",
         "no_dev": "false",
         "optimize_autoloader": "false",
@@ -76,8 +78,14 @@ class BuildPlanTest(unittest.TestCase):
         plan = composer_setup.build_plan(check_args(install="false"), FIXTURE)
         self.assertEqual(plan["install-command"], "")
 
+    def test_lists_composer_auth_entry_first(self):
+        plan = composer_setup.build_plan(check_args(has_composer_auth="true", has_github_token="true"), FIXTURE)
+        self.assertEqual(plan["auth-entries"], "composer-auth,github-oauth:github.com")
+
     def test_rejects_invalid_inputs(self):
         cases = {
+            "cache": check_args(cache="yes"),
+            "has-composer-auth": check_args(has_composer_auth="1"),
             "php-version": check_args(php_version="8"),
             "php-extensions": check_args(php_extensions="mbstring; rm -rf /"),
             "coverage": check_args(coverage="phpdbg"),
@@ -145,6 +153,21 @@ class RunCheckTest(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("Dry run: would run in .: composer install", printed)
             self.assertIn("install-command=composer install --no-interaction --prefer-dist\n", output_file.read_text())
+            self.assertIn("Dry run: would restore and save the Composer download cache", printed)
+
+    def test_reports_no_cache_without_install(self):
+        with tempfile.TemporaryDirectory() as temp:
+            cwd = os.getcwd()
+            os.chdir(FIXTURE)
+            try:
+                with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(Path(temp) / "output")}):
+                    code, printed = run_quietly(
+                        composer_setup.main, ["check", "--php-version=8.4", "--install=false", "--dry-run=true"]
+                    )
+            finally:
+                os.chdir(cwd)
+            self.assertEqual(code, 0)
+            self.assertNotIn("cache", printed)
 
     def test_invalid_input_returns_error_annotation(self):
         code, printed = run_quietly(composer_setup.main, ["check", "--php-version=bad"])
@@ -221,6 +244,69 @@ class AuthTest(unittest.TestCase):
         self.assertIn("not a JSON object", printed)
 
 
+class ComposerAuthTest(unittest.TestCase):
+    AUTH = {
+        "http-basic": {"repo.example.com": {"username": "user", "password": "pass-value"}},
+        "bearer": {"other.example.com": "bearer-value"},
+    }
+
+    def test_parse_accepts_object_of_objects(self):
+        self.assertEqual(composer_setup.parse_composer_auth(json.dumps(self.AUTH)), self.AUTH)
+        self.assertEqual(composer_setup.parse_composer_auth(""), {})
+
+    def test_parse_rejects_without_echoing_the_value(self):
+        cases = {
+            '{"http-basic": {"h": {"password": "leak-value"': "not valid JSON",
+            '["leak-value"]': "must be a JSON object",
+            '{"github-oauth": "leak-value"}': "github-oauth entry",
+        }
+        for value, message in cases.items():
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(composer_setup.InputError, message) as raised:
+                    composer_setup.parse_composer_auth(value)
+                self.assertNotIn("leak-value", str(raised.exception))
+
+    def test_merge_order_existing_then_composer_auth_then_inputs(self):
+        existing = {"http-basic": {"keep.example.com": {"username": "k", "password": "k"}}}
+        merged = composer_setup.merge_auth(existing, "repo.example.com", "input-user", "input-pass", "", self.AUTH)
+        self.assertEqual(merged["http-basic"]["keep.example.com"], {"username": "k", "password": "k"})
+        self.assertEqual(merged["http-basic"]["repo.example.com"], {"username": "input-user", "password": "input-pass"})
+        self.assertEqual(merged["bearer"], {"other.example.com": "bearer-value"})
+        self.assertNotIn("repo.example.com", existing["http-basic"])
+
+    def test_auth_writes_composer_auth_without_printing_it(self):
+        env = {
+            "HTTP_BASIC_HOST": "",
+            "COMPOSER_GITHUB_TOKEN": "",
+            "COMPOSER_AUTH_INPUT": json.dumps(self.AUTH),
+        }
+        with tempfile.TemporaryDirectory() as home, mock.patch.dict(os.environ, env):
+            code, printed = run_quietly(composer_setup.main, ["auth", f"--composer-home={home}"])
+            data = json.loads((Path(home) / "auth.json").read_text())
+        self.assertEqual(code, 0)
+        self.assertEqual(data["http-basic"]["repo.example.com"]["password"], "pass-value")
+        self.assertEqual(data["bearer"]["other.example.com"], "bearer-value")
+        self.assertNotIn("pass-value", printed)
+        self.assertNotIn("bearer-value", printed)
+        self.assertEqual(printed.splitlines(), ["Configured Composer credentials: composer-auth."])
+
+    def test_auth_rejects_invalid_composer_auth_before_writing(self):
+        env = {"HTTP_BASIC_HOST": "", "COMPOSER_GITHUB_TOKEN": "token-value", "COMPOSER_AUTH_INPUT": "[1]"}
+        with tempfile.TemporaryDirectory() as home, mock.patch.dict(os.environ, env):
+            code, printed = run_quietly(composer_setup.main, ["auth", f"--composer-home={home}"])
+            self.assertFalse((Path(home) / "auth.json").exists())
+        self.assertEqual(code, 1)
+        self.assertIn("composer-auth must be a JSON object", printed)
+
+    def test_auth_rejects_existing_entry_of_a_composer_auth_key_that_is_not_an_object(self):
+        env = {"HTTP_BASIC_HOST": "", "COMPOSER_GITHUB_TOKEN": "", "COMPOSER_AUTH_INPUT": json.dumps(self.AUTH)}
+        with tempfile.TemporaryDirectory() as home, mock.patch.dict(os.environ, env):
+            (Path(home) / "auth.json").write_text('{"bearer": "x"}')
+            code, printed = run_quietly(composer_setup.main, ["auth", f"--composer-home={home}"])
+        self.assertEqual(code, 1)
+        self.assertIn("bearer entry", printed)
+
+
 class InstallTest(unittest.TestCase):
     def test_runs_composer_with_planned_arguments(self):
         completed = mock.Mock(returncode=0)
@@ -252,18 +338,40 @@ class ActionMaskTest(unittest.TestCase):
         body = step.split("run: |\n", 1)[1]
         return "\n".join(line[8:] for line in body.splitlines())
 
-    def test_masks_every_line_before_the_script(self):
+    def run_masking(self, env):
         script = self.auth_step_script()
         self.assertLess(script.index("::add-mask::"), script.index("composer_setup.py"))
         masking = script.split("python3", 1)[0]
         result = subprocess.run(
             ["bash", "-c", masking],
-            env={"HTTP_BASIC_PASSWORD": "pass-one\npass-two", "COMPOSER_GITHUB_TOKEN": "", "PATH": os.environ["PATH"]},
+            env={"HTTP_BASIC_PASSWORD": "", "COMPOSER_GITHUB_TOKEN": "", "COMPOSER_AUTH_INPUT": "", "PATH": os.environ["PATH"], **env},
             capture_output=True,
             text=True,
             check=True,
         )
-        self.assertEqual(result.stdout.splitlines(), ["::add-mask::pass-one", "::add-mask::pass-two"])
+        return result.stdout.splitlines()
+
+    def test_masks_every_line_before_the_script(self):
+        lines = self.run_masking({"HTTP_BASIC_PASSWORD": "pass-one\npass-two"})
+        self.assertEqual(lines, ["::add-mask::pass-one", "::add-mask::pass-two"])
+
+    def test_masks_each_credential_of_composer_auth_but_not_user_names(self):
+        value = json.dumps(
+            {
+                "http-basic": {"repo.example.com": {"username": "user-name", "password": "pass-value"}},
+                "bearer": {"other.example.com": "bearer-one\nbearer-two"},
+            },
+            indent=2,
+        )
+        lines = self.run_masking({"COMPOSER_AUTH_INPUT": value})
+        self.assertEqual(
+            sorted(lines),
+            ["::add-mask::bearer-one", "::add-mask::bearer-two", "::add-mask::pass-value"],
+        )
+
+    def test_masks_nothing_for_an_invalid_composer_auth(self):
+        self.assertEqual(self.run_masking({"COMPOSER_AUTH_INPUT": "not json"}), [])
+
 
 if __name__ == "__main__":
     unittest.main()

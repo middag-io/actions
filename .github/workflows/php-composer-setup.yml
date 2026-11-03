@@ -47,6 +47,11 @@ on:
         type: string
         required: false
         default: ${{ vars.PHP_COMPOSER_SETUP_HTTP_BASIC_USERNAME }}
+      cache:
+        description: Restore and save the Composer download cache, keyed by the composer.lock of the working directory.
+        type: boolean
+        required: false
+        default: true
       install:
         description: Run composer install.
         type: boolean
@@ -78,6 +83,9 @@ on:
         required: false
       github-token:
         description: Token that Composer uses for github.com (private VCS repositories).
+        required: false
+      composer-auth:
+        description: Composer credentials as a JSON object in the COMPOSER_AUTH format, merged into the global auth.json.
         required: false
     outputs:
       php-version:
@@ -127,6 +135,8 @@ jobs:
           http-basic-username: ${{ inputs.http-basic-username }}
           http-basic-password: ${{ !inputs.dry-run && secrets.http-basic-password || '' }}
           github-token: ${{ !inputs.dry-run && secrets.github-token || '' }}
+          composer-auth: ${{ !inputs.dry-run && secrets.composer-auth || '' }}
+          cache: ${{ inputs.cache }}
           install: ${{ inputs.install }}
           no-dev: ${{ inputs.no-dev }}
           optimize-autoloader: ${{ inputs.optimize-autoloader }}
