@@ -27,7 +27,10 @@ GITHUB_PACKAGES_REGISTRY = "https://npm.pkg.github.com"
 SCRIPT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]*$")
 PHP_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+$")
 NPM_SCOPE_RE = re.compile(r"^@[a-z0-9][a-z0-9._-]*$")
-RESOLVED_RE = re.compile(r"^https://npm\.pkg\.github\.com/(@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*)/")
+# Two forms of "resolved" for GitHub Packages in package-lock.json:
+# https://npm.pkg.github.com/@scope/name/-/name-1.0.0.tgz and
+# https://npm.pkg.github.com/download/@scope/name/1.0.0/<digest>.
+RESOLVED_RE = re.compile(r"^https://npm\.pkg\.github\.com/(?:download/)?(@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*)/")
 
 
 class InputError(Exception):

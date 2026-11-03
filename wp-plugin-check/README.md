@@ -20,6 +20,8 @@ Nothing outside the runner. On the runner, `composer install` and `npm ci` write
 
 Each credential reaches only the command that installs dependencies. The other commands, the Composer scripts and the npm scripts among them, run without it.
 
+Code that the install command itself runs gets the same environment: Composer plugins and the `post-install-cmd` scripts of `composer.json` see `COMPOSER_AUTH`, and the lifecycle scripts of the npm packages (`preinstall`, `install`, `postinstall`) see `NODE_AUTH_TOKEN`. Install only dependencies you trust with these credentials.
+
 | Credential                                                        | Reaches                                                                       | Used for                                                                                                                                                                                                                |
 | ----------------------------------------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | secret `composer-auth`                                            | `composer install`, as `COMPOSER_AUTH`                                        | private Composer repositories (`http-basic`, `bearer` and the other keys of the [COMPOSER_AUTH](https://getcomposer.org/doc/03-cli.md#composer-auth) format)                                                            |

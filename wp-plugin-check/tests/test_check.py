@@ -68,6 +68,17 @@ class PlanTest(unittest.TestCase):
         argvs = [" ".join(c["argv"]) for c in check.build_plan(args, WORKSPACE)]
         self.assertEqual(argvs[:2], ["npm view @example/widgets version --registry=https://npm.pkg.github.com", "npm ci"])
 
+    def test_github_packages_reads_both_resolved_url_forms(self):
+        lock = {
+            "packages": {
+                "node_modules/@example/tarball": {"resolved": "https://npm.pkg.github.com/@example/tarball/-/tarball-1.0.0.tgz"},
+                "node_modules/@example/download": {"resolved": "https://npm.pkg.github.com/download/@example/download/1.0.0/0123abcd"},
+                "node_modules/@other/skipped": {"resolved": "https://npm.pkg.github.com/download/@other/skipped/1.0.0/0123abcd"},
+                "node_modules/left-pad": {"resolved": "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz"},
+            }
+        }
+        self.assertEqual(check.github_packages(lock, "@example"), ["@example/download", "@example/tarball"])
+
     def test_ui_plan_with_another_scope_probes_nothing(self):
         args = args_for("ui", "--npm-scripts", "lint", "--github-packages-npm-scope", "@other")
         self.assertEqual(check.build_plan(args, WORKSPACE)[0]["argv"], ["npm", "ci"])
