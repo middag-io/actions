@@ -6,9 +6,9 @@ Public repository, maintained by MIDDAG. Licensed under the [Apache License 2.0]
 
 ## Catalog
 
-| Component | Kind | What it does                                        | Since |
-| --------- | ---- | --------------------------------------------------- | ----- |
-| —         | —    | No component yet. Components enter by pull request. | —     |
+| Component                                                | Kind                                    | What it does                                                         | Since |
+| -------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------- | ----- |
+| [`cloudflare-workers-deploy`](cloudflare-workers-deploy) | composite action and reusable workflow | builds a Node.js project and deploys its Worker with `wrangler deploy` | 1.0.0 |
 
 Every component has its own `README.md` next to its `action.yml`. That README lists what the component does, what it **deletes**, its inputs, outputs and secrets, the permissions the caller must grant, and a call example pinned by SHA.
 

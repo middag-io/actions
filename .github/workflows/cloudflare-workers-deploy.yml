@@ -1,0 +1,158 @@
+# Reusable workflow of the cloudflare-workers-deploy component. It checks out
+# the caller's repository and gives the composite action a job, minimum
+# permissions, a timeout, a concurrency group and the GitHub environment. The
+# composite action does the work: see cloudflare-workers-deploy/README.md.
+#
+# Values, most specific first: explicit input > variable of the calling
+# repository > variable of the calling organization. The account-id default
+# reads the variable CLOUDFLARE_WORKERS_DEPLOY_ACCOUNT_ID; in a called
+# workflow, the vars context resolves against the caller. The API token comes
+# from one explicit line in the caller; it is never inherited.
+#
+# Two jobs, one per mode: a deployment runs in the GitHub environment named by
+# github-environment; a dry run never references an environment, so it waits
+# for no protection rule and creates no deployment record.
+# Reference it by full commit SHA with a version comment (see the README).
+name: Cloudflare Workers deploy
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Project directory, relative to the repository root (package.json, package-lock.json and the Wrangler configuration).
+        type: string
+        required: false
+        default: "."
+      node-version:
+        description: Node.js version for actions/setup-node.
+        type: string
+        required: false
+        default: "22"
+      build-script:
+        description: Name of the package.json script that builds the Worker before the deployment. Empty skips the build.
+        type: string
+        required: false
+        default: build
+      wrangler-config:
+        description: Wrangler configuration file, relative to working-directory. Empty takes the first of wrangler.jsonc, wrangler.json and wrangler.toml.
+        type: string
+        required: false
+        default: ""
+      wrangler-environment:
+        description: Wrangler environment (--env). Empty deploys the top-level configuration.
+        type: string
+        required: false
+        default: ""
+      worker-name:
+        description: Worker name (--name). Empty keeps the name of the Wrangler configuration.
+        type: string
+        required: false
+        default: ""
+      account-id:
+        description: Cloudflare account id. Default from the variable CLOUDFLARE_WORKERS_DEPLOY_ACCOUNT_ID; empty keeps the account of the Wrangler configuration.
+        type: string
+        required: false
+        default: ${{ vars.CLOUDFLARE_WORKERS_DEPLOY_ACCOUNT_ID }}
+      github-environment:
+        description: GitHub environment of the deployment job (protection rules and deployment history). Not used in a dry run.
+        type: string
+        required: false
+        default: production
+      dry-run:
+        description: Validate the inputs and the project and print the plan only; no credentials, no install, no build, no deployment.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 20
+    secrets:
+      api-token:
+        description: Cloudflare API token allowed to deploy the Worker. Required unless dry-run is true.
+        required: false
+    outputs:
+      wrangler-config:
+        description: Wrangler configuration file used, relative to working-directory.
+        value: ${{ jobs.deploy.outputs.wrangler-config || jobs.dry-run.outputs.wrangler-config }}
+      version-id:
+        description: Id of the Worker version that the deployment created. Empty in a dry run.
+        value: ${{ jobs.deploy.outputs.version-id }}
+
+permissions: {}
+
+jobs:
+  deploy:
+    name: deploy
+    if: ${{ !inputs.dry-run }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    environment: ${{ inputs.github-environment }}
+    # One deployment queue per repository, Worker configuration and Wrangler
+    # environment. A queued deployment is never cancelled, so that the last
+    # push always reaches the Worker.
+    concurrency:
+      group: cloudflare-workers-deploy-${{ github.repository }}-${{ inputs.working-directory }}-${{ inputs.wrangler-config }}-${{ inputs.wrangler-environment }}-${{ inputs.worker-name }}
+      cancel-in-progress: false
+    outputs:
+      wrangler-config: ${{ steps.deploy.outputs.wrangler-config }}
+      version-id: ${{ steps.deploy.outputs.version-id }}
+    steps:
+      - name: Require the API token
+        env:
+          HAS_API_TOKEN: ${{ secrets.api-token != '' }}
+        run: |
+          if [ "$HAS_API_TOKEN" != "true" ]; then
+            echo "::error::the secret api-token is empty: pass it with one line in the caller's secrets block (from the secret CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN) or set dry-run: true"
+            exit 1
+          fi
+
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Deploy the Worker to Cloudflare
+        id: deploy
+        uses: $/cloudflare-workers-deploy
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          node-version: ${{ inputs.node-version }}
+          build-script: ${{ inputs.build-script }}
+          wrangler-config: ${{ inputs.wrangler-config }}
+          wrangler-environment: ${{ inputs.wrangler-environment }}
+          worker-name: ${{ inputs.worker-name }}
+          account-id: ${{ inputs.account-id }}
+          api-token: ${{ secrets.api-token }}
+          dry-run: false
+
+  dry-run:
+    name: dry-run
+    if: ${{ inputs.dry-run }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    outputs:
+      wrangler-config: ${{ steps.plan.outputs.wrangler-config }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Plan the Worker deployment
+        id: plan
+        uses: $/cloudflare-workers-deploy
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          node-version: ${{ inputs.node-version }}
+          build-script: ${{ inputs.build-script }}
+          wrangler-config: ${{ inputs.wrangler-config }}
+          wrangler-environment: ${{ inputs.wrangler-environment }}
+          worker-name: ${{ inputs.worker-name }}
+          account-id: ${{ inputs.account-id }}
+          dry-run: true

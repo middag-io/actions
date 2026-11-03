@@ -1,0 +1,117 @@
+# Composite action: installs, builds and deploys a Cloudflare Worker with the
+# project's own Wrangler. See README.md next to this file for the inputs and
+# for what a deployment replaces.
+name: Cloudflare Workers deploy
+description: >-
+  Installs a Node.js project with npm ci, runs one of its package.json
+  scripts as the build, then deploys the Worker with wrangler deploy from the
+  project's own dependencies.
+
+inputs:
+  working-directory:
+    description: Project directory, relative to the workspace (package.json, package-lock.json and the Wrangler configuration).
+    required: false
+    default: "."
+  node-version:
+    description: Node.js version for actions/setup-node.
+    required: false
+    default: "22"
+  build-script:
+    description: Name of the package.json script that builds the Worker before the deployment. Empty skips the build.
+    required: false
+    default: build
+  wrangler-config:
+    description: Wrangler configuration file, relative to working-directory. Empty takes the first of wrangler.jsonc, wrangler.json and wrangler.toml.
+    required: false
+    default: ""
+  wrangler-environment:
+    description: Wrangler environment (--env). Empty deploys the top-level configuration.
+    required: false
+    default: ""
+  worker-name:
+    description: Worker name (--name). Empty keeps the name of the Wrangler configuration.
+    required: false
+    default: ""
+  account-id:
+    description: Cloudflare account id (CLOUDFLARE_ACCOUNT_ID). Empty keeps the account of the Wrangler configuration.
+    required: false
+    default: ""
+  api-token:
+    description: Cloudflare API token, passed from a secret. Required unless dry-run is true.
+    required: false
+    default: ""
+  dry-run:
+    description: Validate the inputs and the project and print the plan only; no credentials, no install, no build, no deployment (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  wrangler-config:
+    description: Wrangler configuration file used, relative to working-directory.
+    value: ${{ steps.plan.outputs.wrangler-config }}
+  version-id:
+    description: Id of the Worker version that the deployment created, as Wrangler prints it. Empty in a dry run.
+    value: ${{ steps.deploy.outputs.version-id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs and plan the deployment
+      id: plan
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        NODE_VERSION: ${{ inputs.node-version }}
+        BUILD_SCRIPT: ${{ inputs.build-script }}
+        WRANGLER_CONFIG: ${{ inputs.wrangler-config }}
+        WRANGLER_ENVIRONMENT: ${{ inputs.wrangler-environment }}
+        WORKER_NAME: ${{ inputs.worker-name }}
+        ACCOUNT_ID: ${{ inputs.account-id }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        HAS_API_TOKEN: ${{ inputs.api-token != '' }}
+      run: |
+        out_dir="$(mktemp -d "$RUNNER_TEMP/cloudflare-workers-deploy.XXXXXX")"
+        python3 -I "$GITHUB_ACTION_PATH/scripts/deploy.py" plan \
+          --working-directory="$WORKING_DIRECTORY" \
+          --node-version="$NODE_VERSION" \
+          --build-script="$BUILD_SCRIPT" \
+          --wrangler-config="$WRANGLER_CONFIG" \
+          --wrangler-environment="$WRANGLER_ENVIRONMENT" \
+          --worker-name="$WORKER_NAME" \
+          --account-id="$ACCOUNT_ID" \
+          --dry-run="$DRY_RUN" \
+          --has-api-token="$HAS_API_TOKEN" \
+          --out-dir="$out_dir"
+
+    # No dependency cache: a deployment installs from the lockfile only, so
+    # that a cache written by another workflow never reaches production.
+    - name: Set up Node.js
+      if: ${{ inputs.dry-run != 'true' }}
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ steps.plan.outputs.node-version }}
+        package-manager-cache: false
+
+    - name: Install the dependencies
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      working-directory: ${{ steps.plan.outputs.working-directory }}
+      run: npm ci
+
+    # The build runs the project's code without the API token.
+    - name: Build the Worker
+      if: ${{ inputs.dry-run != 'true' && steps.plan.outputs.build-script != '' }}
+      shell: bash
+      working-directory: ${{ steps.plan.outputs.working-directory }}
+      env:
+        BUILD_SCRIPT: ${{ steps.plan.outputs.build-script }}
+      run: npm run "$BUILD_SCRIPT"
+
+    - name: Deploy the Worker
+      id: deploy
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        PLAN_FILE: ${{ steps.plan.outputs.plan-file }}
+        CLOUDFLARE_API_TOKEN: ${{ inputs.api-token }}
+      run: python3 -I "$GITHUB_ACTION_PATH/scripts/deploy.py" deploy --plan-file="$PLAN_FILE"

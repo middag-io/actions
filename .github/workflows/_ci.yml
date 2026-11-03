@@ -191,6 +191,41 @@ jobs:
             echo "::endgroup::"
           done
 
+  # Calls the reusable workflow of cloudflare-workers-deploy by a relative
+  # path on a fixture project. A dry run: no credentials, no install, no
+  # build, no deployment.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-cloudflare-workers-deploy:
+    name: dry-run-cloudflare-workers-deploy
+    permissions:
+      contents: read
+    uses: ./.github/workflows/cloudflare-workers-deploy.yml # zizmor: ignore[self-repository]
+    with:
+      working-directory: cloudflare-workers-deploy/tests/fixtures/basic
+      wrangler-environment: production
+      account-id: ""
+      dry-run: true
+
+  # The dry run must find the fixture's Wrangler configuration.
+  dry-run-cloudflare-workers-deploy-check:
+    name: dry-run-cloudflare-workers-deploy-check
+    needs: dry-run-cloudflare-workers-deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Compare the dry-run outputs with the fixture
+        env:
+          WRANGLER_CONFIG: ${{ needs.dry-run-cloudflare-workers-deploy.outputs.wrangler-config }}
+          VERSION_ID: ${{ needs.dry-run-cloudflare-workers-deploy.outputs.version-id }}
+        run: |
+          echo "wrangler-config=$WRANGLER_CONFIG version-id=$VERSION_ID"
+          if [ "$WRANGLER_CONFIG" != "wrangler.toml" ] || [ -n "$VERSION_ID" ]; then
+            echo "::error::dry-run outputs differ: expected wrangler-config=wrangler.toml and an empty version-id"
+            exit 1
+          fi
+
   ci-gate:
     name: ci-gate
     needs:
@@ -199,6 +234,8 @@ jobs:
       - gitleaks
       - check-genericity
       - unit-tests
+      - dry-run-cloudflare-workers-deploy
+      - dry-run-cloudflare-workers-deploy-check
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
