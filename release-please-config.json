@@ -9,6 +9,12 @@
   "prerelease-type": "rc",
   "prerelease": true,
   "packages": {
+    "cloudflare-workers-check": {
+      "component": "cloudflare-workers-check",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
     "moodle-plugin-check": {
       "component": "moodle-plugin-check",
       "changelog-path": "CHANGELOG.md",

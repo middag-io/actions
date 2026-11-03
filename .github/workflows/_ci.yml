@@ -313,6 +313,47 @@ jobs:
           python3 -I -B moodle-plugin-check/tests/compare_plan.py \
             moodle-plugin-check/tests/fixtures/expected/basic.json
 
+  # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture Workers project. A dry run: no credentials, no npm
+  # install, no npm script and no Wrangler run.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-cloudflare-workers-check:
+    name: dry-run-cloudflare-workers-check
+    permissions:
+      contents: read
+    uses: ./.github/workflows/cloudflare-workers-check.yml # zizmor: ignore[self-repository]
+    with:
+      path: cloudflare-workers-check/tests/fixtures/basic
+      npm-scripts: build
+      npm-scripts-if-present: typecheck, lint
+      wrangler-dry-run: true
+      dry-run: true
+
+  # The dry run must plan exactly the commands of the reference plan
+  # (tests/fixtures/expected/basic.json) for the project of the fixture.
+  dry-run-check-cloudflare-workers-check:
+    name: dry-run-check-cloudflare-workers-check
+    needs: dry-run-cloudflare-workers-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected plan
+        env:
+          NAME: ${{ needs.dry-run-cloudflare-workers-check.outputs.name }}
+          WRANGLER_CONFIG: ${{ needs.dry-run-cloudflare-workers-check.outputs.wrangler-config }}
+          COMMANDS: ${{ needs.dry-run-cloudflare-workers-check.outputs.commands }}
+        run: |
+          python3 -I -B cloudflare-workers-check/tests/compare_plan.py \
+            cloudflare-workers-check/tests/fixtures/expected/basic.json
+
   ci-gate:
     name: ci-gate
     needs:
@@ -327,6 +368,8 @@ jobs:
       - dry-run-check-moodle-plugin-package
       - dry-run-moodle-plugin-check
       - dry-run-check-moodle-plugin-check
+      - dry-run-cloudflare-workers-check
+      - dry-run-check-cloudflare-workers-check
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
