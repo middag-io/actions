@@ -1,0 +1,150 @@
+# Composite action: builds a static site (VitePress by default) and deploys
+# it to Cloudflare Pages, only when its content hash differs from the hash of
+# the deployed site. See README.md next to this file for the inputs and what
+# the deploy replaces.
+name: Cloudflare Pages Deploy
+description: >-
+  Computes the content hash of a static site, compares it with the hash of
+  the deployed site, and when they differ builds the site with Node.js and
+  deploys it to Cloudflare Pages with Wrangler.
+
+inputs:
+  docs-path:
+    description: Directory of the site sources, relative to the repository root (for example docs or "."). The checkout must be in the workspace.
+    required: true
+  project-name:
+    description: Cloudflare Pages project name.
+    required: true
+  deploy-url:
+    description: URL of the deployed site, where the last deploy wrote .content-hash. Empty uses https://<project-name>.pages.dev.
+    required: false
+    default: ""
+  account-id:
+    description: Cloudflare account id (32 hexadecimal characters). Required unless dry-run is true.
+    required: false
+    default: ""
+  api-token:
+    description: Cloudflare API token allowed to deploy to Pages, passed from a secret. Required unless dry-run is true.
+    required: false
+    default: ""
+  node-version:
+    description: Node.js version of the build.
+    required: false
+    default: "22"
+  build-command:
+    description: Build command, run after npm ci in build-working-directory.
+    required: false
+    default: npm run docs:build
+  build-working-directory:
+    description: Directory where npm ci and the build command run. Empty uses docs-path.
+    required: false
+    default: ""
+  dist-path:
+    description: Directory of the built site, relative to the repository root. Empty uses <docs-path>/.vitepress/dist.
+    required: false
+    default: ""
+  cache-dependency-path:
+    description: Lockfile path that keys the npm cache. Empty disables the npm cache.
+    required: false
+    default: ""
+  force:
+    description: Deploy even when the content hash matches the deployed one (true or false).
+    required: false
+    default: "false"
+  dry-run:
+    description: Validate the inputs and compute the content hash only; no credentials, no fetch, no build and no deploy (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  content-hash:
+    description: SHA-256 content hash of the site sources.
+    value: ${{ steps.plan.outputs.content-hash }}
+  deploy:
+    description: true when this run built and deployed the site, false when it skipped the deploy (always false in a dry run).
+    value: ${{ steps.plan.outputs.deploy }}
+  dist-path:
+    description: Directory of the built site that is (or would be) deployed.
+    value: ${{ steps.plan.outputs.dist-path }}
+  command:
+    description: Wrangler command of the deploy.
+    value: ${{ steps.plan.outputs.command }}
+  deployment-url:
+    description: URL of the new Cloudflare Pages deployment; empty when nothing was deployed.
+    value: ${{ steps.wrangler.outputs.deployment-url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate the inputs and compare the content hash
+      id: plan
+      shell: bash
+      env:
+        DOCS_PATH: ${{ inputs.docs-path }}
+        PROJECT_NAME: ${{ inputs.project-name }}
+        DEPLOY_URL: ${{ inputs.deploy-url }}
+        ACCOUNT_ID: ${{ inputs.account-id }}
+        NODE_VERSION: ${{ inputs.node-version }}
+        BUILD_COMMAND: ${{ inputs.build-command }}
+        BUILD_WORKING_DIRECTORY: ${{ inputs.build-working-directory }}
+        DIST_PATH: ${{ inputs.dist-path }}
+        CACHE_DEPENDENCY_PATH: ${{ inputs.cache-dependency-path }}
+        FORCE: ${{ inputs.force }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        HAS_API_TOKEN: ${{ inputs.api-token != '' }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/plan.py" \
+          --docs-path="$DOCS_PATH" \
+          --project-name="$PROJECT_NAME" \
+          --deploy-url="$DEPLOY_URL" \
+          --account-id="$ACCOUNT_ID" \
+          --node-version="$NODE_VERSION" \
+          --build-command="$BUILD_COMMAND" \
+          --build-working-directory="$BUILD_WORKING_DIRECTORY" \
+          --dist-path="$DIST_PATH" \
+          --cache-dependency-path="$CACHE_DEPENDENCY_PATH" \
+          --force="$FORCE" \
+          --dry-run="$DRY_RUN" \
+          --has-api-token="$HAS_API_TOKEN"
+
+    - name: Set up Node.js
+      if: ${{ steps.plan.outputs.deploy == 'true' }}
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: ${{ inputs.cache-dependency-path != '' && 'npm' || '' }}
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+    # The build command comes from the caller and runs as written.
+    - name: Install the dependencies and build the site
+      if: ${{ steps.plan.outputs.deploy == 'true' }}
+      shell: bash
+      working-directory: ${{ steps.plan.outputs.build-directory }}
+      env:
+        BUILD_COMMAND: ${{ inputs.build-command }}
+      run: |
+        npm ci
+        bash -euo pipefail -c "$BUILD_COMMAND"
+
+    # The next run compares its own hash with this file.
+    - name: Write the content hash into the built site
+      if: ${{ steps.plan.outputs.deploy == 'true' }}
+      shell: bash
+      env:
+        DIST_PATH: ${{ steps.plan.outputs.dist-path }}
+        CONTENT_HASH: ${{ steps.plan.outputs.content-hash }}
+      run: |
+        if [ ! -d "$DIST_PATH" ]; then
+          echo "::error::the build did not create dist-path $DIST_PATH"
+          exit 1
+        fi
+        printf '%s' "$CONTENT_HASH" > "$DIST_PATH/.content-hash"
+
+    - name: Deploy to Cloudflare Pages
+      id: wrangler
+      if: ${{ steps.plan.outputs.deploy == 'true' && inputs.dry-run != 'true' }}
+      uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+      with:
+        apiToken: ${{ inputs.api-token }}
+        accountId: ${{ inputs.account-id }}
+        command: ${{ steps.plan.outputs.command }}
