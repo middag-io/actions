@@ -27,8 +27,12 @@ Two forms, one name:
 
 ## What it replaces and deletes
 
-- **Replaces the deployed version of the Worker** named by the configuration (or by `worker-name`) in the selected Wrangler environment. The previous versions stay in the Worker's version history.
-- **Applies the Wrangler configuration** as `wrangler deploy` does. Variables changed in the Cloudflare dashboard are overridden by the next deployment; the component does not pass `--keep-vars`. Secrets of the Worker are never deleted by a deployment ([Wrangler commands, `deploy`](https://developers.cloudflare.com/workers/wrangler/commands/workers/)).
+`wrangler deploy` treats the Wrangler configuration as the source of truth ([Wrangler configuration, "Source of truth"](https://developers.cloudflare.com/workers/wrangler/configuration/#source-of-truth)). The component passes the configuration as it is and does not inspect it, so a deployment:
+
+- **Replaces the deployed version of the Worker** named by the configuration (or by `worker-name`) in the selected Wrangler environment, with its code and static assets. The previous versions stay in the Worker's version history.
+- **Deletes the Worker's plain-text variables** that are not in the configuration, such as variables added in the Cloudflare dashboard, and sets those of the configuration. The component does not pass `--keep-vars`; only `keep_vars = true` in the configuration keeps them ([Wrangler commands, `deploy`](https://developers.cloudflare.com/workers/wrangler/commands/workers/)). Secrets of the Worker are never deleted by a deployment.
+- **Replaces the routes** set in the dashboard with the `route` or `routes` of the configuration, when the configuration has either key.
+- **Applies the Durable Object migrations** of the configuration. A class listed in `deleted_classes`, or an `exports` entry with `state = "deleted"`, deletes that class and **all of its stored data permanently** ([Durable Object class exports](https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/)). Review a change to `migrations` or `exports` before it reaches the branch that deploys.
 - **Deletes nothing** in the repository, in the GitHub environment or in other Workers.
 
 ## Values: input, repository variable, organization variable
