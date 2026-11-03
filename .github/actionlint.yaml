@@ -31,6 +31,9 @@ paths:
   .github/workflows/wp-plugin-check.yml:
     ignore:
       - 'specifying action "\$/wp-plugin-check" in invalid format because ref is missing'
+  .github/workflows/wp-plugin-release.yml:
+    ignore:
+      - 'specifying action "\$/wp-plugin-release" in invalid format because ref is missing'
   .github/workflows/wp-theme-check.yml:
     ignore:
       - 'specifying action "\$/wp-theme-check" in invalid format because ref is missing'

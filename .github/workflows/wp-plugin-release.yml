@@ -1,0 +1,158 @@
+# Reusable workflow of the wp-plugin-release component. It checks out the
+# release tag of the calling repository and gives the composite action a job,
+# minimum permissions, a timeout and a concurrency group. The composite action
+# does the work: see wp-plugin-release/README.md.
+#
+# Values, most specific first: explicit input > variable of the calling
+# repository > variable of the calling organization. The app-client-id
+# default reads the variable WP_PLUGIN_RELEASE_APP_CLIENT_ID; in a called
+# workflow, the vars context resolves against the caller. The secrets come
+# from one explicit line each in the caller; they are never inherited.
+# Reference it by full commit SHA with a version comment (see the README).
+name: WordPress plugin release
+
+on:
+  workflow_call:
+    inputs:
+      tag-name:
+        description: Release tag that receives the archive (for example 1.2.3). Also the version in the archive name.
+        type: string
+        required: true
+      zip-name:
+        description: Archive name without the version; the archive is <zip-name>-<tag-name>.zip.
+        type: string
+        required: true
+      path:
+        description: Plugin root, relative to the repository root.
+        type: string
+        required: false
+        default: "."
+      has-ui:
+        description: Build the UI in <path>/ui with npm ci and npm run build.
+        type: boolean
+        required: false
+        default: false
+      npm-github-packages-scope:
+        description: npm scope (for example @example) resolved from the GitHub Packages registry with the job token. Empty uses the public npm registry only.
+        type: string
+        required: false
+        default: ""
+      ui-check-file:
+        description: File, relative to path, that must exist after the UI build.
+        type: string
+        required: false
+        default: assets/dist/app.js
+      has-strauss:
+        description: Run composer strauss (vendor prefixing) between a full install and a reinstall without dev dependencies.
+        type: boolean
+        required: false
+        default: false
+      node-version:
+        description: Node.js version for the UI build.
+        type: string
+        required: false
+        default: "22"
+      php-version:
+        description: PHP version.
+        type: string
+        required: false
+        default: "8.4"
+      php-extensions:
+        description: PHP extensions, comma-separated, as setup-php takes them.
+        type: string
+        required: false
+        default: mbstring, xml, json, curl
+      extra-zip-excludes:
+        description: Additional ZIP exclude patterns, separated by spaces or new lines.
+        type: string
+        required: false
+        default: ""
+      extra-zip-excludes-file:
+        description: File, relative to path, with one additional exclude pattern per line.
+        type: string
+        required: false
+        default: ""
+      app-client-id:
+        description: Client ID of the GitHub App that uploads the archive. Default from the variable WP_PLUGIN_RELEASE_APP_CLIENT_ID; required unless dry-run is true.
+        type: string
+        required: false
+        default: ${{ vars.WP_PLUGIN_RELEASE_APP_CLIENT_ID }}
+      dry-run:
+        description: Check out the calling commit, build and list the archive only; no credentials and no upload.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 20
+    secrets:
+      app-private-key:
+        description: Private key of the GitHub App that uploads the archive. Required unless dry-run is true.
+        required: false
+      composer-auth:
+        description: Composer authentication as a JSON object (the COMPOSER_AUTH format), for private Composer repositories. Not used in a dry run.
+        required: false
+    outputs:
+      archive-name:
+        description: File name of the archive.
+        value: ${{ jobs.release.outputs.archive-name }}
+      archive-sha256:
+        description: SHA-256 of the archive.
+        value: ${{ jobs.release.outputs.archive-sha256 }}
+      files:
+        description: Number of files in the archive.
+        value: ${{ jobs.release.outputs.files }}
+      files-sha256:
+        description: SHA-256 of the sorted file listing of the archive, one path per line.
+        value: ${{ jobs.release.outputs.files-sha256 }}
+
+permissions: {}
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    # The upload uses a GitHub App token, not the job token: contents: read
+    # covers the checkout.
+    permissions:
+      contents: read
+    # One run per tag; a dry run gets its own group per run. A queued run is
+    # never cancelled: every release must get its archive.
+    concurrency:
+      group: wp-plugin-release-${{ github.repository }}-${{ inputs.dry-run && github.run_id || inputs.tag-name }}
+      cancel-in-progress: false
+    outputs:
+      archive-name: ${{ steps.release.outputs.archive-name }}
+      archive-sha256: ${{ steps.release.outputs.archive-sha256 }}
+      files: ${{ steps.release.outputs.files }}
+      files-sha256: ${{ steps.release.outputs.files-sha256 }}
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ !inputs.dry-run && inputs.tag-name || '' }}
+          persist-credentials: false
+
+      - name: Build and upload the plugin archive
+        id: release
+        uses: $/wp-plugin-release
+        with:
+          path: ${{ inputs.path }}
+          tag-name: ${{ inputs.tag-name }}
+          zip-name: ${{ inputs.zip-name }}
+          has-ui: ${{ inputs.has-ui }}
+          npm-github-packages-scope: ${{ inputs.npm-github-packages-scope }}
+          ui-check-file: ${{ inputs.ui-check-file }}
+          has-strauss: ${{ inputs.has-strauss }}
+          node-version: ${{ inputs.node-version }}
+          php-version: ${{ inputs.php-version }}
+          php-extensions: ${{ inputs.php-extensions }}
+          extra-zip-excludes: ${{ inputs.extra-zip-excludes }}
+          extra-zip-excludes-file: ${{ inputs.extra-zip-excludes-file }}
+          composer-auth: ${{ !inputs.dry-run && secrets.composer-auth || '' }}
+          app-client-id: ${{ !inputs.dry-run && inputs.app-client-id || '' }}
+          app-private-key: ${{ !inputs.dry-run && secrets.app-private-key || '' }}
+          dry-run: ${{ inputs.dry-run }}

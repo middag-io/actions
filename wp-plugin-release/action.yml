@@ -1,0 +1,235 @@
+# Composite action: builds the distribution ZIP of a WordPress plugin from
+# the checked-out tree and attaches it to an existing GitHub release. See
+# README.md next to this file for the inputs, the archive contents and what
+# the action replaces.
+name: WordPress plugin release
+description: >-
+  Builds the distribution ZIP of a WordPress plugin (optional UI build with
+  npm, Composer production dependencies, optional Strauss prefixing) and
+  uploads it to the GitHub release of the tag. A dry run builds and lists the
+  archive without credentials and without uploading.
+
+inputs:
+  path:
+    description: Plugin root, relative to the workspace.
+    required: false
+    default: "."
+  tag-name:
+    description: Release tag that receives the archive (for example 1.2.3). Also the version in the archive name.
+    required: true
+  zip-name:
+    description: Archive name without the version; the archive is <zip-name>-<tag-name>.zip.
+    required: true
+  has-ui:
+    description: Build the UI in <path>/ui with npm ci and npm run build (true or false).
+    required: false
+    default: "false"
+  npm-github-packages-scope:
+    description: npm scope (for example @example) resolved from the GitHub Packages registry with the job token. Empty uses the public npm registry only. Requires has-ui.
+    required: false
+    default: ""
+  ui-check-file:
+    description: File, relative to path, that must exist after the UI build.
+    required: false
+    default: assets/dist/app.js
+  has-strauss:
+    description: Run composer strauss (vendor prefixing) between a full install and a reinstall without dev dependencies (true or false).
+    required: false
+    default: "false"
+  node-version:
+    description: Node.js version for the UI build.
+    required: false
+    default: "22"
+  php-version:
+    description: PHP version.
+    required: false
+    default: "8.4"
+  php-extensions:
+    description: PHP extensions, comma-separated, as setup-php takes them.
+    required: false
+    default: mbstring, xml, json, curl
+  extra-zip-excludes:
+    description: Additional ZIP exclude patterns, separated by spaces or new lines, matched against paths relative to path.
+    required: false
+    default: ""
+  extra-zip-excludes-file:
+    description: File, relative to path, with one additional exclude pattern per line (# starts a comment).
+    required: false
+    default: ""
+  composer-auth:
+    description: Composer authentication as a JSON object (the COMPOSER_AUTH format), passed from a secret. Empty installs without authentication.
+    required: false
+    default: ""
+  app-client-id:
+    description: Client ID of the GitHub App that uploads the archive. Required unless dry-run is true.
+    required: false
+    default: ""
+  app-private-key:
+    description: Private key of the GitHub App, passed from a secret. Required unless dry-run is true.
+    required: false
+    default: ""
+  dry-run:
+    description: Build and list the archive only; no GitHub App token and no upload (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  archive-name:
+    description: File name of the archive (<zip-name>-<tag-name>.zip).
+    value: ${{ steps.archive.outputs.archive-name }}
+  archive-path:
+    description: Absolute path of the archive on the runner.
+    value: ${{ steps.archive.outputs.archive-path }}
+  archive-sha256:
+    description: SHA-256 of the archive.
+    value: ${{ steps.archive.outputs.archive-sha256 }}
+  files:
+    description: Number of files in the archive.
+    value: ${{ steps.archive.outputs.files }}
+  files-sha256:
+    description: SHA-256 of the sorted file listing of the archive, one path per line.
+    value: ${{ steps.archive.outputs.files-sha256 }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs
+      id: validate
+      shell: bash
+      env:
+        PLUGIN_PATH: ${{ inputs.path }}
+        TAG_NAME: ${{ inputs.tag-name }}
+        ZIP_NAME: ${{ inputs.zip-name }}
+        HAS_UI: ${{ inputs.has-ui }}
+        HAS_STRAUSS: ${{ inputs.has-strauss }}
+        UI_CHECK_FILE: ${{ inputs.ui-check-file }}
+        NPM_SCOPE: ${{ inputs.npm-github-packages-scope }}
+        EXTRA_ZIP_EXCLUDES: ${{ inputs.extra-zip-excludes }}
+        EXTRA_ZIP_EXCLUDES_FILE: ${{ inputs.extra-zip-excludes-file }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        HAS_APP_CREDENTIALS: ${{ inputs.app-client-id != '' && inputs.app-private-key != '' }}
+        COMPOSER_AUTH: ${{ inputs.composer-auth }}
+      # The runner masks the secret as one whole string only. Mask each
+      # credential inside the JSON object on its own (every non-empty string
+      # value except "username" fields, line by line) before any other
+      # message of the run. An invalid value masks nothing here; the script
+      # then fails without showing it.
+      run: |
+        if [ -n "$COMPOSER_AUTH" ]; then
+          command -v jq >/dev/null || { echo "::error::jq is required to mask the credentials of composer-auth"; exit 1; }
+          if jq -e 'type == "object"' >/dev/null 2>&1 <<<"$COMPOSER_AUTH"; then
+            jq -r 'def creds($k): if type == "object" then to_entries[] | .key as $c | .value | creds($c) elif type == "array" then .[] | creds($k) elif type == "string" and . != "" and $k != "username" then . else empty end; creds("")' <<<"$COMPOSER_AUTH" | while IFS= read -r line; do
+              if [ -n "${line//[[:space:]]/}" ]; then
+                echo "::add-mask::$line"
+              fi
+            done
+          fi
+        fi
+        python3 -I "$GITHUB_ACTION_PATH/scripts/wp_plugin_release.py" validate \
+          --path="$PLUGIN_PATH" \
+          --tag-name="$TAG_NAME" \
+          --zip-name="$ZIP_NAME" \
+          --has-ui="$HAS_UI" \
+          --has-strauss="$HAS_STRAUSS" \
+          --ui-check-file="$UI_CHECK_FILE" \
+          --npm-github-packages-scope="$NPM_SCOPE" \
+          --extra-zip-excludes="$EXTRA_ZIP_EXCLUDES" \
+          --extra-zip-excludes-file="$EXTRA_ZIP_EXCLUDES_FILE" \
+          --dry-run="$DRY_RUN" \
+          --has-app-credentials="$HAS_APP_CREDENTIALS"
+
+    - name: Set up PHP
+      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+      with:
+        php-version: ${{ inputs.php-version }}
+        extensions: ${{ inputs.php-extensions }}
+        coverage: none
+        tools: composer
+
+    - name: Set up Node.js with the public npm registry
+      if: ${{ inputs.has-ui == 'true' && inputs.npm-github-packages-scope == '' }}
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        package-manager-cache: false
+
+    - name: Set up Node.js with the GitHub Packages registry for the scope
+      if: ${{ inputs.has-ui == 'true' && inputs.npm-github-packages-scope != '' }}
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        registry-url: https://npm.pkg.github.com
+        scope: ${{ inputs.npm-github-packages-scope }}
+        package-manager-cache: false
+
+    - name: Build the UI
+      if: ${{ inputs.has-ui == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.path }}/ui
+      env:
+        NODE_AUTH_TOKEN: ${{ inputs.npm-github-packages-scope != '' && github.token || '' }}
+      run: |
+        npm ci
+        npm run build
+
+    - name: Check the UI build output
+      if: ${{ inputs.has-ui == 'true' }}
+      shell: bash
+      env:
+        PLUGIN_PATH: ${{ inputs.path }}
+        UI_CHECK_FILE: ${{ inputs.ui-check-file }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/wp_plugin_release.py" check-ui \
+          --path="$PLUGIN_PATH" \
+          --ui-check-file="$UI_CHECK_FILE"
+
+    - name: Install the Composer dependencies
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        HAS_STRAUSS: ${{ inputs.has-strauss }}
+        COMPOSER_AUTH: ${{ inputs.composer-auth }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/composer-install.sh"
+
+    - name: Build the archive
+      id: archive
+      shell: bash
+      env:
+        PLUGIN_PATH: ${{ inputs.path }}
+        TAG_NAME: ${{ inputs.tag-name }}
+        ZIP_NAME: ${{ inputs.zip-name }}
+        EXTRA_ZIP_EXCLUDES: ${{ inputs.extra-zip-excludes }}
+        EXTRA_ZIP_EXCLUDES_FILE: ${{ inputs.extra-zip-excludes-file }}
+      run: |
+        out_dir="$(mktemp -d "$RUNNER_TEMP/wp-plugin-release.XXXXXX")"
+        python3 -I "$GITHUB_ACTION_PATH/scripts/wp_plugin_release.py" archive \
+          --path="$PLUGIN_PATH" \
+          --tag-name="$TAG_NAME" \
+          --zip-name="$ZIP_NAME" \
+          --extra-zip-excludes="$EXTRA_ZIP_EXCLUDES" \
+          --extra-zip-excludes-file="$EXTRA_ZIP_EXCLUDES_FILE" \
+          --out-dir="$out_dir"
+
+    # The token is created after the build, so that no build step (npm or
+    # Composer scripts of the plugin) runs while it exists. It is narrowed to
+    # the calling repository and to contents: write.
+    - name: Create the GitHub App token
+      id: app-token
+      if: ${{ inputs.dry-run != 'true' }}
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.app-client-id }}
+        private-key: ${{ inputs.app-private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+        permission-contents: write
+
+    - name: Upload the archive to the release
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        TAG_NAME: ${{ inputs.tag-name }}
+        ARCHIVE_PATH: ${{ steps.archive.outputs.archive-path }}
+      run: |
+        gh release upload "$TAG_NAME" "$ARCHIVE_PATH" --clobber --repo "$GITHUB_REPOSITORY"

@@ -13,6 +13,7 @@ updates:
       - /php-composer-setup
       - /release-please
       - /wp-plugin-check
+      - /wp-plugin-release
       - /wp-theme-check
     schedule:
       interval: weekly

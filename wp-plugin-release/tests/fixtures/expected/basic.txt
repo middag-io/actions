@@ -1,0 +1,5 @@
+composer.json
+composer.lock
+example-plugin.php
+readme.txt
+src/Plugin.php
