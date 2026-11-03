@@ -1,0 +1,133 @@
+# Reusable workflow of the php-composer-setup component. It gives the
+# composite action a job, minimum permissions, a timeout and a concurrency
+# group, checks out the calling repository and fills inputs from the
+# caller's variables. The composite action does the work: see
+# php-composer-setup/README.md. As a workflow, it proves that the
+# dependencies of the calling repository install; jobs that build or test
+# with them call the composite action as a step instead.
+#
+# Values, most specific first: explicit input > variable of the calling
+# repository > variable of the calling organization. Each input default reads
+# the variable PHP_COMPOSER_SETUP_<INPUT>; in a called workflow, the vars
+# context resolves against the caller. Secrets come from one explicit line
+# each in the caller; they are never inherited.
+# Reference it by full commit SHA with a version comment (see the README).
+name: PHP Composer setup
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: PHP version (8.4, latest, nightly or pre-installed). Default from the variable PHP_COMPOSER_SETUP_PHP_VERSION, then 8.4.
+        type: string
+        required: false
+        default: ${{ vars.PHP_COMPOSER_SETUP_PHP_VERSION || '8.4' }}
+      php-extensions:
+        description: PHP extensions, comma-separated. Default from the variable PHP_COMPOSER_SETUP_PHP_EXTENSIONS, then mbstring, xml.
+        type: string
+        required: false
+        default: ${{ vars.PHP_COMPOSER_SETUP_PHP_EXTENSIONS || 'mbstring, xml' }}
+      coverage:
+        description: Code coverage driver (none, xdebug, xdebug2 or pcov).
+        type: string
+        required: false
+        default: none
+      working-directory:
+        description: Directory that holds composer.json, relative to the checkout.
+        type: string
+        required: false
+        default: "."
+      http-basic-host:
+        description: Host of a Composer repository that needs HTTP Basic authentication. Default from the variable PHP_COMPOSER_SETUP_HTTP_BASIC_HOST; empty means none.
+        type: string
+        required: false
+        default: ${{ vars.PHP_COMPOSER_SETUP_HTTP_BASIC_HOST }}
+      http-basic-username:
+        description: HTTP Basic user name for http-basic-host. Default from the variable PHP_COMPOSER_SETUP_HTTP_BASIC_USERNAME.
+        type: string
+        required: false
+        default: ${{ vars.PHP_COMPOSER_SETUP_HTTP_BASIC_USERNAME }}
+      install:
+        description: Run composer install.
+        type: boolean
+        required: false
+        default: true
+      no-dev:
+        description: Pass --no-dev to composer install.
+        type: boolean
+        required: false
+        default: false
+      optimize-autoloader:
+        description: Pass --optimize-autoloader to composer install.
+        type: boolean
+        required: false
+        default: false
+      dry-run:
+        description: Validate the inputs and report the plan only; no credentials, no PHP setup, no install.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 15
+    secrets:
+      http-basic-password:
+        description: HTTP Basic password for http-basic-host. Required with http-basic-host unless dry-run is true.
+        required: false
+      github-token:
+        description: Token that Composer uses for github.com (private VCS repositories).
+        required: false
+    outputs:
+      php-version:
+        description: PHP version installed, in SemVer format (empty in a dry run).
+        value: ${{ jobs.setup.outputs.php-version }}
+      auth-entries:
+        description: Credentials configured, comma-separated; planned ones in a dry run.
+        value: ${{ jobs.setup.outputs.auth-entries }}
+      install-command:
+        description: The composer install command, run or planned.
+        value: ${{ jobs.setup.outputs.install-command }}
+
+permissions: {}
+
+jobs:
+  setup:
+    name: setup
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    # Nothing outside the job is written, so calls never need to queue
+    # behind each other: one group per run attempt, PHP version and
+    # directory, which keeps the calls of a caller's matrix apart.
+    concurrency:
+      group: php-composer-setup-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.php-version }}-${{ inputs.working-directory }}
+      cancel-in-progress: false
+    outputs:
+      php-version: ${{ steps.setup.outputs.php-version }}
+      auth-entries: ${{ steps.setup.outputs.auth-entries }}
+      install-command: ${{ steps.setup.outputs.install-command }}
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP and Composer
+        id: setup
+        uses: $/php-composer-setup
+        with:
+          php-version: ${{ inputs.php-version }}
+          php-extensions: ${{ inputs.php-extensions }}
+          coverage: ${{ inputs.coverage }}
+          working-directory: ${{ inputs.working-directory }}
+          http-basic-host: ${{ inputs.http-basic-host }}
+          http-basic-username: ${{ inputs.http-basic-username }}
+          http-basic-password: ${{ !inputs.dry-run && secrets.http-basic-password || '' }}
+          github-token: ${{ !inputs.dry-run && secrets.github-token || '' }}
+          install: ${{ inputs.install }}
+          no-dev: ${{ inputs.no-dev }}
+          optimize-autoloader: ${{ inputs.optimize-autoloader }}
+          dry-run: ${{ inputs.dry-run }}

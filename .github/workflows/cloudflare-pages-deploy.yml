@@ -1,0 +1,146 @@
+# Reusable workflow of the cloudflare-pages-deploy component. It checks out
+# the calling repository and gives the composite action a job, minimum
+# permissions, a timeout and a concurrency group. The composite action does
+# the work: see cloudflare-pages-deploy/README.md.
+#
+# Values, most specific first: explicit input > variable of the calling
+# repository > variable of the calling organization. The project-name and
+# account-id defaults read the variables CLOUDFLARE_PAGES_DEPLOY_PROJECT_NAME
+# and CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID; in a called workflow, the vars
+# context resolves against the caller. The secret account-id, when set,
+# wins over the input: a public repository passes the account id that way,
+# so that GitHub masks it in the logs. The API token comes from one explicit
+# line in the caller; it is never inherited.
+# Reference it by full commit SHA with a version comment (see the README).
+name: Cloudflare Pages Deploy
+
+on:
+  workflow_call:
+    inputs:
+      docs-path:
+        description: Directory of the site sources, relative to the repository root (for example docs or ".").
+        type: string
+        required: true
+      project-name:
+        description: Cloudflare Pages project name. Default from the variable CLOUDFLARE_PAGES_DEPLOY_PROJECT_NAME.
+        type: string
+        required: false
+        default: ${{ vars.CLOUDFLARE_PAGES_DEPLOY_PROJECT_NAME }}
+      deploy-url:
+        description: URL of the deployed site, where the last deploy wrote .content-hash. Empty uses https://<project-name>.pages.dev.
+        type: string
+        required: false
+        default: ""
+      account-id:
+        description: Cloudflare account id. Default from the variable CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID; the secret account-id wins over it. Required, as input or secret, unless dry-run is true.
+        type: string
+        required: false
+        default: ${{ vars.CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID }}
+      node-version:
+        description: Node.js version of the build.
+        type: string
+        required: false
+        default: "22"
+      build-command:
+        description: Build command, run after npm ci in build-working-directory.
+        type: string
+        required: false
+        default: npm run docs:build
+      build-working-directory:
+        description: Directory where npm ci and the build command run. Empty uses docs-path.
+        type: string
+        required: false
+        default: ""
+      dist-path:
+        description: Directory of the built site, relative to the repository root. Empty uses <docs-path>/.vitepress/dist.
+        type: string
+        required: false
+        default: ""
+      cache-dependency-path:
+        description: Lockfile path that keys the npm cache. Empty disables the npm cache.
+        type: string
+        required: false
+        default: ""
+      force:
+        description: Deploy even when the content hash matches the deployed one.
+        type: boolean
+        required: false
+        default: false
+      dry-run:
+        description: Validate the inputs and compute the content hash only; no credentials, no fetch, no build and no deploy.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 20
+    secrets:
+      account-id:
+        description: Cloudflare account id, passed as a secret so that GitHub masks it in the logs; use it in a public repository. Wins over the input account-id.
+        required: false
+      api-token:
+        description: Cloudflare API token allowed to deploy to Pages. Required unless dry-run is true.
+        required: false
+    outputs:
+      content-hash:
+        description: SHA-256 content hash of the site sources.
+        value: ${{ jobs.deploy.outputs.content-hash }}
+      deploy:
+        description: true when this run built and deployed the site, false otherwise.
+        value: ${{ jobs.deploy.outputs.deploy }}
+      dist-path:
+        description: Directory of the built site that is (or would be) deployed.
+        value: ${{ jobs.deploy.outputs.dist-path }}
+      command:
+        description: Wrangler command of the deploy.
+        value: ${{ jobs.deploy.outputs.command }}
+      deployment-url:
+        description: URL of the new Cloudflare Pages deployment; empty when nothing was deployed.
+        value: ${{ jobs.deploy.outputs.deployment-url }}
+
+permissions: {}
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    # contents: read only checks out the site sources. The deploy uses the
+    # Cloudflare API token, not the GitHub token.
+    permissions:
+      contents: read
+    # One deploy at a time per repository and project; a dry run gets its
+    # own group per run. A queued deploy is never cancelled.
+    concurrency:
+      group: cloudflare-pages-deploy-${{ github.repository }}-${{ inputs.dry-run && github.run_id || inputs.project-name }}
+      cancel-in-progress: false
+    outputs:
+      content-hash: ${{ steps.deploy.outputs.content-hash }}
+      deploy: ${{ steps.deploy.outputs.deploy }}
+      dist-path: ${{ steps.deploy.outputs.dist-path }}
+      command: ${{ steps.deploy.outputs.command }}
+      deployment-url: ${{ steps.deploy.outputs.deployment-url }}
+    steps:
+      - name: Check out the site sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Deploy the site to Cloudflare Pages
+        id: deploy
+        uses: $/cloudflare-pages-deploy
+        with:
+          docs-path: ${{ inputs.docs-path }}
+          project-name: ${{ inputs.project-name }}
+          deploy-url: ${{ inputs.deploy-url }}
+          account-id: ${{ secrets.account-id || inputs.account-id }}
+          node-version: ${{ inputs.node-version }}
+          build-command: ${{ inputs.build-command }}
+          build-working-directory: ${{ inputs.build-working-directory }}
+          dist-path: ${{ inputs.dist-path }}
+          cache-dependency-path: ${{ inputs.cache-dependency-path }}
+          force: ${{ inputs.force }}
+          dry-run: ${{ inputs.dry-run }}
+          api-token: ${{ !inputs.dry-run && secrets.api-token || '' }}
