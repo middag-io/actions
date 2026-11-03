@@ -311,6 +311,12 @@ wiring_input_not_passed() {
   replace_in "$WORKFLOW" $'    secrets:\n' $'      level:\n        description: Example level.\n        type: string\n        default: "1"\n    secrets:\n'
 }
 
+# php-versions is exempt for moodle-plugin-check only.
+wiring_php_versions_not_passed() {
+  add_component
+  replace_in "$WORKFLOW" $'    secrets:\n' $'      php-versions:\n        description: Example versions.\n        type: string\n        default: ""\n    secrets:\n'
+}
+
 no_dry_run_input() {
   add_component
   replace_in "$WORKFLOW" $'      dry-run:\n        description: Check only; no credentials and no writes.\n        type: boolean\n        default: false\n' ""
@@ -372,6 +378,7 @@ run_case "push to every branch" fail "push runs only on branches: [main]" push_t
 run_case "inline push trigger" fail "push runs only on branches: [main]" inline_push_trigger
 run_case "with: key that is not an action input" fail 'with: key tagret of $/github-example-check is not an input of' wiring_unknown_input
 run_case "workflow input not passed to the action" fail 'input level of the reusable workflow is not passed to $/github-example-check' wiring_input_not_passed
+run_case "php-versions not passed in another component" fail 'input php-versions of the reusable workflow is not passed to $/github-example-check' wiring_php_versions_not_passed
 run_case "component without a dry-run input" fail "component github-example-check declares no dry-run input" no_dry_run_input
 run_case "dry-run input that is not boolean" fail "dry-run input of github-example-check must be type: boolean" string_dry_run_input
 run_case "component without a dry-run fixture" fail "component github-example-check has no dry-run fixture" no_dry_run_fixture

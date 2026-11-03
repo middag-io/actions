@@ -1,0 +1,7 @@
+# Fixture of the cloudflare-workers-deploy dry run. Never deployed.
+name = "example-worker"
+main = "dist/worker.js"
+compatibility_date = "2026-10-01"
+
+[env.production]
+name = "example-worker-production"

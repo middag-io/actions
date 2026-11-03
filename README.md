@@ -6,9 +6,15 @@ Public repository, maintained by MIDDAG. Licensed under the [Apache License 2.0]
 
 ## Catalog
 
-| Component                                            | Kind                                   | What it does                                                                                                                                   | Since      |
-| ---------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Component | Kind | What it does                                        | Since |
+| --------- | ---- | --------------------------------------------------- | ----- |
+| [`cloudflare-pages-deploy`](cloudflare-pages-deploy/README.md) | composite action and reusable workflow | builds a static site and deploys it to Cloudflare Pages when its content hash changed; replaces the content served by the deployed branch, deletes nothing in the repository | unreleased |
+| [`cloudflare-workers-check`](cloudflare-workers-check/README.md) | composite action and reusable workflow | validates a Cloudflare Workers project: npm ci, named npm scripts, optional `wrangler deploy --dry-run` | unreleased |
+| [`cloudflare-workers-deploy`](cloudflare-workers-deploy/README.md) | composite action and reusable workflow | builds a Node.js project and deploys its Worker with `wrangler deploy`; replaces the deployed version and the routes of the configuration, deletes plain-text variables missing from the configuration, applies its Durable Object migrations (a deleted class loses its data); deletes nothing in the repository | unreleased |
+| [`moodle-plugin-check`](moodle-plugin-check/README.md) | composite action and reusable workflow | validates a Moodle plugin in a change: `version.php`, the English language file, `composer validate`, `composer install` and the Composer scripts named by the caller, one job per PHP version; reads private Composer dependencies with a read-only GitHub App token; publishes and deletes nothing | unreleased |
+| [`moodle-plugin-package`](moodle-plugin-package/README.md) | composite action and reusable workflow | packages a Moodle plugin tree as a deterministic installable ZIP after checking `version.php`; uploads it as a workflow artifact and, from the composite action, to the existing release of a tag; deletes only the release asset of the same name, which it replaces | unreleased |
 | [`php-composer-setup`](php-composer-setup/README.md) | composite action and reusable workflow | sets up PHP and Composer in the current job, writes the Composer credentials outside the checkout and runs `composer install`; deletes nothing | unreleased |
+| [`release-please`](release-please/README.md) | composite action and reusable workflow | runs release-please in manifest mode with a GitHub App installation token limited to the calling repository: opens or updates the release pull request, then creates the tags and releases; deletes no branch, tag or file, force-pushes the release branch | unreleased |
 
 Every component has its own `README.md` next to its `action.yml`. That README lists what the component does, what it **deletes**, its inputs, outputs and secrets, the permissions the caller must grant, and a call example pinned by SHA.
 
@@ -19,19 +25,19 @@ Every component has its own `README.md` next to its `action.yml`. That README li
    - `{object}` is the product, spelled out as its provider names it.
    - `{verb}` states the expected result. Closed list:
 
-     | Verb       | Meaning                                                                                 |
-     | ---------- | --------------------------------------------------------------------------------------- |
-     | `check`    | validates a change; publishes nothing                                                   |
-     | `build`    | builds an artifact                                                                      |
-     | `package`  | packages a built artifact                                                               |
-     | `release`  | creates a version                                                                       |
-     | `publish`  | uploads to a registry or store                                                          |
-     | `deploy`   | ships to a running environment                                                          |
-     | `sync`     | mirrors a source to a target, including deletions                                       |
-     | `dispatch` | triggers another workflow or system                                                     |
-     | `lint`     | reports style or correctness problems                                                   |
-     | `scan`     | looks for vulnerabilities or secrets                                                    |
-     | `setup`    | prepares a tool or runtime in the current job for the steps after it; publishes nothing |
+     | Verb       | Meaning                                           |
+     | ---------- | ------------------------------------------------- |
+     | `check`    | validates a change; publishes nothing             |
+     | `build`    | builds an artifact                                |
+     | `package`  | packages a built artifact                         |
+     | `release`  | creates a version                                 |
+     | `publish`  | uploads to a registry or store                    |
+     | `deploy`   | ships to a running environment                    |
+     | `sync`     | mirrors a source to a target, including deletions |
+     | `dispatch` | triggers another workflow or system               |
+     | `lint`     | reports style or correctness problems             |
+     | `scan`     | looks for vulnerabilities or secrets              |
+     | `setup` | prepares a tool or runtime in the current job for the steps after it; publishes nothing |
 
    - Abbreviations: only the widely recognized ones (`wp`, `aws`, `php`, `node`). Spell out products and platforms: `google-cloud`, never `gcp`; `cloudflare`, never `cf`.
    - Exception: a wrapper of a well-known tool keeps the tool name (for example `release-please`).
