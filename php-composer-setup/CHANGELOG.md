@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/middag-io/actions/compare/php-composer-setup-v1.0.0...php-composer-setup-v1.1.0) (2026-11-03)
+
+
+### Features
+
+* **php-composer-setup:** add the composer-auth and cache inputs ([e38f8cb](https://github.com/middag-io/actions/commit/e38f8cb1a27510c9c8578173229a67a4f46c23e4))
+
 ## 1.0.0 (2026-11-03)
 
 
