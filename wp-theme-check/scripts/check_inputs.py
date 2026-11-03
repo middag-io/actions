@@ -26,7 +26,8 @@ CHECKS = (
     ("phpstan", "has-phpstan", "vendor/bin/phpstan analyse"),
     ("rector", "has-rector", "vendor/bin/rector process --dry-run"),
 )
-INSTALL_COMMAND = "composer install --no-interaction --prefer-dist --no-progress"
+# The install runs in php-composer-setup, with its defaults.
+INSTALL_COMMAND = "composer install --no-interaction --prefer-dist"
 
 
 class InputError(Exception):
