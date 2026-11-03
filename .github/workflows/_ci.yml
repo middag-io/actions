@@ -272,6 +272,47 @@ jobs:
             exit 1
           fi
 
+  # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture plugin. A dry run: no credentials, no PHP set-up, no
+  # Composer run.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-moodle-plugin-check:
+    name: dry-run-moodle-plugin-check
+    permissions:
+      contents: read
+    uses: ./.github/workflows/moodle-plugin-check.yml # zizmor: ignore[self-repository]
+    with:
+      path: moodle-plugin-check/tests/fixtures/basic
+      component: local_example
+      php-versions: '["8.2", "8.3"]'
+      composer-scripts: check:style, test
+      dry-run: true
+
+  # The dry run must plan exactly the commands of the reference plan
+  # (tests/fixtures/expected/basic.json) for the plugin of the fixture.
+  dry-run-check-moodle-plugin-check:
+    name: dry-run-check-moodle-plugin-check
+    needs: dry-run-moodle-plugin-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected plan
+        env:
+          COMPONENT: ${{ needs.dry-run-moodle-plugin-check.outputs.component }}
+          VERSION: ${{ needs.dry-run-moodle-plugin-check.outputs.version }}
+          COMMANDS: ${{ needs.dry-run-moodle-plugin-check.outputs.commands }}
+        run: |
+          python3 -I -B moodle-plugin-check/tests/compare_plan.py \
+            moodle-plugin-check/tests/fixtures/expected/basic.json
+
   ci-gate:
     name: ci-gate
     needs:
@@ -284,6 +325,8 @@ jobs:
       - dry-run-check-release-please
       - dry-run-moodle-plugin-package
       - dry-run-check-moodle-plugin-package
+      - dry-run-moodle-plugin-check
+      - dry-run-check-moodle-plugin-check
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5

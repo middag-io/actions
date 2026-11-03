@@ -7,6 +7,9 @@
 # Remove it when actionlint supports the form. While it is here, actionlint
 # skips the with: keys of that step; check-genericity.sh checks them instead.
 paths:
+  .github/workflows/moodle-plugin-check.yml:
+    ignore:
+      - 'specifying action "\$/moodle-plugin-check" in invalid format because ref is missing'
   .github/workflows/moodle-plugin-package.yml:
     ignore:
       - 'specifying action "\$/moodle-plugin-package" in invalid format because ref is missing'
