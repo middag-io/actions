@@ -1,0 +1,93 @@
+# Composite action: checks a Cloudflare Workers project in a change. See
+# README.md next to this file for the inputs, what the action deletes
+# (nothing) and the permissions it needs.
+name: Cloudflare Workers check
+description: >-
+  Validates a Cloudflare Workers project (package.json, package-lock.json and
+  the Wrangler configuration), then runs npm ci, the npm scripts that the
+  caller names and, optionally, wrangler deploy --dry-run. Needs no
+  Cloudflare credentials and publishes nothing.
+
+inputs:
+  path:
+    description: Project directory (the one that holds package.json), relative to the checkout.
+    required: false
+    default: "."
+  node-version:
+    description: Node.js version to set up (for example 22 or 22.11.0).
+    required: false
+    default: "22"
+  npm-scripts:
+    description: npm scripts that must exist in package.json, run in order after npm-scripts-if-present, separated by commas or new lines.
+    required: false
+    default: "build"
+  npm-scripts-if-present:
+    description: npm scripts run in order after npm ci when package.json defines them, separated by commas or new lines.
+    required: false
+    default: "typecheck, lint"
+  wrangler-config:
+    description: Wrangler configuration file, relative to path. Empty means wrangler.json, wrangler.jsonc or wrangler.toml at path.
+    required: false
+    default: ""
+  wrangler-dry-run:
+    description: Run wrangler deploy --dry-run with the Wrangler of the lock file, to bundle the Worker without deploying it (true or false).
+    required: false
+    default: "false"
+  dry-run:
+    description: Validate the inputs and the project and print the commands only; no Node.js set-up, no npm run (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  name:
+    description: Package name read from package.json.
+    value: ${{ steps.plan.outputs.name }}
+  wrangler-config:
+    description: Wrangler configuration file used, relative to path.
+    value: ${{ steps.plan.outputs.wrangler-config }}
+  commands:
+    description: JSON array of the commands planned, in order.
+    value: ${{ steps.plan.outputs.commands }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate the inputs and plan the commands
+      id: plan
+      shell: bash
+      env:
+        PROJECT_PATH: ${{ inputs.path }}
+        NODE_VERSION: ${{ inputs.node-version }}
+        NPM_SCRIPTS: ${{ inputs.npm-scripts }}
+        NPM_SCRIPTS_IF_PRESENT: ${{ inputs.npm-scripts-if-present }}
+        WRANGLER_CONFIG: ${{ inputs.wrangler-config }}
+        WRANGLER_DRY_RUN: ${{ inputs.wrangler-dry-run }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        plan_file="$(mktemp "$RUNNER_TEMP/cloudflare-workers-check.XXXXXX")"
+        python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" plan \
+          --workspace="$GITHUB_WORKSPACE" \
+          --path="$PROJECT_PATH" \
+          --node-version="$NODE_VERSION" \
+          --npm-scripts="$NPM_SCRIPTS" \
+          --npm-scripts-if-present="$NPM_SCRIPTS_IF_PRESENT" \
+          --wrangler-config="$WRANGLER_CONFIG" \
+          --wrangler-dry-run="$WRANGLER_DRY_RUN" \
+          --dry-run="$DRY_RUN" \
+          --plan-file="$plan_file" \
+          --github-output="$GITHUB_OUTPUT"
+
+    - name: Set up Node.js
+      if: ${{ inputs.dry-run != 'true' }}
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: ${{ inputs.path }}/package-lock.json
+
+    - name: Run the checks
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        PLAN_FILE: ${{ steps.plan.outputs.plan-file }}
+      run: python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" run --plan-file="$PLAN_FILE"

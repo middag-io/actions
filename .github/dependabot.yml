@@ -5,7 +5,12 @@ updates:
   - package-ecosystem: github-actions
     directories:
       - /
+      - /cloudflare-pages-deploy
+      - /cloudflare-workers-check
       - /cloudflare-workers-deploy
+      - /moodle-plugin-check
+      - /moodle-plugin-package
+      - /release-please
     schedule:
       interval: weekly
     cooldown:
