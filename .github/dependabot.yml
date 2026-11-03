@@ -5,6 +5,7 @@ updates:
   - package-ecosystem: github-actions
     directories:
       - /
+      - /cloudflare-pages-deploy
       - /cloudflare-workers-check
       - /moodle-plugin-check
       - /moodle-plugin-package

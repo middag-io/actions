@@ -8,6 +8,7 @@ Public repository, maintained by MIDDAG. Licensed under the [Apache License 2.0]
 
 | Component | Kind | What it does                                        | Since |
 | --------- | ---- | --------------------------------------------------- | ----- |
+| [`cloudflare-pages-deploy`](cloudflare-pages-deploy/README.md) | composite action and reusable workflow | builds a static site and deploys it to Cloudflare Pages when its content hash changed; replaces the content served by the deployed branch, deletes nothing in the repository | unreleased |
 | [`cloudflare-workers-check`](cloudflare-workers-check/README.md) | composite action and reusable workflow | validates a Cloudflare Workers project: npm ci, named npm scripts, optional `wrangler deploy --dry-run` | unreleased |
 | [`moodle-plugin-check`](moodle-plugin-check/README.md) | composite action and reusable workflow | validates a Moodle plugin in a change: `version.php`, the English language file, `composer validate`, `composer install` and the Composer scripts named by the caller, one job per PHP version; reads private Composer dependencies with a read-only GitHub App token; publishes and deletes nothing | unreleased |
 | [`moodle-plugin-package`](moodle-plugin-package/README.md) | composite action and reusable workflow | packages a Moodle plugin tree as a deterministic installable ZIP after checking `version.php`; uploads it as a workflow artifact and, from the composite action, to the existing release of a tag; deletes only the release asset of the same name, which it replaces | unreleased |

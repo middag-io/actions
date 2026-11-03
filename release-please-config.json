@@ -9,6 +9,12 @@
   "prerelease-type": "rc",
   "prerelease": true,
   "packages": {
+    "cloudflare-pages-deploy": {
+      "component": "cloudflare-pages-deploy",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
     "cloudflare-workers-check": {
       "component": "cloudflare-workers-check",
       "changelog-path": "CHANGELOG.md",
