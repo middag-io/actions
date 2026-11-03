@@ -12,7 +12,6 @@
     "moodle-plugin-package": {
       "component": "moodle-plugin-package",
       "changelog-path": "CHANGELOG.md",
-      "release-as": "1.0.0",
       "versioning": "default",
       "prerelease": false
     },
