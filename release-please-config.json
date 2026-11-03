@@ -8,5 +8,13 @@
   "versioning": "prerelease",
   "prerelease-type": "rc",
   "prerelease": true,
-  "packages": {}
+  "packages": {
+    "release-please": {
+      "component": "release-please",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "1.0.0",
+      "versioning": "default",
+      "prerelease": false
+    }
+  }
 }

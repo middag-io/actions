@@ -191,6 +191,41 @@ jobs:
             echo "::endgroup::"
           done
 
+  # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture configuration. A dry run: no token, no GitHub API call.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-release-please:
+    name: dry-run-release-please
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-please.yml # zizmor: ignore[self-repository]
+    with:
+      config-file: release-please/tests/fixtures/basic/release-please-config.json
+      manifest-file: release-please/tests/fixtures/basic/.release-please-manifest.json
+      dry-run: true
+
+  # The dry run must list the packages of the fixture configuration and
+  # create no release.
+  dry-run-check-release-please:
+    name: dry-run-check-release-please
+    needs: dry-run-release-please
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Compare the dry-run outputs with the fixture
+        env:
+          PACKAGES: ${{ needs.dry-run-release-please.outputs.packages }}
+          RELEASE_CREATED: ${{ needs.dry-run-release-please.outputs.release-created }}
+          TAG_NAME: ${{ needs.dry-run-release-please.outputs.tag-name }}
+        run: |
+          echo "packages=$PACKAGES release-created=$RELEASE_CREATED tag-name=$TAG_NAME"
+          if [ "$PACKAGES" != '["."]' ] || [ "$RELEASE_CREATED" != "false" ] || [ -n "$TAG_NAME" ]; then
+            echo '::error::dry-run outputs differ: expected packages=["."] release-created=false tag-name='
+            exit 1
+          fi
+
   ci-gate:
     name: ci-gate
     needs:
@@ -199,6 +234,8 @@ jobs:
       - gitleaks
       - check-genericity
       - unit-tests
+      - dry-run-release-please
+      - dry-run-check-release-please
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5

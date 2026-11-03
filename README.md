@@ -8,7 +8,7 @@ Public repository, maintained by MIDDAG. Licensed under the [Apache License 2.0]
 
 | Component | Kind | What it does                                        | Since |
 | --------- | ---- | --------------------------------------------------- | ----- |
-| —         | —    | No component yet. Components enter by pull request. | —     |
+| [`release-please`](release-please/README.md) | composite action and reusable workflow | runs release-please in manifest mode with a GitHub App installation token limited to the calling repository: opens or updates the release pull request, then creates the tags and releases; deletes no branch, tag or file, force-pushes the release branch | unreleased |
 
 Every component has its own `README.md` next to its `action.yml`. That README lists what the component does, what it **deletes**, its inputs, outputs and secrets, the permissions the caller must grant, and a call example pinned by SHA.
 
