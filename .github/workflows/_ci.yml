@@ -620,6 +620,75 @@ jobs:
             exit 1
           fi
 
+  # The cloudflare-r2-docs-publish dry run reads its package from a workflow
+  # artifact, as a caller would: this job uploads the fixture package.
+  dry-run-cloudflare-r2-docs-publish-package:
+    name: dry-run-cloudflare-r2-docs-publish-package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Upload the fixture package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cloudflare-r2-docs-publish-fixture
+          path: cloudflare-r2-docs-publish/tests/fixtures/basic
+          if-no-files-found: error
+          retention-days: 1
+
+  # Calls the reusable workflow by a relative path on the fixture package. A
+  # dry run: no endpoint, no credentials, no network.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-cloudflare-r2-docs-publish:
+    name: dry-run-cloudflare-r2-docs-publish
+    needs: dry-run-cloudflare-r2-docs-publish-package
+    permissions:
+      contents: read
+    uses: ./.github/workflows/cloudflare-r2-docs-publish.yml # zizmor: ignore[self-repository]
+    with:
+      artifact-name: cloudflare-r2-docs-publish-fixture
+      package-name: example-library
+      kinds: docs,xref,schemas
+      bucket: example-bucket
+      dry-run: true
+
+  # The dry run must plan exactly the objects of the reference listing
+  # (tests/fixtures/expected/basic.sha256, manifest.json included).
+  dry-run-check-cloudflare-r2-docs-publish:
+    name: dry-run-check-cloudflare-r2-docs-publish
+    needs: dry-run-cloudflare-r2-docs-publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected listing
+        env:
+          VERSION: ${{ needs.dry-run-cloudflare-r2-docs-publish.outputs.version }}
+          OBJECTS: ${{ needs.dry-run-cloudflare-r2-docs-publish.outputs.objects }}
+          PAYLOAD_SHA256: ${{ needs.dry-run-cloudflare-r2-docs-publish.outputs.payload-sha256 }}
+        run: |
+          expected="cloudflare-r2-docs-publish/tests/fixtures/expected/basic.sha256"
+          expected_sha="$(sha256sum "$expected" | cut -d' ' -f1)"
+          expected_objects="$(grep -c -v '/manifest\.json$' "$expected")"
+          echo "version=$VERSION objects=$OBJECTS payload-sha256=$PAYLOAD_SHA256"
+          if [ "$VERSION" != "v1.2.0" ] || [ "$OBJECTS" != "$expected_objects" ] || [ "$PAYLOAD_SHA256" != "$expected_sha" ]; then
+            echo "::error::dry-run outputs differ: expected version=v1.2.0 objects=$expected_objects payload-sha256=$expected_sha"
+            exit 1
+          fi
+
   ci-gate:
     name: ci-gate
     needs:
@@ -648,6 +717,9 @@ jobs:
       - dry-run-check-wp-theme-check
       - dry-run-wp-plugin-release
       - dry-run-check-wp-plugin-release
+      - dry-run-cloudflare-r2-docs-publish-package
+      - dry-run-cloudflare-r2-docs-publish
+      - dry-run-check-cloudflare-r2-docs-publish
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5

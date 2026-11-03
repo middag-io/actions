@@ -6,6 +6,7 @@ updates:
     directories:
       - /
       - /cloudflare-pages-deploy
+      - /cloudflare-r2-docs-publish
       - /cloudflare-workers-check
       - /cloudflare-workers-deploy
       - /moodle-plugin-check

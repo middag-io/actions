@@ -1,0 +1,12 @@
+{
+  "package": "example-library",
+  "latest": "v1.2.0",
+  "versions": {
+    "v1.2.0": {
+      "released_at": "2026-01-01T00:00:00Z",
+      "has_schemas": true,
+      "has_reference": true,
+      "languages": ["en"]
+    }
+  }
+}

@@ -10,6 +10,9 @@ paths:
   .github/workflows/cloudflare-pages-deploy.yml:
     ignore:
       - 'specifying action "\$/cloudflare-pages-deploy" in invalid format because ref is missing'
+  .github/workflows/cloudflare-r2-docs-publish.yml:
+    ignore:
+      - 'specifying action "\$/cloudflare-r2-docs-publish" in invalid format because ref is missing'
   .github/workflows/cloudflare-workers-check.yml:
     ignore:
       - 'specifying action "\$/cloudflare-workers-check" in invalid format because ref is missing'
