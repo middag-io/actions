@@ -187,14 +187,20 @@ self_reference() {
   printf 'uses: someowner/actions/x@abc\n' >>"$COMPONENT/README.md"
 }
 
-private_reference() {
+# A URL whose host precedes /actions/ names no owner of this repository.
+github_actions_url() {
   add_component
-  printf 'uses: someowner/actions-private/x@abc\n' >>"$COMPONENT/README.md"
+  printf 'See https://github.com/actions/checkout and actions/checkout@v7.\n' >>"$COMPONENT/README.md"
 }
 
-documentation_link() {
+private_reference() {
   add_component
-  printf 'See https://docs.github.com/en/actions/reference and actions/checkout@abc.\n' >>"$COMPONENT/README.md"
+  printf 'uses: someowner/actions-private/.github/workflows/x.yml@abc\n' >>"$COMPONENT/README.md"
+}
+
+private_profile_reference() {
+  add_component
+  printf 'uses: someowner/.github-private/.github/workflows/x.yml@abc\n' >>"$COMPONENT/README.md"
 }
 
 other_variable() {
@@ -349,9 +355,10 @@ run_case "organization name in component directory name" fail "organization name
 run_case "organization name in any file of a component" fail "organization name in a component file;" org_in_other_file
 run_case "changelog written by release-please passes" pass "" generated_changelog
 run_case "organization name in a nested changelog" fail "organization name in a component file;" nested_changelog
-run_case "owner/actions reference" fail "owner/actions or owner/actions-private path" self_reference
-run_case "owner/actions-private reference" fail "owner/actions or owner/actions-private path" private_reference
-run_case "documentation link under /actions/ passes" pass "" documentation_link
+run_case "owner/actions reference" fail "owner/actions path" self_reference
+run_case "URL of a GitHub-owned action passes" pass "" github_actions_url
+run_case "reference to owner/actions-private" fail "refers to a private repository" private_reference
+run_case "reference to owner/.github-private" fail "refers to a private repository" private_profile_reference
 run_case "variable outside the component prefix" fail "outside the component convention" other_variable
 run_case "bracket access to vars" fail "dynamic or bulk access" bracket_access
 run_case "spaced bracket access to vars" fail "dynamic or bulk access" spaced_bracket_access

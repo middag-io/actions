@@ -6,6 +6,8 @@ updates:
     directories:
       - /
       - /moodle-plugin-check
+      - /moodle-plugin-package
+      - /release-please
     schedule:
       interval: weekly
     cooldown:

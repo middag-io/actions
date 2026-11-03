@@ -129,11 +129,19 @@ check_component_names() {
   done < <(list_component_workflows)
 }
 
-# Item 14: components refer to each other only by "\$/" or "./". A public
-# component never calls one of a private repository either.
+# Item 14: components refer to each other only by "\$/" or "./". The owner
+# must start the match, so that a URL such as github.com/actions/... (a
+# host, not an owner) is not a reference to this repository.
 check_self_reference() {
-  report_matches "component refers to an owner/actions or owner/actions-private path; use \$/<component> or ./<component>" \
-    < <(grep -H -n -E -- '(^|[^A-Za-z0-9_./-])[A-Za-z0-9_-]+/actions(-private)?[/@]' "$@" 2>/dev/null || true)
+  report_matches "component refers to an owner/actions path; use \$/<component> or ./<component>" \
+    < <(grep -H -n -E -- '(^|[^A-Za-z0-9_./-])[A-Za-z0-9_-]+/actions[/@]' "$@" 2>/dev/null || true)
+}
+
+# Public repository: a component never calls a component of a private
+# repository (README, "Referencing a component").
+check_private_reference() {
+  report_matches "component refers to a private repository; a public component never calls one" \
+    < <(grep -H -n -E -- '[A-Za-z0-9_.-]+/(actions-private|\.github-private)([^A-Za-z0-9_.-]|$)' "$@" 2>/dev/null || true)
 }
 
 # Item 13 and the variable rule: a component reads only variables and
@@ -536,6 +544,7 @@ main() {
   if ((${#components[@]} > 0)); then
     check_organization_name "${components[@]}"
     check_self_reference "${components[@]}"
+    check_private_reference "${components[@]}"
     check_context_names "${components[@]}"
   fi
   if ((${#scanned[@]} > 0)); then
