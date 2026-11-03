@@ -144,45 +144,11 @@ def exclude_patterns(root, extra, extra_file):
     return patterns
 
 
-def credential_values(node, key=""):
-    """Every credential string in the COMPOSER_AUTH object.
-
-    The keys (host names, credential types) and the "username" fields are
-    not credentials and are left out, so that masking them does not hide
-    ordinary words in the log.
-    """
-    if isinstance(node, dict):
-        values = []
-        for child_key, child in node.items():
-            values.extend(credential_values(child, child_key))
-        return values
-    if isinstance(node, list):
-        values = []
-        for child in node:
-            values.extend(credential_values(child, key))
-        return values
-    if isinstance(node, str) and node != "" and key != "username":
-        return [node]
-    return []
-
-
-def mask_lines(values):
-    """One ::add-mask:: command per non-blank line of each value.
-
-    The runner consumes these lines: they never appear in the log. A
-    multi-line value is masked line by line, as the runner requires.
-    """
-    lines = []
-    for value in values:
-        lines.extend(line for line in value.splitlines() if line.strip() != "")
-    return "".join(f"::add-mask::{line}\n" for line in dict.fromkeys(lines))
-
-
 def check_composer_auth(text):
     """COMPOSER_AUTH, when set, is a JSON object. Its value is never printed.
 
-    The runner masks the secret as one whole string only; each credential
-    inside the object is masked on its own here, before any build step.
+    The first step of action.yml masks each credential inside the object
+    before this script runs.
     """
     if text == "":
         return False
@@ -192,8 +158,6 @@ def check_composer_auth(text):
         raise InputError("secret composer-auth is not valid JSON (content not shown)") from None
     if not isinstance(value, dict):
         raise InputError("secret composer-auth must be a JSON object (content not shown)")
-    sys.stdout.write(mask_lines(credential_values(value)))
-    sys.stdout.flush()
     return True
 
 
@@ -284,8 +248,7 @@ def listing_of(files):
 
 
 def command_validate(args):
-    # First: the credentials inside composer-auth are masked before any
-    # other message of this run.
+    # First: composer-auth is checked before any other message of this run.
     check_composer_auth(os.environ.get("COMPOSER_AUTH", ""))
     root = check_relative_path("path", args.path)
     tag = check_tag_name(args.tag_name)

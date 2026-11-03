@@ -120,6 +120,44 @@ class WiringTest(unittest.TestCase):
                     self.assertRegex(step["uses"], r"^[\w.-]+/[\w.-]+@[0-9a-f]{40} # v?\d+\.\d+\.\d+$")
 
 
+class ValidateMaskTest(unittest.TestCase):
+    """The validate step masks each credential of composer-auth in bash, before the script."""
+
+    def masking(self):
+        script = read_steps(ACTION)[VALIDATE]["run"]
+        self.assertLess(script.index("::add-mask::"), script.index("wp_plugin_release.py"))
+        return script.split("python3", 1)[0]
+
+    def run_masking(self, composer_auth):
+        result = subprocess.run(
+            ["bash", "-eo", "pipefail", "-c", self.masking()],
+            env={"COMPOSER_AUTH": composer_auth, "PATH": os.environ["PATH"]},
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.splitlines()
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is not installed")
+    def test_masks_each_credential_line_but_not_usernames(self):
+        auth = (
+            '{"http-basic": {"repo.example.com": {"username": "ci-user", "password": "pa55word"}},'
+            ' "github-oauth": {"github.com": "ghtok3n"},'
+            ' "bearer": {"other.example.com": "line1\\nline2"},'
+            ' "gitlab-token": {"gitlab.example.com": ["t0k3n", "   "]}}'
+        )
+        self.assertEqual(
+            sorted(self.run_masking(auth)),
+            sorted(["::add-mask::pa55word", "::add-mask::ghtok3n", "::add-mask::line1", "::add-mask::line2", "::add-mask::t0k3n"]),
+        )
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is not installed")
+    def test_invalid_or_empty_value_masks_nothing_and_does_not_fail(self):
+        for value in ("", "not-json-s3cr3t", '["s3cr3t"]', '"s3cr3t"'):
+            with self.subTest(value=value):
+                self.assertEqual(self.run_masking(value), [])
+
+
 FAKE_COMPOSER = """#!/usr/bin/env bash
 echo "composer $*" >> "$CALLS"
 """

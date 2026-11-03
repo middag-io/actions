@@ -109,7 +109,22 @@ runs:
         DRY_RUN: ${{ inputs.dry-run }}
         HAS_APP_CREDENTIALS: ${{ inputs.app-client-id != '' && inputs.app-private-key != '' }}
         COMPOSER_AUTH: ${{ inputs.composer-auth }}
+      # The runner masks the secret as one whole string only. Mask each
+      # credential inside the JSON object on its own (every non-empty string
+      # value except "username" fields, line by line) before any other
+      # message of the run. An invalid value masks nothing here; the script
+      # then fails without showing it.
       run: |
+        if [ -n "$COMPOSER_AUTH" ]; then
+          command -v jq >/dev/null || { echo "::error::jq is required to mask the credentials of composer-auth"; exit 1; }
+          if jq -e 'type == "object"' >/dev/null 2>&1 <<<"$COMPOSER_AUTH"; then
+            jq -r 'def creds($k): if type == "object" then to_entries[] | .key as $c | .value | creds($c) elif type == "array" then .[] | creds($k) elif type == "string" and . != "" and $k != "username" then . else empty end; creds("")' <<<"$COMPOSER_AUTH" | while IFS= read -r line; do
+              if [ -n "${line//[[:space:]]/}" ]; then
+                echo "::add-mask::$line"
+              fi
+            done
+          fi
+        fi
         python3 -I "$GITHUB_ACTION_PATH/scripts/wp_plugin_release.py" validate \
           --path="$PLUGIN_PATH" \
           --tag-name="$TAG_NAME" \
