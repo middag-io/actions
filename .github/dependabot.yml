@@ -5,6 +5,7 @@ updates:
   - package-ecosystem: github-actions
     directories:
       - /
+      - /cloudflare-workers-check
     schedule:
       interval: weekly
     cooldown:

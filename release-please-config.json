@@ -8,5 +8,12 @@
   "versioning": "prerelease",
   "prerelease-type": "rc",
   "prerelease": true,
-  "packages": {}
+  "packages": {
+    "cloudflare-workers-check": {
+      "component": "cloudflare-workers-check",
+      "release-as": "1.0.0",
+      "prerelease": false,
+      "versioning": "default"
+    }
+  }
 }

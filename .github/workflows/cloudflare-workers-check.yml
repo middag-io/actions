@@ -1,0 +1,100 @@
+# Reusable workflow of the cloudflare-workers-check component. It gives the
+# composite action a job with minimum permissions, a timeout and a
+# concurrency group, and checks out the calling repository. The composite
+# action does the work: see cloudflare-workers-check/README.md.
+#
+# The component reads no variable and no secret: it needs no Cloudflare
+# credentials. Reference it by full commit SHA with a version comment (see
+# the README).
+name: Cloudflare Workers check
+
+on:
+  workflow_call:
+    inputs:
+      path:
+        description: Project directory (the one that holds package.json), relative to the checkout.
+        type: string
+        required: false
+        default: "."
+      node-version:
+        description: Node.js version to set up (for example 22 or 22.11.0).
+        type: string
+        required: false
+        default: "22"
+      npm-scripts:
+        description: npm scripts that must exist in package.json, run in order after npm-scripts-if-present, separated by commas or new lines.
+        type: string
+        required: false
+        default: "build"
+      npm-scripts-if-present:
+        description: npm scripts run in order after npm ci when package.json defines them, separated by commas or new lines.
+        type: string
+        required: false
+        default: "typecheck, lint"
+      wrangler-config:
+        description: Wrangler configuration file, relative to path. Empty means wrangler.json, wrangler.jsonc or wrangler.toml at path.
+        type: string
+        required: false
+        default: ""
+      wrangler-dry-run:
+        description: Run wrangler deploy --dry-run with the Wrangler of the lock file, to bundle the Worker without deploying it.
+        type: boolean
+        required: false
+        default: false
+      dry-run:
+        description: Validate the inputs and the project and print the commands only; no Node.js set-up, no npm run.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 20
+    outputs:
+      name:
+        description: Package name read from package.json.
+        value: ${{ jobs.check.outputs.name }}
+      wrangler-config:
+        description: Wrangler configuration file used, relative to path.
+        value: ${{ jobs.check.outputs.wrangler-config }}
+      commands:
+        description: JSON array of the commands planned, in order.
+        value: ${{ jobs.check.outputs.commands }}
+
+permissions: {}
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    # One queue per workflow, ref and project: a newer check of the same
+    # change waits instead of running beside the older one. A dry run gets
+    # its own group per run.
+    concurrency:
+      group: cloudflare-workers-check-${{ github.workflow }}-${{ inputs.dry-run && github.run_id || github.ref }}-${{ inputs.path }}
+      cancel-in-progress: false
+    outputs:
+      name: ${{ steps.check.outputs.name }}
+      wrangler-config: ${{ steps.check.outputs.wrangler-config }}
+      commands: ${{ steps.check.outputs.commands }}
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the Cloudflare Workers project
+        id: check
+        uses: $/cloudflare-workers-check
+        with:
+          path: ${{ inputs.path }}
+          node-version: ${{ inputs.node-version }}
+          npm-scripts: ${{ inputs.npm-scripts }}
+          npm-scripts-if-present: ${{ inputs.npm-scripts-if-present }}
+          wrangler-config: ${{ inputs.wrangler-config }}
+          wrangler-dry-run: ${{ inputs.wrangler-dry-run }}
+          dry-run: ${{ inputs.dry-run }}
