@@ -97,11 +97,12 @@ steps:
 
 ## Versioning and releases
 
-- Versions follow SemVer and come from release-please, driven by Conventional Commits. The commit scope is the component name.
-- A breaking change of an input, output or secret is a major version.
-- Release tags are immutable. Pre-releases are never marked as latest.
-- Only release-please writes `CHANGELOG.md` and the release manifest.
-- The release configuration and the tag format enter with the first component. Until then, this repository has no release.
+- Each component has its own SemVer version, managed by release-please from Conventional Commits. `release-please-config.json` has one package per component folder, and `.release-please-manifest.json` holds the current version of each component. A major version of one component never changes the version of another. Until the first component, both list no package and the release workflow does nothing.
+- Tags: `<component>-vX.Y.Z` for each release (immutable) and `<component>-vN` for the major tag, which the release automation moves to each release that is not a pre-release. Pre-releases (`-rc.N`) are never marked as latest. Only the release automation creates, moves or deletes a tag.
+- release-please assigns a change to a component only through the files under the component folder (`<component>/`). A pull request that changes `.github/workflows/<component>.yml` must also change a file under `<component>/`; the `check-genericity` job enforces it on pull requests, except those of Dependabot, whose `chore` commits never release. The commit scope is the component name, and a pull request that changes one component has the scope of that component in its title.
+- One release pull request groups the pending releases of every component. Each component has its own `<component>/CHANGELOG.md`.
+- A breaking change of an input, output or secret is a major version of that component.
+- Only release-please writes the changelogs and `.release-please-manifest.json`.
 
 ## Forks
 
@@ -109,6 +110,23 @@ steps:
 - Keep the original repository as the `upstream` remote and sync by release tag.
 - Internal workflows can be guarded by repository owner. Release automation does not run in a fork.
 - Callers in the fork owner's organization pin the fork's SHAs, not the upstream ones.
+
+## Quality gates
+
+`.github/workflows/_ci.yml` runs on every pull request and on every push to `main`:
+
+| Job                | What it checks                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `actionlint`       | workflow syntax, expressions and embedded shell (shellcheck)                                                                                                                                                                                                                                                                                                                                                                     |
+| `zizmor`           | GitHub Actions security audits, online, including `known-vulnerable-actions`; any finding fails                                                                                                                                                                                                                                                                                                                                  |
+| `gitleaks`         | secrets in the full git history                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `check-genericity` | the rules of this README and of `AGENTS.md` that the other tools do not cover (`.github/scripts/check-genericity.sh`), after its regression tests (`.github/scripts/test-check-genericity.sh`); then that a change to `.github/workflows/<component>.yml` comes with a change under `<component>/` (`.github/scripts/check-component-paths.sh`), and the tests of that check and of the major tag script of the release workflow |
+| `unit-tests`       | the tests of every component (`<component>/tests/`), with fixtures and without cloud access                                                                                                                                                                                                                                                                                                                                      |
+| `ci-gate`          | aggregated required check; fails when any job above fails or is skipped                                                                                                                                                                                                                                                                                                                                                          |
+
+The CI tools run at exact versions and are verified by SHA-256 checksum. Among the rules of `check-genericity`: no maintainer organization name in a component path, no reference to this repository by owner (`<owner>/actions`) and no reference to a private repository.
+
+Every component is dry-run in CI before it can merge. `check-genericity` fails when a reusable component workflow does not declare a boolean `dry-run` input, has no fixture under `<component>/tests/fixtures/`, or has no job in `_ci.yml` that calls `./.github/workflows/<component>.yml` with `dry-run: true` and is listed in the `needs:` of `ci-gate`.
 
 ## Contributing
 
