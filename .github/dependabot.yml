@@ -5,6 +5,7 @@ updates:
   - package-ecosystem: github-actions
     directories:
       - /
+      - /cloudflare-pages-deploy
     schedule:
       interval: weekly
     cooldown:

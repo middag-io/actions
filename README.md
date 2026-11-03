@@ -6,9 +6,9 @@ Public repository, maintained by MIDDAG. Licensed under the [Apache License 2.0]
 
 ## Catalog
 
-| Component | Kind | What it does                                        | Since |
-| --------- | ---- | --------------------------------------------------- | ----- |
-| —         | —    | No component yet. Components enter by pull request. | —     |
+| Component                                                      | Kind                                   | What it does                                                                                                                                                                 | Since      |
+| -------------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| [`cloudflare-pages-deploy`](cloudflare-pages-deploy/README.md) | composite action and reusable workflow | builds a static site and deploys it to Cloudflare Pages when its content hash changed; replaces the content served by the deployed branch, deletes nothing in the repository | unreleased |
 
 Every component has its own `README.md` next to its `action.yml`. That README lists what the component does, what it **deletes**, its inputs, outputs and secrets, the permissions the caller must grant, and a call example pinned by SHA.
 

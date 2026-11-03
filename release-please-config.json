@@ -8,5 +8,13 @@
   "versioning": "prerelease",
   "prerelease-type": "rc",
   "prerelease": true,
-  "packages": {}
+  "packages": {
+    "cloudflare-pages-deploy": {
+      "component": "cloudflare-pages-deploy",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "1.0.0",
+      "versioning": "default",
+      "prerelease": false
+    }
+  }
 }
