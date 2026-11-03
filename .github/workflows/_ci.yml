@@ -1,0 +1,102 @@
+# Internal CI of this repository. Every job feeds ci-gate, the aggregated
+# required check. To add a job, list it in the `needs:` of ci-gate.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Every component folder with a tests/ folder. The tests run without
+      # network access: no GitHub API call, no cloud.
+      - name: Run the component tests
+        run: |
+          python3 --version
+          found=0
+          for tests in */tests; do
+            [ -d "$tests" ] || continue
+            found=1
+            echo "::group::${tests%/tests}"
+            python3 -I -B -m unittest discover -s "$tests" -v
+            echo "::endgroup::"
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "::error::no component tests found"
+            exit 1
+          fi
+
+  # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture configuration. A dry run: no token, no GitHub API call.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-release-please:
+    name: dry-run-release-please
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-please.yml # zizmor: ignore[self-repository]
+    with:
+      config-file: release-please/tests/fixtures/basic/release-please-config.json
+      manifest-file: release-please/tests/fixtures/basic/.release-please-manifest.json
+      dry-run: true
+
+  # The dry run must list the packages of the fixture configuration and
+  # create no release.
+  dry-run-check-release-please:
+    name: dry-run-check-release-please
+    needs: dry-run-release-please
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Compare the dry-run outputs with the fixture
+        env:
+          PACKAGES: ${{ needs.dry-run-release-please.outputs.packages }}
+          RELEASE_CREATED: ${{ needs.dry-run-release-please.outputs.release-created }}
+          TAG_NAME: ${{ needs.dry-run-release-please.outputs.tag-name }}
+        run: |
+          echo "packages=$PACKAGES release-created=$RELEASE_CREATED tag-name=$TAG_NAME"
+          if [ "$PACKAGES" != '["."]' ] || [ "$RELEASE_CREATED" != "false" ] || [ -n "$TAG_NAME" ]; then
+            echo '::error::dry-run outputs differ: expected packages=["."] release-created=false tag-name='
+            exit 1
+          fi
+
+  ci-gate:
+    name: ci-gate
+    needs:
+      - unit-tests
+      - dry-run-release-please
+      - dry-run-check-release-please
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Fail unless every required job succeeded
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          failed="$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key): \(.value.result)"' <<<"$NEEDS_JSON")"
+          if [ -n "$failed" ]; then
+            printf '::error::Required jobs did not succeed:\n%s\n' "$failed"
+            exit 1
+          fi
+          jq -r 'keys[] | "\(.): success"' <<<"$NEEDS_JSON"
