@@ -1,0 +1,185 @@
+# Reusable workflow of the wp-plugin-check component. It gives the composite
+# action its jobs (one per PHP version, and one for the UI), minimum
+# permissions, a timeout and a concurrency group, and fills the App inputs from
+# the caller's variables. The composite action does the work: see
+# wp-plugin-check/README.md.
+#
+# Values, most specific first: explicit input > variable of the calling
+# repository > variable of the calling organization (app-client-id and
+# app-repositories read the variables WP_PLUGIN_CHECK_APP_CLIENT_ID and
+# WP_PLUGIN_CHECK_APP_REPOSITORIES; in a called workflow, the vars context
+# resolves against the caller). The secrets come from one explicit
+# line each in the caller; they are never inherited.
+# Reference it by full commit SHA with a version comment (see the README).
+name: WordPress plugin check
+
+on:
+  workflow_call:
+    inputs:
+      path:
+        description: Plugin directory (composer.json), relative to the checkout.
+        type: string
+        required: false
+        default: "."
+      php-versions:
+        description: JSON array of the PHP versions to check, one job each.
+        type: string
+        required: false
+        default: '["8.3", "8.4"]'
+      php-extensions:
+        description: PHP extensions to install, separated by commas.
+        type: string
+        required: false
+        default: mbstring, xml
+      composer-scripts:
+        description: Composer scripts to run after composer install, separated by commas or new lines.
+        type: string
+        required: false
+        default: check:style, check:stan
+      app-client-id:
+        description: Client id of a GitHub App whose token reads private Composer packages hosted on GitHub. Default from the variable WP_PLUGIN_CHECK_APP_CLIENT_ID; empty uses no App.
+        type: string
+        required: false
+        default: ${{ vars.WP_PLUGIN_CHECK_APP_CLIENT_ID }}
+      app-repositories:
+        description: Repositories of the calling repository's owner that the App token reads, separated by commas or new lines. Default from the variable WP_PLUGIN_CHECK_APP_REPOSITORIES; empty reads the calling repository only.
+        type: string
+        required: false
+        default: ${{ vars.WP_PLUGIN_CHECK_APP_REPOSITORIES }}
+      ui-directory:
+        description: UI directory (package.json and package-lock.json), relative to path. Empty skips the UI job.
+        type: string
+        required: false
+        default: ""
+      node-version:
+        description: Node.js version of the UI job.
+        type: string
+        required: false
+        default: "22"
+      npm-scripts:
+        description: npm scripts to run after npm ci, separated by commas or new lines.
+        type: string
+        required: false
+        default: lint, build
+      typecheck:
+        description: Run tsc --noEmit in the UI directory after npm ci.
+        type: boolean
+        required: false
+        default: true
+      dry-run:
+        description: Validate and report the commands only; no setup, no install, no credentials.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of each job, in minutes.
+        type: number
+        required: false
+        default: 20
+    secrets:
+      composer-auth:
+        description: Composer credentials in the COMPOSER_AUTH JSON format. Optional.
+        required: false
+      app-private-key:
+        description: Private key of the GitHub App of app-client-id. Required when app-client-id is set, unless dry-run is true.
+        required: false
+    outputs:
+      php-commands:
+        description: Number of commands of the PHP check plan.
+        value: ${{ jobs.check.outputs.commands }}
+      php-plan-sha256:
+        description: SHA-256 of the PHP check plan.
+        value: ${{ jobs.check.outputs.plan-sha256 }}
+      ui-commands:
+        description: Number of commands of the UI check plan; empty without a UI job.
+        value: ${{ jobs.check-ui.outputs.commands }}
+      ui-plan-sha256:
+        description: SHA-256 of the UI check plan; empty without a UI job.
+        value: ${{ jobs.check-ui.outputs.plan-sha256 }}
+
+permissions: {}
+
+jobs:
+  check:
+    name: check (PHP ${{ matrix.php-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    # The job can hold the App key and the Composer credentials: one queue per
+    # workflow, ref and PHP version; a newer run of the same ref waits.
+    concurrency:
+      group: wp-plugin-check-${{ github.workflow }}-${{ github.ref }}-php-${{ matrix.php-version }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ${{ fromJSON(inputs.php-versions) }}
+    # The plan does not depend on the PHP version: every matrix job gives the
+    # same values.
+    outputs:
+      commands: ${{ steps.check.outputs.commands }}
+      plan-sha256: ${{ steps.check.outputs.plan-sha256 }}
+    steps:
+      - name: Require the App key with the App client id
+        if: ${{ !inputs.dry-run && inputs.app-client-id != '' }}
+        env:
+          HAS_APP_PRIVATE_KEY: ${{ secrets.app-private-key != '' }}
+        run: |
+          if [ "$HAS_APP_PRIVATE_KEY" != "true" ]; then
+            echo "::error::app-client-id is set but the secret app-private-key is empty: pass it with one line in the caller's secrets block (from the secret WP_PLUGIN_CHECK_APP_PRIVATE_KEY), or leave app-client-id and the variable WP_PLUGIN_CHECK_APP_CLIENT_ID empty"
+            exit 1
+          fi
+
+      - name: Check out the calling repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the PHP side of the plugin
+        id: check
+        uses: $/wp-plugin-check
+        with:
+          target: php
+          path: ${{ inputs.path }}
+          php-version: ${{ matrix.php-version }}
+          php-extensions: ${{ inputs.php-extensions }}
+          composer-scripts: ${{ inputs.composer-scripts }}
+          composer-auth: ${{ !inputs.dry-run && secrets.composer-auth || '' }}
+          app-client-id: ${{ !inputs.dry-run && inputs.app-client-id || '' }}
+          app-private-key: ${{ !inputs.dry-run && inputs.app-client-id != '' && secrets.app-private-key || '' }}
+          app-repositories: ${{ inputs.app-repositories }}
+          dry-run: ${{ inputs.dry-run }}
+
+  # npm ci installs from the URLs of package-lock.json, without a token. A UI
+  # that installs a scope from GitHub Packages needs packages: read, more than
+  # a component workflow grants: use the composite action with
+  # github-packages-npm-scope in a job of the caller (README, "UI with GitHub
+  # Packages").
+  check-ui:
+    name: check (UI)
+    if: ${{ inputs.ui-directory != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    outputs:
+      commands: ${{ steps.check.outputs.commands }}
+      plan-sha256: ${{ steps.check.outputs.plan-sha256 }}
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the UI of the plugin
+        id: check
+        uses: $/wp-plugin-check
+        with:
+          target: ui
+          path: ${{ inputs.path }}
+          ui-directory: ${{ inputs.ui-directory }}
+          node-version: ${{ inputs.node-version }}
+          npm-scripts: ${{ inputs.npm-scripts }}
+          typecheck: ${{ inputs.typecheck }}
+          dry-run: ${{ inputs.dry-run }}

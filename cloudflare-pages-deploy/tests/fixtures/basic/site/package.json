@@ -1,0 +1,7 @@
+{
+  "name": "example-site",
+  "private": true,
+  "scripts": {
+    "docs:build": "vitepress build"
+  }
+}

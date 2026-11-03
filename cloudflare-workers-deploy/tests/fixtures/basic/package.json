@@ -1,0 +1,11 @@
+{
+  "name": "example-worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.54.0"
+  }
+}

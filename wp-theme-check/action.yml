@@ -1,0 +1,120 @@
+# Composite action: checks a WordPress theme with its own PHP tools (PHP CS
+# Fixer, PHPStan, Rector) on one PHP version. See README.md next to this file
+# for the inputs, what the action deletes and the permissions it needs.
+name: WordPress theme check
+description: >-
+  Installs the Composer dependencies of a WordPress theme and runs its PHP CS
+  Fixer, PHPStan and Rector checks in read-only mode on one PHP version.
+  Publishes nothing.
+
+inputs:
+  php-version:
+    description: PHP version to check with (for example 8.4).
+    required: true
+  php-extensions:
+    description: PHP extensions to install, separated by commas (setup-php syntax).
+    required: false
+    default: mbstring, xml
+  has-cs-fixer:
+    description: Run vendor/bin/php-cs-fixer fix --dry-run --diff (true or false).
+    required: false
+    default: "true"
+  has-phpstan:
+    description: Run vendor/bin/phpstan analyse (true or false).
+    required: false
+    default: "true"
+  has-rector:
+    description: Run vendor/bin/rector process --dry-run (true or false).
+    required: false
+    default: "false"
+  working-directory:
+    description: Theme directory that holds composer.json, relative to the checkout.
+    required: false
+    default: "."
+  composer-auth-host:
+    description: Host of a private Composer repository that needs HTTP basic auth. Empty for none.
+    required: false
+    default: ""
+  composer-auth-username:
+    description: HTTP basic username for composer-auth-host.
+    required: false
+    default: ""
+  composer-auth-password:
+    description: HTTP basic password for composer-auth-host, passed from a secret.
+    required: false
+    default: ""
+  dry-run:
+    description: Validate the inputs and the theme directory and print the plan only; no PHP setup, no install, no credentials (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  checks:
+    description: Enabled checks, separated by spaces, in run order (php-cs-fixer, phpstan, rector).
+    value: ${{ steps.plan.outputs.checks }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs
+      id: plan
+      shell: bash
+      env:
+        PHP_VERSION: ${{ inputs.php-version }}
+        PHP_EXTENSIONS: ${{ inputs.php-extensions }}
+        HAS_CS_FIXER: ${{ inputs.has-cs-fixer }}
+        HAS_PHPSTAN: ${{ inputs.has-phpstan }}
+        HAS_RECTOR: ${{ inputs.has-rector }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        COMPOSER_AUTH_HOST: ${{ inputs.composer-auth-host }}
+        COMPOSER_AUTH_USERNAME: ${{ inputs.composer-auth-username }}
+        HAS_COMPOSER_AUTH_PASSWORD: ${{ inputs.composer-auth-password != '' }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/check_inputs.py" \
+          --php-version="$PHP_VERSION" \
+          --php-extensions="$PHP_EXTENSIONS" \
+          --has-cs-fixer="$HAS_CS_FIXER" \
+          --has-phpstan="$HAS_PHPSTAN" \
+          --has-rector="$HAS_RECTOR" \
+          --working-directory="$WORKING_DIRECTORY" \
+          --composer-auth-host="$COMPOSER_AUTH_HOST" \
+          --composer-auth-username="$COMPOSER_AUTH_USERNAME" \
+          --has-composer-auth-password="$HAS_COMPOSER_AUTH_PASSWORD" \
+          --dry-run="$DRY_RUN"
+
+    - name: Set up PHP
+      if: ${{ inputs.dry-run != 'true' }}
+      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+      with:
+        php-version: ${{ inputs.php-version }}
+        extensions: ${{ inputs.php-extensions }}
+        coverage: none
+
+    - name: Install the Composer dependencies
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        COMPOSER_AUTH_HOST: ${{ inputs.composer-auth-host }}
+        COMPOSER_AUTH_USERNAME: ${{ inputs.composer-auth-username }}
+        COMPOSER_AUTH_PASSWORD: ${{ inputs.composer-auth-password }}
+      run: python3 -I "$GITHUB_ACTION_PATH/scripts/composer_install.py"
+
+    - name: Run PHP CS Fixer
+      if: ${{ inputs.dry-run != 'true' && inputs.has-cs-fixer == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: vendor/bin/php-cs-fixer fix --dry-run --diff
+
+    - name: Run PHPStan
+      if: ${{ inputs.dry-run != 'true' && inputs.has-phpstan == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: vendor/bin/phpstan analyse
+
+    - name: Run Rector
+      if: ${{ inputs.dry-run != 'true' && inputs.has-rector == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: vendor/bin/rector process --dry-run

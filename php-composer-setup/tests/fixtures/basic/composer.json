@@ -1,0 +1,9 @@
+{
+  "name": "example/library",
+  "description": "Fixture of the php-composer-setup component: a package without dependencies.",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.1"
+  }
+}

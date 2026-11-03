@@ -1,0 +1,115 @@
+# Reusable workflow of the wp-theme-check component. It gives the composite
+# action a job per PHP version, minimum permissions, a timeout and a
+# concurrency group, and fills inputs from the caller's variables. The
+# composite action does the work: see wp-theme-check/README.md.
+#
+# Values, most specific first: explicit input > variable of the calling
+# repository > variable of the calling organization. The Composer auth inputs
+# default to the variables WP_THEME_CHECK_COMPOSER_AUTH_<INPUT>; in a called
+# workflow, the vars context resolves against the caller. The secret comes
+# from one explicit line in the caller; it is never inherited.
+# Reference it by full commit SHA with a version comment (see the README).
+name: WordPress theme check
+
+on:
+  workflow_call:
+    inputs:
+      php-versions:
+        description: JSON array of the PHP versions to check with, one job each.
+        type: string
+        required: false
+        default: '["8.3", "8.4"]'
+      php-extensions:
+        description: PHP extensions to install, separated by commas (setup-php syntax).
+        type: string
+        required: false
+        default: mbstring, xml
+      has-cs-fixer:
+        description: Run PHP CS Fixer in dry-run mode.
+        type: boolean
+        required: false
+        default: true
+      has-phpstan:
+        description: Run PHPStan.
+        type: boolean
+        required: false
+        default: true
+      has-rector:
+        description: Run Rector in dry-run mode.
+        type: boolean
+        required: false
+        default: false
+      working-directory:
+        description: Theme directory that holds composer.json, relative to the checkout.
+        type: string
+        required: false
+        default: "."
+      composer-auth-host:
+        description: Host of a private Composer repository that needs HTTP basic auth. Default from the variable WP_THEME_CHECK_COMPOSER_AUTH_HOST; empty for none.
+        type: string
+        required: false
+        default: ${{ vars.WP_THEME_CHECK_COMPOSER_AUTH_HOST }}
+      composer-auth-username:
+        description: HTTP basic username for composer-auth-host. Default from the variable WP_THEME_CHECK_COMPOSER_AUTH_USERNAME.
+        type: string
+        required: false
+        default: ${{ vars.WP_THEME_CHECK_COMPOSER_AUTH_USERNAME }}
+      dry-run:
+        description: Validate the inputs and the theme directory and print the plan only; no PHP setup, no install, no credentials.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of each job, in minutes.
+        type: number
+        required: false
+        default: 15
+    secrets:
+      composer-auth-password:
+        description: HTTP basic password for composer-auth-host. Required when composer-auth-host is set, unless dry-run is true.
+        required: false
+    outputs:
+      checks:
+        description: Enabled checks, separated by spaces, in run order (php-cs-fixer, phpstan, rector).
+        value: ${{ jobs.check.outputs.checks }}
+
+permissions: {}
+
+jobs:
+  check:
+    name: check (PHP ${{ matrix.php-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ${{ fromJSON(inputs.php-versions) }}
+    # The job holds the Composer password. One run per ref and PHP version;
+    # a newer pull request run replaces an older one.
+    concurrency:
+      group: wp-theme-check-${{ github.repository }}-${{ github.ref }}-${{ matrix.php-version }}-${{ inputs.dry-run && github.run_id || 'check' }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    outputs:
+      checks: ${{ steps.check.outputs.checks }}
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the WordPress theme
+        id: check
+        uses: $/wp-theme-check
+        with:
+          php-version: ${{ matrix.php-version }}
+          php-extensions: ${{ inputs.php-extensions }}
+          has-cs-fixer: ${{ inputs.has-cs-fixer }}
+          has-phpstan: ${{ inputs.has-phpstan }}
+          has-rector: ${{ inputs.has-rector }}
+          working-directory: ${{ inputs.working-directory }}
+          composer-auth-host: ${{ inputs.composer-auth-host }}
+          composer-auth-username: ${{ inputs.composer-auth-username }}
+          composer-auth-password: ${{ !inputs.dry-run && secrets.composer-auth-password || '' }}
+          dry-run: ${{ inputs.dry-run }}
