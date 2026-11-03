@@ -2,10 +2,23 @@
 #
 # actionlint 1.7.12 does not know the self-repository form "$/<path>" of
 # `uses:`. Each reusable component workflow calls its composite action that
-# way, so that a fork runs its own copy. Each ignore below matches only that
+# way, so that a fork runs its own copy. The ignore below matches only that
 # message, only for the named component, only in its own workflow file.
-# Remove them when actionlint supports the form.
+# Remove it when actionlint supports the form. While it is here, actionlint
+# skips the with: keys of that step; check-genericity.sh checks them instead.
 paths:
   .github/workflows/cloudflare-pages-deploy.yml:
     ignore:
       - 'specifying action "\$/cloudflare-pages-deploy" in invalid format because ref is missing'
+  .github/workflows/cloudflare-workers-check.yml:
+    ignore:
+      - 'specifying action "\$/cloudflare-workers-check" in invalid format because ref is missing'
+  .github/workflows/moodle-plugin-check.yml:
+    ignore:
+      - 'specifying action "\$/moodle-plugin-check" in invalid format because ref is missing'
+  .github/workflows/moodle-plugin-package.yml:
+    ignore:
+      - 'specifying action "\$/moodle-plugin-package" in invalid format because ref is missing'
+  .github/workflows/release-please.yml:
+    ignore:
+      - 'specifying action "\$/release-please" in invalid format because ref is missing'
