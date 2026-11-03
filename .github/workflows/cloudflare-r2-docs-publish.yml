@@ -1,0 +1,141 @@
+# Reusable workflow of the cloudflare-r2-docs-publish component. It downloads
+# the package that an earlier job of the caller uploaded as a workflow
+# artifact, and gives the composite action a job, minimum permissions, a
+# timeout and a concurrency group. The composite action does the work: see
+# cloudflare-r2-docs-publish/README.md.
+#
+# Values, most specific first: explicit input > variable of the calling
+# repository > variable of the calling organization. The bucket default reads
+# the variable CLOUDFLARE_R2_DOCS_PUBLISH_BUCKET; in a called workflow, the
+# vars context resolves against the caller. The endpoint carries the account
+# id, and variables render unmasked in the logs, which a public repository
+# shows to anyone: the endpoint is a secret, never an input or a variable.
+# The secrets come from one explicit line each in the caller; they are never
+# inherited.
+# Reference it by full commit SHA with a version comment (see the README).
+name: Cloudflare R2 docs publish
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: Name of the workflow artifact, uploaded earlier in the same run, that holds the package.
+        type: string
+        required: true
+      path:
+        description: Package directory inside the artifact (manifest.json at its root).
+        type: string
+        required: false
+        default: "."
+      package-name:
+        description: First segment of every object key. Defaults to the calling repository name.
+        type: string
+        required: false
+        default: ${{ github.event.repository.name }}
+      version:
+        description: Version to publish. Empty reads the latest field of manifest.json.
+        type: string
+        required: false
+        default: ""
+      kinds:
+        description: Allowed kind directories at the package root, separated by commas or new lines.
+        type: string
+        required: false
+        default: docs,xref,schemas
+      bucket:
+        description: Bucket name. Default from the variable CLOUDFLARE_R2_DOCS_PUBLISH_BUCKET; the run fails when both are empty.
+        type: string
+        required: false
+        default: ${{ vars.CLOUDFLARE_R2_DOCS_PUBLISH_BUCKET }}
+      write-manifest:
+        description: Write <package-name>/manifest.json after the version objects. False publishes the version objects only.
+        type: boolean
+        required: false
+        default: true
+      dry-run:
+        description: Validate the package and list the object keys only; no credentials, no endpoint and no network.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 15
+    secrets:
+      endpoint:
+        description: S3 API endpoint (https://<host>; for R2 it holds the account id). Required unless dry-run is true.
+        required: false
+      access-key-id:
+        description: S3 access key id with write access to the bucket. Required unless dry-run is true.
+        required: false
+      secret-access-key:
+        description: S3 secret access key. Required unless dry-run is true.
+        required: false
+    outputs:
+      version:
+        description: Published (or, in a dry run, planned) version.
+        value: ${{ jobs.publish.outputs.version }}
+      objects:
+        description: Number of version objects, manifest.json excluded.
+        value: ${{ jobs.publish.outputs.objects }}
+      payload-sha256:
+        description: SHA-256 of the sorted "<sha256>  <key>" listing of every object, manifest.json included when written.
+        value: ${{ jobs.publish.outputs.payload-sha256 }}
+
+permissions: {}
+
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    # One publication queue per package; a dry run gets its own group per run
+    # and never waits for or replaces a publication. A queued publication is
+    # never cancelled: every version must reach the bucket.
+    concurrency:
+      group: cloudflare-r2-docs-publish-${{ inputs.package-name || github.repository }}-${{ inputs.dry-run && github.run_id || 'publish' }}
+      cancel-in-progress: false
+    outputs:
+      version: ${{ steps.publish.outputs.version }}
+      objects: ${{ steps.publish.outputs.objects }}
+      payload-sha256: ${{ steps.publish.outputs.payload-sha256 }}
+    steps:
+      - name: Require the endpoint and the credentials outside a dry run
+        if: ${{ !inputs.dry-run }}
+        env:
+          HAS_ENDPOINT: ${{ secrets.endpoint != '' }}
+          HAS_ACCESS_KEY_ID: ${{ secrets.access-key-id != '' }}
+          HAS_SECRET_ACCESS_KEY: ${{ secrets.secret-access-key != '' }}
+        run: |
+          if [ "$HAS_ENDPOINT" != "true" ]; then
+            echo "::error::the secret endpoint is empty: pass it with one line in the caller's secrets block (from the secret CLOUDFLARE_R2_DOCS_PUBLISH_ENDPOINT) or set dry-run: true"
+            exit 1
+          fi
+          if [ "$HAS_ACCESS_KEY_ID" != "true" ] || [ "$HAS_SECRET_ACCESS_KEY" != "true" ]; then
+            echo "::error::the secret access-key-id or secret-access-key is empty: pass each with one line in the caller's secrets block (from the secrets CLOUDFLARE_R2_DOCS_PUBLISH_ACCESS_KEY_ID and CLOUDFLARE_R2_DOCS_PUBLISH_SECRET_ACCESS_KEY) or set dry-run: true"
+            exit 1
+          fi
+
+      - name: Download the package artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: cloudflare-r2-docs-publish-package
+
+      - name: Publish the package to Cloudflare R2
+        id: publish
+        uses: $/cloudflare-r2-docs-publish
+        with:
+          path: cloudflare-r2-docs-publish-package/${{ inputs.path }}
+          package-name: ${{ inputs.package-name }}
+          version: ${{ inputs.version }}
+          kinds: ${{ inputs.kinds }}
+          bucket: ${{ inputs.bucket }}
+          endpoint: ${{ !inputs.dry-run && secrets.endpoint || '' }}
+          write-manifest: ${{ inputs.write-manifest }}
+          dry-run: ${{ inputs.dry-run }}
+          access-key-id: ${{ !inputs.dry-run && secrets.access-key-id || '' }}
+          secret-access-key: ${{ !inputs.dry-run && secrets.secret-access-key || '' }}

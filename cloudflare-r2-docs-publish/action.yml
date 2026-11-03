@@ -1,0 +1,106 @@
+# Composite action: publishes a prepared documentation package to a Cloudflare
+# R2 bucket (or any S3-compatible bucket) as an immutable version. See
+# README.md next to this file for the package layout, the inputs and what the
+# action overwrites.
+name: Cloudflare R2 docs publish
+description: >-
+  Publishes a prepared documentation package (manifest.json and one
+  <kind>/<version>/ tree per kind) to a Cloudflare R2 bucket as an immutable
+  version, then (unless write-manifest is false) updates the package
+  manifest.json.
+
+inputs:
+  path:
+    description: Package directory, relative to the workspace (manifest.json and <kind>/<version>/ directories).
+    required: true
+  package-name:
+    description: First segment of every object key (<package-name>/<kind>/<version>/...). Defaults to the calling repository name.
+    required: false
+    default: ${{ github.event.repository.name }}
+  version:
+    description: Version to publish. Empty reads the latest field of manifest.json; when both are set they must match.
+    required: false
+    default: ""
+  kinds:
+    description: Allowed kind directories at the package root, separated by commas or new lines.
+    required: false
+    default: docs,xref,schemas
+  bucket:
+    description: Bucket name.
+    required: true
+  endpoint:
+    description: S3 API endpoint, https://<host> (for R2, https://<account-id>.r2.cloudflarestorage.com). It carries the account id, so pass it from a secret; masked in the logs from the first step of the action on. Required unless dry-run is true.
+    required: false
+    default: ""
+  access-key-id:
+    description: S3 access key id, passed from a secret. Required unless dry-run is true.
+    required: false
+    default: ""
+  secret-access-key:
+    description: S3 secret access key, passed from a secret. Required unless dry-run is true.
+    required: false
+    default: ""
+  write-manifest:
+    description: Write <package-name>/manifest.json after the version objects (true or false). False publishes the version objects only.
+    required: false
+    default: "true"
+  dry-run:
+    description: Validate the package and list the object keys only; no credentials, no endpoint needed, no network (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  version:
+    description: Published (or, in a dry run, planned) version.
+    value: ${{ steps.plan.outputs.version }}
+  objects:
+    description: Number of version objects, manifest.json excluded.
+    value: ${{ steps.plan.outputs.objects }}
+  payload-sha256:
+    description: SHA-256 of the sorted "<sha256>  <key>" listing of every object, manifest.json included when written.
+    value: ${{ steps.plan.outputs.payload-sha256 }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs and plan the objects
+      id: plan
+      shell: bash
+      env:
+        PACKAGE_PATH: ${{ inputs.path }}
+        PACKAGE_NAME: ${{ inputs.package-name }}
+        VERSION: ${{ inputs.version }}
+        KINDS: ${{ inputs.kinds }}
+        BUCKET: ${{ inputs.bucket }}
+        ENDPOINT: ${{ inputs.endpoint }}
+        WRITE_MANIFEST: ${{ inputs.write-manifest }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        HAS_CREDENTIALS: ${{ inputs.access-key-id != '' && inputs.secret-access-key != '' }}
+      # Masks the endpoint (it carries the account id) in the log lines that
+      # follow, also when it does not come from a secret.
+      run: |
+        if [ -n "$ENDPOINT" ]; then
+          echo "::add-mask::$ENDPOINT"
+        fi
+        out_dir="$(mktemp -d "$RUNNER_TEMP/cloudflare-r2-docs-publish.XXXXXX")"
+        python3 -I "$GITHUB_ACTION_PATH/scripts/publish.py" plan \
+          --path="$PACKAGE_PATH" \
+          --package-name="$PACKAGE_NAME" \
+          --version="$VERSION" \
+          --kinds="$KINDS" \
+          --bucket="$BUCKET" \
+          --endpoint="$ENDPOINT" \
+          --write-manifest="$WRITE_MANIFEST" \
+          --dry-run="$DRY_RUN" \
+          --has-credentials="$HAS_CREDENTIALS" \
+          --out-dir="$out_dir"
+
+    - name: Publish the version and the manifest
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        PLAN_FILE: ${{ steps.plan.outputs.plan-file }}
+        S3_ACCESS_KEY_ID: ${{ inputs.access-key-id }}
+        S3_SECRET_ACCESS_KEY: ${{ inputs.secret-access-key }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/publish.py" upload --plan-file="$PLAN_FILE"
