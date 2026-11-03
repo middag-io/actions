@@ -203,6 +203,38 @@ class ContentHashTest(SiteTestCase):
         self.assertEqual("link:/etc/hostname", plan.file_digest(site / "link.md"))
 
 
+class FetchTest(unittest.TestCase):
+    """fetch_deployed_hash with urlopen simulated: no network."""
+
+    def fetch(self, body: bytes = b"", error: Exception | None = None):
+        seen = []
+
+        def fake_urlopen(request, timeout):
+            seen.append(request)
+            if error:
+                raise error
+            return io.BytesIO(body)
+
+        with unittest.mock.patch.object(plan.urllib.request, "urlopen", fake_urlopen), redirect_stdout(io.StringIO()):
+            result = plan.fetch_deployed_hash("https://example-docs.pages.dev")
+        return result, seen[0]
+
+    def test_sends_its_own_user_agent(self) -> None:
+        # Cloudflare answers 403 to the default Python-urllib user agent.
+        _, request = self.fetch(b"a" * 64)
+        self.assertEqual(plan.USER_AGENT, request.get_header("User-agent"))
+        self.assertNotIn("urllib", plan.USER_AGENT.lower())
+        self.assertEqual("https://example-docs.pages.dev/.content-hash", request.full_url)
+
+    def test_returns_a_valid_hash_only(self) -> None:
+        self.assertEqual("a" * 64, self.fetch(b"a" * 64 + b"\n")[0])
+        self.assertEqual("", self.fetch(b"<html>login</html>")[0])
+
+    def test_returns_empty_on_an_http_error(self) -> None:
+        error = plan.urllib.error.URLError("forbidden")
+        self.assertEqual("", self.fetch(error=error)[0])
+
+
 class MainTest(SiteTestCase):
     def test_main_writes_the_outputs_and_fails_on_invalid_input(self) -> None:
         output = self.workspace / "github-output"

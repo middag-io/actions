@@ -41,6 +41,9 @@ EXCLUDED_DIR_NAMES = frozenset({"node_modules", ".git"})
 EXCLUDED_SUFFIXES = (".vitepress/dist", ".vitepress/cache")
 FETCH_TIMEOUT_SECONDS = 15
 FETCH_MAX_BYTES = 256
+# Cloudflare answers 403 to the default "Python-urllib/3.x" user agent, which
+# would make every run deploy. The fetch names this component instead.
+USER_AGENT = "cloudflare-pages-deploy"
 
 # A path input: relative, no "..", only these characters. The paths end up
 # in a Wrangler command line, so no whitespace and no shell metacharacter.
@@ -177,7 +180,10 @@ def content_hash(root: Path, excluded: set[str]) -> str:
 
 def fetch_deployed_hash(url: str) -> str:
     """Returns the hash published by the last deploy, or "" when none."""
-    request = urllib.request.Request(f"{url}/{HASH_FILE}", headers={"Cache-Control": "no-cache"})
+    request = urllib.request.Request(
+        f"{url}/{HASH_FILE}",
+        headers={"Cache-Control": "no-cache", "User-Agent": USER_AGENT},
+    )
     try:
         with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
             text = response.read(FETCH_MAX_BYTES).decode("ascii", "replace").strip()

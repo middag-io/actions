@@ -11,7 +11,7 @@ Two forms, one name:
 
 1. Validates the inputs. A missing project name, account id or API token fails here, before any other step, and the error names the input and the variable.
 2. Computes the content hash of the site sources: SHA-256 over the path and the SHA-256 of every file under `docs-path`, except `node_modules/`, `.git/`, `.vitepress/dist/`, `.vitepress/cache/` and `dist-path`.
-3. Reads `<deploy-url>/.content-hash`, the hash that the last deploy wrote. When it equals the local hash, the run ends without building or deploying. When the file is missing or unreadable, the site is deployed.
+3. Reads `<deploy-url>/.content-hash`, the hash that the last deploy wrote, with the user agent `cloudflare-pages-deploy`. When it equals the local hash, the run ends without building or deploying. When the file is missing or unreadable, the site is deployed.
 4. Sets up Node.js, runs `npm ci` and the build command in `build-working-directory`.
 5. Writes the content hash to `<dist-path>/.content-hash`.
 6. Deploys `dist-path` with `wrangler pages deploy <dist-path> --project-name=<project-name>` ([cloudflare/wrangler-action](https://github.com/cloudflare/wrangler-action)). The command passes no `--branch`: Wrangler decides the branch and with it whether the deployment is production or preview (see the [Wrangler documentation](https://developers.cloudflare.com/workers/wrangler/commands/pages/)). Call the component from the production branch of the project to update the production site.
