@@ -11,15 +11,17 @@ Two forms, one name:
 
 1. Validates every input before any write: PHP version, extensions, coverage driver, booleans, the working directory (relative, inside the checkout, with a `composer.json`), and the HTTP Basic host and user name.
 2. Sets up PHP with [`shivammathur/setup-php`](https://github.com/shivammathur/setup-php), with Composer.
-3. Writes the HTTP Basic credentials of one Composer repository and a GitHub token, when given, to the global Composer `auth.json` (`$COMPOSER_HOME/auth.json`, mode `0600`), outside the checkout.
-4. Runs `composer install --no-interaction --prefer-dist` in the working directory, with `--no-dev` and `--optimize-autoloader` when asked.
+3. Restores the Composer download cache (`composer config --global cache-files-dir`), keyed by the runner OS, the PHP version and the hash of `composer.lock` in the working directory, when `cache` and `install` are `true`. A run without an exact hit restores the latest cache of the same OS and PHP version, and the job saves a new one at its end.
+4. Writes the `composer-auth` entries, the HTTP Basic credentials of one Composer repository and a GitHub token, when given, to the global Composer `auth.json` (`$COMPOSER_HOME/auth.json`, mode `0600`), outside the checkout. Each string of `composer-auth` other than a `username` is masked in the log before anything is written.
+5. Runs `composer install --no-interaction --prefer-dist` in the working directory, with `--no-dev` and `--optimize-autoloader` when asked.
 
 In a dry run it only validates the inputs and reports the plan: no PHP setup, no credentials written, no install.
 
 ## What it deletes or overwrites
 
 - Deletes no file of its own. `composer install` removes from `vendor/` every package that the lock file does not list; with `no-dev: true` that includes the development packages a previous install left there.
-- Overwrites, in the global Composer `auth.json` of the runner, the `http-basic` entry of `http-basic-host` and the `github-oauth` entry of `github.com`. Other entries stay. Without `github-token`, the `github-oauth` entry that `shivammathur/setup-php` writes (the job token) stays.
+- Overwrites, in the global Composer `auth.json` of the runner, each host entry that `composer-auth` names, then the `http-basic` entry of `http-basic-host` and the `github-oauth` entry of `github.com`: for the same entry, `http-basic-host` and `github-token` win over `composer-auth`. Other entries stay.
+- With `cache: true`, the cache step of [`actions/cache`](https://github.com/actions/cache) replaces the Composer download cache of the runner with the restored one, and saves a new cache entry in the calling repository at the end of the job when the key had no exact hit. A repository without `composer.lock` gets one fixed key per OS and PHP version, saved once; set `cache: false` there, or commit the lock file. Without `github-token`, the `github-oauth` entry that `shivammathur/setup-php` writes (the job token) stays.
 - `shivammathur/setup-php` changes the runner for the rest of the job: it switches the default `php` and `composer`, installs the extensions and writes their `php.ini` settings.
 - `composer install` creates or replaces `vendor/` in the working directory, and writes `composer.lock` there when the repository has none. It runs the install scripts of the calling repository (`post-install-cmd` and the others), which can change more files.
 
@@ -37,6 +39,8 @@ The credentials stay in the runner's Composer home until the job ends. They are 
 | `http-basic-username` | with `http-basic-host`                    | empty (workflow: `PHP_COMPOSER_SETUP_HTTP_BASIC_USERNAME`)            | HTTP Basic user name                                                                                                                |
 | `http-basic-password` | with `http-basic-host`, outside a dry run | empty                                                                 | composite action only; the workflow takes the secret `http-basic-password`                                                          |
 | `github-token`        | no                                        | empty                                                                 | composite action only; the workflow takes the secret `github-token`. Empty keeps the token that `shivammathur/setup-php` configures |
+| `composer-auth`       | no                                        | empty                                                                 | JSON object in the `COMPOSER_AUTH` format (`http-basic`, `github-oauth`, `bearer` and the other `auth.json` keys); composite action only, the workflow takes the secret `composer-auth` |
+| `cache`               | no                                        | `true`                                                                | restore and save the Composer download cache, keyed by `composer.lock`; used only when `install` is `true`                          |
 | `install`             | no                                        | `true`                                                                | run `composer install`                                                                                                              |
 | `no-dev`              | no                                        | `false`                                                               | pass `--no-dev`                                                                                                                     |
 | `optimize-autoloader` | no                                        | `false`                                                               | pass `--optimize-autoloader`                                                                                                        |
@@ -50,7 +54,7 @@ The composite action takes `true` or `false` strings for booleans; the workflow 
 | Output            | Description                                                                                                            |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `php-version`     | PHP version installed, in SemVer format; empty in a dry run                                                            |
-| `auth-entries`    | credentials configured, comma-separated: `http-basic:<host>`, `github-oauth:github.com`; the planned ones in a dry run |
+| `auth-entries`    | credentials configured, comma-separated: `composer-auth`, `http-basic:<host>`, `github-oauth:github.com`; the planned ones in a dry run |
 | `install-command` | the `composer install` command, run or planned; empty when `install` is `false`                                        |
 
 ## Variables and secrets
@@ -65,12 +69,19 @@ The reusable workflow fills its inputs from these variables of the caller (repos
 | `PHP_COMPOSER_SETUP_HTTP_BASIC_USERNAME` | variable | `http-basic-username`                           |
 | `PHP_COMPOSER_SETUP_HTTP_BASIC_PASSWORD` | secret   | `http-basic-password`                           |
 | `PHP_COMPOSER_SETUP_GITHUB_TOKEN`        | secret   | `github-token`, when a long-lived token is used |
+| `PHP_COMPOSER_SETUP_COMPOSER_AUTH`       | secret   | `composer-auth`                                 |
 
-The caller passes each secret with one explicit line. Never `secrets: inherit`. A token minted in the calling job by a GitHub App (for private Composer packages hosted as GitHub repositories) goes to the `github-token` input of the composite action directly.
+The caller passes each secret with one explicit line. Never `secrets: inherit`. A caller that keeps the user name in a variable and the password in a secret builds `composer-auth` in the calling workflow:
+
+```yaml
+composer-auth: ${{ format('{{"http-basic":{{"<host>":{{"username":"{0}","password":"{1}"}}}}}}', vars.<USERNAME_VARIABLE>, secrets.<PASSWORD_SECRET>) }}
+```
+
+The password comes from a secret, so the runner masks it in every log line; the action masks it again inside the JSON value. A token minted in the calling job by a GitHub App (for private Composer packages hosted as GitHub repositories) goes to the `github-token` input of the composite action directly.
 
 ## Permissions
 
-`contents: read`, for the checkout. The action itself needs no token permission.
+`contents: read`, for the checkout. The action itself needs no token permission. The cache step uses the runner's cache service, which needs no permission in `permissions:`.
 
 ## Examples
 
