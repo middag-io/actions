@@ -8,6 +8,8 @@ Checks a WordPress theme in a change. The component installs the theme's Compose
 
 The tools and their configuration files come from the theme (`require-dev` in `composer.json`, `.php-cs-fixer.dist.php`, `phpstan.neon`, `rector.php`). The component publishes nothing.
 
+PHP, Composer, the credentials and `composer install --no-interaction --prefer-dist` come from the [`php-composer-setup`](../php-composer-setup/README.md) action of the same release, with its download cache keyed by `composer.lock`.
+
 It has two forms:
 
 - the reusable workflow `.github/workflows/wp-theme-check.yml`: one job per PHP version of `php-versions`, the checkout of the calling repository, the variable fallback and the secret;
@@ -15,7 +17,7 @@ It has two forms:
 
 ## What it deletes
 
-Nothing. It writes only inside the runner: `vendor/` in the theme directory, and the Composer cache. The Composer credentials reach Composer through the `COMPOSER_AUTH` environment variable of the install process only; no `auth.json` is written to the checkout.
+Nothing. It writes only inside the runner: `vendor/` in the theme directory, the Composer cache, and, when `composer-auth-host` is set, the `http-basic` entry of that host in the global Composer `auth.json` of the runner (mode `0600`, outside the checkout). No `auth.json` is written to the checkout. The cache step saves a Composer download cache entry in the calling repository at the end of the job when its key had no exact hit.
 
 ## Inputs
 

@@ -1,6 +1,8 @@
 # Composite action: checks a WordPress theme with its own PHP tools (PHP CS
-# Fixer, PHPStan, Rector) on one PHP version. See README.md next to this file
-# for the inputs, what the action deletes and the permissions it needs.
+# Fixer, PHPStan, Rector) on one PHP version. PHP, Composer and the
+# dependencies come from the php-composer-setup action of this repository.
+# See README.md next to this file for the inputs, what the action deletes and
+# the permissions it needs.
 name: WordPress theme check
 description: >-
   Installs the Composer dependencies of a WordPress theme and runs its PHP CS
@@ -83,23 +85,22 @@ runs:
           --has-composer-auth-password="$HAS_COMPOSER_AUTH_PASSWORD" \
           --dry-run="$DRY_RUN"
 
-    - name: Set up PHP
-      if: ${{ inputs.dry-run != 'true' }}
-      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+    # php-composer-setup comes from the same repository and commit as this
+    # action. It validates its own inputs, sets up PHP, writes the HTTP basic
+    # credentials to the global Composer auth.json (outside the checkout),
+    # restores the Composer download cache and runs composer install. In a
+    # dry run it only validates and reports, like this action.
+    - name: Set up PHP and install the Composer dependencies
+      uses: $/php-composer-setup
       with:
         php-version: ${{ inputs.php-version }}
-        extensions: ${{ inputs.php-extensions }}
+        php-extensions: ${{ inputs.php-extensions }}
         coverage: none
-
-    - name: Install the Composer dependencies
-      if: ${{ inputs.dry-run != 'true' }}
-      shell: bash
-      env:
-        WORKING_DIRECTORY: ${{ inputs.working-directory }}
-        COMPOSER_AUTH_HOST: ${{ inputs.composer-auth-host }}
-        COMPOSER_AUTH_USERNAME: ${{ inputs.composer-auth-username }}
-        COMPOSER_AUTH_PASSWORD: ${{ inputs.composer-auth-password }}
-      run: python3 -I "$GITHUB_ACTION_PATH/scripts/composer_install.py"
+        working-directory: ${{ inputs.working-directory }}
+        http-basic-host: ${{ inputs.composer-auth-host }}
+        http-basic-username: ${{ inputs.composer-auth-username }}
+        http-basic-password: ${{ inputs.composer-auth-password }}
+        dry-run: ${{ inputs.dry-run }}
 
     - name: Run PHP CS Fixer
       if: ${{ inputs.dry-run != 'true' && inputs.has-cs-fixer == 'true' }}
