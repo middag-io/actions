@@ -17,7 +17,7 @@ We confirm receipt within 5 business days, and within 10 business days we tell y
 | Latest release of each component, release candidates included | yes                               |
 | Older releases                                                | no; upgrade to the latest release |
 
-No component has been released yet. Fixes ship as new releases. Published tags never move.
+No component has been released yet. Fixes ship as new releases. Release tags `<component>-vX.Y.Z` never move; only the major tag `<component>-vN` follows the latest release of its major version.
 
 ## Scope
 

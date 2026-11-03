@@ -3,8 +3,8 @@
 #
 # CI tool versions: actionlint, zizmor and gitleaks are pinned below by
 # version and SHA-256. Dependabot does not read these `env:` values, so a
-# maintainer checks the tool releases whenever this file changes.
-# shellcheck comes from the ubuntu-24.04 runner image; each job
+# maintainer checks the tool releases whenever this file changes (AGENTS.md,
+# "Gates"). shellcheck comes from the ubuntu-24.04 runner image; each job
 # that uses it prints its version.
 name: CI
 
@@ -112,6 +112,51 @@ jobs:
           "$RUNNER_TEMP/bin/gitleaks" version
           "$RUNNER_TEMP/bin/gitleaks" git --redact --no-banner --verbose .
 
+  check-genericity:
+    name: check-genericity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # Depth 2: the checked-out commit is a merge (the pull request merge
+      # ref, or a merge into main), and its first parent is the base that
+      # the component path check compares with.
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Lint the repository scripts
+        run: |
+          shellcheck --version
+          shellcheck .github/scripts/*.sh
+
+      # Plants one violation of each rule in a copy of the repository and
+      # requires the check to fail, so that a check that stops failing is
+      # caught here.
+      - name: Test the genericity check
+        run: bash .github/scripts/test-check-genericity.sh
+
+      - name: Check the genericity rules
+        run: bash .github/scripts/check-genericity.sh
+
+      - name: Test the component path check and the major tag script
+        run: |
+          bash .github/scripts/test-check-component-paths.sh
+          bash .github/scripts/test-move-major-tags.sh
+
+      # release-please releases a component only from its folder: a change
+      # to .github/workflows/<component>.yml needs a change under
+      # <component>/ in the same pull request. It runs on pull requests only.
+      # Dependabot pull requests are exempt: their `chore` commits never
+      # release, and Dependabot updates the action pins of the component
+      # workflows from the root directory.
+      - name: Check that component workflow changes touch the component folder
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]' }}
+        run: bash .github/scripts/check-component-paths.sh HEAD^1 HEAD
+
   unit-tests:
     name: unit-tests
     runs-on: ubuntu-24.04
@@ -124,23 +169,27 @@ jobs:
         with:
           persist-credentials: false
 
-      # Every component folder with a tests/ folder. The tests run without
-      # network access to any cloud: HTTP calls are simulated.
+      # Every component (a top-level folder with an action.yml or
+      # action.yaml) must have a tests/ folder. The tests run without
+      # network access to any cloud: HTTP calls are simulated. Before the
+      # first component, the job has nothing to run and passes.
       - name: Run the component tests
         run: |
           python3 --version
-          found=0
-          for tests in */tests; do
-            [ -d "$tests" ] || continue
-            found=1
-            echo "::group::${tests%/tests}"
-            python3 -I -B -m unittest discover -s "$tests" -v
+          mapfile -t components < <(find . -mindepth 2 -maxdepth 2 -path './.*' -prune -o \( -name action.yml -o -name action.yaml \) -print | cut -d/ -f2 | sort -u)
+          if [ "${#components[@]}" -eq 0 ]; then
+            echo "::notice::no component yet; no component tests to run"
+            exit 0
+          fi
+          for component in "${components[@]}"; do
+            if [ ! -d "$component/tests" ]; then
+              echo "::error::component $component has no tests/ folder"
+              exit 1
+            fi
+            echo "::group::$component"
+            python3 -I -B -m unittest discover -s "$component/tests" -v
             echo "::endgroup::"
           done
-          if [ "$found" -eq 0 ]; then
-            echo "::error::no component tests found"
-            exit 1
-          fi
 
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture tree. A dry run: no credentials, no PHP setup, no
@@ -196,6 +245,7 @@ jobs:
       - actionlint
       - zizmor
       - gitleaks
+      - check-genericity
       - unit-tests
       - dry-run-php-composer-setup
       - dry-run-check-php-composer-setup
