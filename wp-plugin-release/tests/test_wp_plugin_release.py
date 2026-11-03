@@ -156,7 +156,28 @@ class ValidateTest(WorkspaceTest):
         auth = '{"http-basic": {"repo.example.com": {"username": "u", "password": "s3cr3t"}}}'
         status, out, err = self.validate(env={"COMPOSER_AUTH": auth})
         self.assertEqual(status, 0, err)
-        self.assertNotIn("s3cr3t", out + err)
+        # The only line with the value is the mask command, which the runner
+        # consumes and never shows in the log.
+        self.assertEqual([line for line in out.splitlines() if "s3cr3t" in line], ["::add-mask::s3cr3t"])
+        self.assertNotIn("s3cr3t", err)
+
+    def test_composer_auth_values_are_masked_one_by_one(self):
+        # The secret is one JSON object, so the runner masks only the whole
+        # string; each credential inside it must be masked on its own.
+        auth = (
+            '{"http-basic": {"repo.example.com": {"username": "ci-user", "password": "pa55word"}},'
+            ' "github-oauth": {"github.com": "ghtok3n"},'
+            ' "bearer": {"other.example.com": "line1\\nline2"}}'
+        )
+        status, out, err = self.validate(env={"COMPOSER_AUTH": auth})
+        self.assertEqual(status, 0, err)
+        masks = [line for line in out.splitlines() if line.startswith("::add-mask::")]
+        self.assertEqual(
+            sorted(masks),
+            sorted(["::add-mask::pa55word", "::add-mask::ghtok3n", "::add-mask::line1", "::add-mask::line2"]),
+        )
+        self.assertNotIn("ci-user", out + err)
+        self.assertNotIn("repo.example.com", out + err)
 
 
 class ArchiveTest(WorkspaceTest):

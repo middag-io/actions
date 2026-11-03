@@ -85,7 +85,7 @@ The secrets are stored as `WP_PLUGIN_RELEASE_APP_PRIVATE_KEY` and `WP_PLUGIN_REL
 | `app-private-key` | `WP_PLUGIN_RELEASE_APP_PRIVATE_KEY` | unless `dry-run` | private key of the GitHub App that uploads the archive |
 | `composer-auth` | `WP_PLUGIN_RELEASE_COMPOSER_AUTH` | no | Composer authentication JSON object, for example `{"http-basic": {"<host>": {"username": "<user>", "password": "<password>"}}}`; store it without a trailing new line |
 
-The component never prints either value. An invalid `composer-auth` fails the run with a message that does not show its content.
+The component never prints either value. An invalid `composer-auth` fails the run with a message that does not show its content. The runner masks a secret as one whole string, so the first step also masks each credential inside `composer-auth` on its own (every string value except `username` fields, line by line): a password or token that a build tool prints alone stays hidden.
 
 ## Outputs
 
