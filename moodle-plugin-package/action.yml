@@ -1,0 +1,212 @@
+# Composite action: packages a Moodle plugin tree as an installable ZIP. See
+# README.md next to this file for the inputs, the exclude rules and what the
+# action overwrites.
+name: Moodle plugin package
+description: >-
+  Validates version.php, installs the Composer dependencies and, optionally,
+  builds npm assets, then packages a Moodle plugin tree as an installable
+  ZIP, uploads it as a workflow artifact and, optionally, to the GitHub
+  release of the tag.
+
+inputs:
+  path:
+    description: Plugin tree (version.php at its root), relative to the workspace.
+    required: false
+    default: "."
+  zip-name:
+    description: Plugin directory inside the ZIP and archive name prefix; the Moodle frankenstyle name (for example local_example).
+    required: true
+  tag-name:
+    description: Tag of the release. Names the archive <zip-name>-<tag-name>.zip; empty names it <zip-name>-<short sha>.zip.
+    required: false
+    default: ""
+  php-version:
+    description: PHP version for the Composer install.
+    required: false
+    default: "8.4"
+  php-extensions:
+    description: PHP extensions to install, separated by commas.
+    required: false
+    default: soap, xml, curl, mbstring, bcmath, zip, gd, intl
+  composer-options:
+    description: Options of composer install, separated by spaces.
+    required: false
+    default: --no-dev --prefer-dist --optimize-autoloader --no-interaction
+  composer-auth:
+    description: COMPOSER_AUTH JSON for private Composer repositories, passed from a secret. Empty for public dependencies.
+    required: false
+    default: ""
+  dist-excludes-file:
+    description: rsync exclude file, relative to path. A missing .distignore is ignored; any other missing file fails the run. Empty uses no file.
+    required: false
+    default: .distignore
+  npm-build-command:
+    description: npm script that builds shipped assets before packaging. Empty skips Node.
+    required: false
+    default: ""
+  npm-working-dir:
+    description: Directory, relative to path, that holds package.json for npm-build-command.
+    required: false
+    default: "."
+  node-version:
+    description: Node version for npm-build-command.
+    required: false
+    default: "22"
+  github-token:
+    description: Token for the GitHub Packages npm registry and for the release upload. The job token needs packages read for the first and contents write for the second.
+    required: false
+    default: ${{ github.token }}
+  upload-release-asset:
+    description: Upload the ZIP to the GitHub release of tag-name, replacing an asset with the same name (true or false).
+    required: false
+    default: "false"
+  retention-days:
+    description: Retention of the workflow artifact, in days.
+    required: false
+    default: "30"
+  dry-run:
+    description: Validate and build the ZIP in the runner only; no dependency install, no artifact, no release upload, no credentials (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  archive-name:
+    description: File name of the ZIP, also the name of the workflow artifact.
+    value: ${{ steps.check.outputs.archive-name }}
+  version:
+    description: $plugin->version read from version.php.
+    value: ${{ steps.check.outputs.version }}
+  release:
+    description: $plugin->release read from version.php.
+    value: ${{ steps.check.outputs.release }}
+  archive-path:
+    description: Path of the ZIP on the runner.
+    value: ${{ steps.build.outputs.archive-path }}
+  files:
+    description: Number of files in the ZIP.
+    value: ${{ steps.build.outputs.files }}
+  listing-sha256:
+    description: SHA-256 of the sorted "<sha256>  <zip-name>/<path>" listing of the files in the ZIP.
+    value: ${{ steps.build.outputs.listing-sha256 }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs and version.php
+      id: check
+      shell: bash
+      env:
+        PACKAGE_PATH: ${{ inputs.path }}
+        ZIP_NAME: ${{ inputs.zip-name }}
+        TAG_NAME: ${{ inputs.tag-name }}
+        COMMIT_SHA: ${{ github.sha }}
+        DIST_EXCLUDES_FILE: ${{ inputs.dist-excludes-file }}
+        NPM_BUILD_COMMAND: ${{ inputs.npm-build-command }}
+        NPM_WORKING_DIR: ${{ inputs.npm-working-dir }}
+        UPLOAD_RELEASE_ASSET: ${{ inputs.upload-release-asset }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/package.py" check \
+          --path="$PACKAGE_PATH" \
+          --zip-name="$ZIP_NAME" \
+          --tag-name="$TAG_NAME" \
+          --sha="$COMMIT_SHA" \
+          --dist-excludes-file="$DIST_EXCLUDES_FILE" \
+          --npm-build-command="$NPM_BUILD_COMMAND" \
+          --npm-working-dir="$NPM_WORKING_DIR" \
+          --upload-release-asset="$UPLOAD_RELEASE_ASSET" \
+          --dry-run="$DRY_RUN"
+
+    - name: Set up PHP
+      if: ${{ steps.check.outputs.dry-run != 'true' && steps.check.outputs.has-composer == 'true' }}
+      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+      with:
+        php-version: ${{ inputs.php-version }}
+        extensions: ${{ inputs.php-extensions }}
+        tools: composer:v2
+        coverage: none
+
+    - name: Install the Composer dependencies
+      if: ${{ steps.check.outputs.dry-run != 'true' && steps.check.outputs.has-composer == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        COMPOSER_AUTH: ${{ inputs.composer-auth }}
+        COMPOSER_OPTIONS: ${{ inputs.composer-options }}
+      run: |
+        read -r -a options <<<"$COMPOSER_OPTIONS"
+        composer install "${options[@]}"
+
+    - name: Set up Node
+      if: ${{ steps.check.outputs.dry-run != 'true' && steps.check.outputs.has-npm == 'true' }}
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    # npm ci stops at the first refused package; this step reports every
+    # dependency from the GitHub Packages registry that the token cannot read.
+    - name: Check access to the GitHub Packages dependencies
+      if: ${{ steps.check.outputs.dry-run != 'true' && steps.check.outputs.has-npm == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.path }}/${{ inputs.npm-working-dir }}
+      env:
+        NODE_AUTH_TOKEN: ${{ inputs.github-token }}
+      run: python3 -I "$GITHUB_ACTION_PATH/scripts/package.py" npm-access --working-dir=.
+
+    - name: Install the npm dependencies
+      if: ${{ steps.check.outputs.dry-run != 'true' && steps.check.outputs.has-npm == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.path }}/${{ inputs.npm-working-dir }}
+      env:
+        NODE_AUTH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        if [ -f package-lock.json ]; then
+          npm ci
+        else
+          echo "::warning::no package-lock.json: npm install resolves an unpinned dependency tree"
+          npm install
+        fi
+
+    - name: Build the shipped assets
+      if: ${{ steps.check.outputs.dry-run != 'true' && steps.check.outputs.has-npm == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.path }}/${{ inputs.npm-working-dir }}
+      env:
+        NPM_BUILD_COMMAND: ${{ inputs.npm-build-command }}
+      run: npm run "$NPM_BUILD_COMMAND"
+
+    - name: Build the ZIP
+      id: build
+      shell: bash
+      env:
+        PACKAGE_PATH: ${{ inputs.path }}
+        ZIP_NAME: ${{ inputs.zip-name }}
+        ARCHIVE_NAME: ${{ steps.check.outputs.archive-name }}
+        EXCLUDES_FILE: ${{ steps.check.outputs.excludes-file }}
+      run: |
+        out_dir="$(mktemp -d "$RUNNER_TEMP/moodle-plugin-package.XXXXXX")"
+        python3 -I "$GITHUB_ACTION_PATH/scripts/package.py" build \
+          --path="$PACKAGE_PATH" \
+          --zip-name="$ZIP_NAME" \
+          --archive-name="$ARCHIVE_NAME" \
+          --excludes-file="$EXCLUDES_FILE" \
+          --out-dir="$out_dir"
+
+    - name: Upload the ZIP as a workflow artifact
+      if: ${{ steps.check.outputs.dry-run != 'true' }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.check.outputs.archive-name }}
+        path: ${{ steps.build.outputs.archive-path }}
+        if-no-files-found: error
+        retention-days: ${{ inputs.retention-days }}
+
+    - name: Upload the ZIP to the GitHub release
+      if: ${{ steps.check.outputs.dry-run != 'true' && steps.check.outputs.upload-release-asset == 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
+        TAG_NAME: ${{ inputs.tag-name }}
+        ARCHIVE_PATH: ${{ steps.build.outputs.archive-path }}
+      run: gh release upload "$TAG_NAME" "$ARCHIVE_PATH" --clobber
