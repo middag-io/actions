@@ -33,7 +33,7 @@ inputs:
     required: false
     default: --no-dev --prefer-dist --optimize-autoloader --no-interaction
   composer-auth:
-    description: COMPOSER_AUTH JSON for private Composer repositories, passed from a secret. Empty for public dependencies.
+    description: COMPOSER_AUTH JSON for private Composer repositories, passed from a secret. Empty keeps a COMPOSER_AUTH already set in the job environment, if any.
     required: false
     default: ""
   dist-excludes-file:
@@ -130,10 +130,16 @@ runs:
       if: ${{ steps.check.outputs.dry-run != 'true' && steps.check.outputs.has-composer == 'true' }}
       shell: bash
       working-directory: ${{ inputs.path }}
+      # The input reaches Composer only when set: a step-level COMPOSER_AUTH,
+      # even empty, would hide one that the caller sets in its job env.
       env:
-        COMPOSER_AUTH: ${{ inputs.composer-auth }}
+        PACKAGE_COMPOSER_AUTH: ${{ inputs.composer-auth }}
         COMPOSER_OPTIONS: ${{ inputs.composer-options }}
       run: |
+        if [ -n "$PACKAGE_COMPOSER_AUTH" ]; then
+          export COMPOSER_AUTH="$PACKAGE_COMPOSER_AUTH"
+        fi
+        unset PACKAGE_COMPOSER_AUTH
         read -r -a options <<<"$COMPOSER_OPTIONS"
         composer install "${options[@]}"
 

@@ -76,6 +76,13 @@ class WiringTest(unittest.TestCase):
             "Upload the ZIP to the GitHub release",
         })
 
+    def test_empty_composer_auth_keeps_the_job_environment(self):
+        # A step-level COMPOSER_AUTH, even empty, would hide one that the
+        # caller sets in the job or workflow env.
+        env = self.steps["Install the Composer dependencies"]["env"]
+        self.assertNotIn("COMPOSER_AUTH", env)
+        self.assertEqual(env.get("PACKAGE_COMPOSER_AUTH"), "${{ inputs.composer-auth }}")
+
     def test_actions_are_pinned_by_sha(self):
         for name, step in self.steps.items():
             if step["uses"]:
