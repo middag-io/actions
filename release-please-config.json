@@ -5,11 +5,23 @@
   "include-v-in-tag": true,
   "tag-separator": "-",
   "separate-pull-requests": false,
+  "versioning": "prerelease",
+  "prerelease-type": "rc",
+  "prerelease": true,
   "packages": {
     "moodle-plugin-package": {
       "component": "moodle-plugin-package",
       "changelog-path": "CHANGELOG.md",
-      "release-as": "1.0.0"
+      "release-as": "1.0.0",
+      "versioning": "default",
+      "prerelease": false
+    },
+    "release-please": {
+      "component": "release-please",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "1.0.0",
+      "versioning": "default",
+      "prerelease": false
     }
   }
 }

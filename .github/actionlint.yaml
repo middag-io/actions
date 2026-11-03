@@ -10,3 +10,6 @@ paths:
   .github/workflows/moodle-plugin-package.yml:
     ignore:
       - 'specifying action "\$/moodle-plugin-package" in invalid format because ref is missing'
+  .github/workflows/release-please.yml:
+    ignore:
+      - 'specifying action "\$/release-please" in invalid format because ref is missing'
