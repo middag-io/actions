@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "separate-pull-requests": false,
+  "packages": {
+    "wp-theme-check": {
+      "component": "wp-theme-check",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "1.0.0"
+    }
+  }
+}

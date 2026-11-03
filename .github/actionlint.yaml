@@ -1,0 +1,11 @@
+# actionlint configuration (https://github.com/rhysd/actionlint/blob/main/docs/config.md).
+#
+# actionlint 1.7.12 does not know the self-repository form "$/<path>" of
+# `uses:`. Each reusable component workflow calls its composite action that
+# way, so that a fork runs its own copy. The ignore below matches only that
+# message, only for the named component, only in its own workflow file.
+# Remove it when actionlint supports the form.
+paths:
+  .github/workflows/wp-theme-check.yml:
+    ignore:
+      - 'specifying action "\$/wp-theme-check" in invalid format because ref is missing'

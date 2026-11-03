@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Pins of third-party actions (SHA and "# vX.Y.Z" comment). Each composite
+  # action directory is added to `directories` when the component lands.
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /wp-theme-check
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: chore
+      include: scope
