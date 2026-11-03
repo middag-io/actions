@@ -178,6 +178,16 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(self.run_plan(), 0)
         self.assertEqual(self.outputs()["version"], "2026110300.01")
 
+    def test_fields_the_check_does_not_read_may_hold_any_expression(self):
+        self.write(
+            "version.php",
+            "<?php\n$plugin->component = 'local_example';\n$plugin->version = 2026110300;\n"
+            "$plugin->supported = [405, 502];\n"
+            "$plugin->dependencies = ['mod_forum' => ANY_VERSION];\n"
+            "$plugin->incompatible = 400;\n$plugin->incompatible = 401;\n",
+        )
+        self.assertEqual(self.run_plan(), 0)
+
     def test_missing_language_file_fails(self):
         (self.workspace / "plugin" / "lang" / "en" / "local_example.php").unlink()
         self.assertEqual(self.run_plan(), 1)

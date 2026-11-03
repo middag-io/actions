@@ -10,7 +10,7 @@ Two forms, one name:
 ## What it does
 
 1. Validates the inputs (`app-repositories` is required with `app-client-id`, and `app-private-key` outside a dry run) and the plugin metadata, before anything else:
-   - `version.php` exists at `path`, starts with `<?php` and sets `$plugin->component` and `$plugin->version` once each, as literal values;
+   - `version.php` exists at `path`, starts with `<?php` and sets `$plugin->component` and `$plugin->version` once each, as literal values; the check reads only `component`, `version`, `requires`, `maturity` and `release`, and leaves other fields (for example a `$plugin->supported` or `$plugin->dependencies` array) alone;
    - `$plugin->component` is a frankenstyle name (`<type>_<name>`) and, when the input `component` is set, equals it;
    - `$plugin->version` (and `$plugin->requires`, when set) is `YYYYMMDDXX` with a valid date, optionally followed by a decimal part;
    - `$plugin->maturity`, when set, is one of `MATURITY_ALPHA`, `MATURITY_BETA`, `MATURITY_RC`, `MATURITY_STABLE`;
@@ -21,6 +21,8 @@ Two forms, one name:
 The commands run without a shell, as argument lists. `composer-options` takes long options only (`--name` or `--name=value`), and `composer-scripts` takes script names only, so an input cannot add a command.
 
 The App token reaches Composer through the `COMPOSER_AUTH` environment variable of the Composer commands only (`github-oauth` for `github.com`). It is never written to a file or to the git configuration.
+
+The token is a `github-oauth` credential for `github.com` only. Composer uses it for the GitHub API, for the archives of GitHub packages and for its own clones of GitHub repositories. A Composer repository on another host that needs a login (for example a private Satis or Packagist with `http-basic`) gets no credential from this component, and neither do `git` commands run by a Composer script.
 
 In a dry run (`dry-run: true`), only steps 1 and 2 run: no credentials, no PHP set-up, no Composer run. The job prints the commands it would run.
 

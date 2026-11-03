@@ -35,6 +35,10 @@ PHP_EXTENSIONS_RE = re.compile(r"^[A-Za-z0-9_:, -]*$")
 COMPOSER_OPTION_RE = re.compile(r"^--[a-z][a-z0-9-]*(=[A-Za-z0-9._/,:-]+)?$")
 COMPOSER_SCRIPT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:_.-]*$")
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+# The fields of version.php that the check reads. Other fields, such as
+# $plugin->supported or $plugin->dependencies, may hold arrays or any other
+# expression and are left alone.
+READ_FIELDS = ("component", "version", "requires", "maturity", "release")
 # The plugin type whose language file is lang/en/<name>.php, not
 # lang/en/<component>.php.
 MODULE_TYPE = "mod"
@@ -145,6 +149,8 @@ def read_version_php(plugin_dir: Path) -> dict[str, str]:
     fields: dict[str, str] = {}
     for match in ASSIGNMENT_RE.finditer(source):
         field = match.group("field")
+        if field not in READ_FIELDS:
+            continue
         if field in fields:
             raise CheckError(f"version.php sets $plugin->{field} more than once")
         fields[field] = php_literal(field, match.group("value"))
