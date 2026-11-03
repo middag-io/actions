@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/middag-io/actions/compare/wp-plugin-release-v1.0.0...wp-plugin-release-v1.0.1) (2026-11-03)
+
+
+### Code Refactoring
+
+* **wp-plugin-release:** install the Composer dependencies with php-composer-setup ([d721ba4](https://github.com/middag-io/actions/commit/d721ba4843f93eccf99cc5eb783d3358d99a6b08))
+
 ## 1.0.0 (2026-11-03)
 
 
