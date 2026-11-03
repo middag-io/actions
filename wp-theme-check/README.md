@@ -21,18 +21,18 @@ Nothing. It writes only inside the runner: `vendor/` in the theme directory, and
 
 Reusable workflow (`workflow_call`):
 
-| Input | Type | Default | Description |
-| --- | --- | --- | --- |
-| `php-versions` | string | `["8.3", "8.4"]` | JSON array of the PHP versions to check with, one job each. |
-| `php-extensions` | string | `mbstring, xml` | PHP extensions to install, separated by commas (setup-php syntax). |
-| `has-cs-fixer` | boolean | `true` | Run PHP CS Fixer in dry-run mode. |
-| `has-phpstan` | boolean | `true` | Run PHPStan. |
-| `has-rector` | boolean | `false` | Run Rector in dry-run mode. |
-| `working-directory` | string | `.` | Theme directory that holds `composer.json`, relative to the checkout. |
-| `composer-auth-host` | string | variable `WP_THEME_CHECK_COMPOSER_AUTH_HOST` | Host of a private Composer repository that needs HTTP basic auth. Empty for none. |
-| `composer-auth-username` | string | variable `WP_THEME_CHECK_COMPOSER_AUTH_USERNAME` | HTTP basic username for `composer-auth-host`. |
-| `dry-run` | boolean | `false` | Validate the inputs and the theme directory and print the plan only: no PHP setup, no install, no credentials. |
-| `timeout-minutes` | number | `15` | Timeout of each job, in minutes. |
+| Input                    | Type    | Default                                          | Description                                                                                                    |
+| ------------------------ | ------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `php-versions`           | string  | `["8.3", "8.4"]`                                 | JSON array of the PHP versions to check with, one job each.                                                    |
+| `php-extensions`         | string  | `mbstring, xml`                                  | PHP extensions to install, separated by commas (setup-php syntax).                                             |
+| `has-cs-fixer`           | boolean | `true`                                           | Run PHP CS Fixer in dry-run mode.                                                                              |
+| `has-phpstan`            | boolean | `true`                                           | Run PHPStan.                                                                                                   |
+| `has-rector`             | boolean | `false`                                          | Run Rector in dry-run mode.                                                                                    |
+| `working-directory`      | string  | `.`                                              | Theme directory that holds `composer.json`, relative to the checkout.                                          |
+| `composer-auth-host`     | string  | variable `WP_THEME_CHECK_COMPOSER_AUTH_HOST`     | Host of a private Composer repository that needs HTTP basic auth. Empty for none.                              |
+| `composer-auth-username` | string  | variable `WP_THEME_CHECK_COMPOSER_AUTH_USERNAME` | HTTP basic username for `composer-auth-host`.                                                                  |
+| `dry-run`                | boolean | `false`                                          | Validate the inputs and the theme directory and print the plan only: no PHP setup, no install, no credentials. |
+| `timeout-minutes`        | number  | `15`                                             | Timeout of each job, in minutes.                                                                               |
 
 The composite action takes the same inputs, with these differences: `php-version` (one version, required) in place of `php-versions`; `composer-auth-password` as an input; no `timeout-minutes`; booleans as the strings `true` or `false`; no variable fallback (README of the repository, "Variables and secrets").
 
@@ -40,17 +40,17 @@ At least one of `has-cs-fixer`, `has-phpstan` and `has-rector` must be `true`. T
 
 ## Outputs
 
-| Output | Description |
-| --- | --- |
+| Output   | Description                                                                             |
+| -------- | --------------------------------------------------------------------------------------- |
 | `checks` | Enabled checks, separated by spaces, in run order: `php-cs-fixer`, `phpstan`, `rector`. |
 
 ## Variables and secrets
 
-| Name | Kind | Read by | Required |
-| --- | --- | --- | --- |
-| `WP_THEME_CHECK_COMPOSER_AUTH_HOST` | variable | default of `composer-auth-host` | only for a private Composer repository |
-| `WP_THEME_CHECK_COMPOSER_AUTH_USERNAME` | variable | default of `composer-auth-username` | when the host is set |
-| `WP_THEME_CHECK_COMPOSER_AUTH_PASSWORD` | secret | passed by the caller as `composer-auth-password` | when the host is set, except in a dry run |
+| Name                                    | Kind     | Read by                                          | Required                                  |
+| --------------------------------------- | -------- | ------------------------------------------------ | ----------------------------------------- |
+| `WP_THEME_CHECK_COMPOSER_AUTH_HOST`     | variable | default of `composer-auth-host`                  | only for a private Composer repository    |
+| `WP_THEME_CHECK_COMPOSER_AUTH_USERNAME` | variable | default of `composer-auth-username`              | when the host is set                      |
+| `WP_THEME_CHECK_COMPOSER_AUTH_PASSWORD` | secret   | passed by the caller as `composer-auth-password` | when the host is set, except in a dry run |
 
 The reusable workflow declares the secret `composer-auth-password`. The caller passes it with one explicit line; never `secrets: inherit`. In a dry run the workflow does not pass the secret on.
 

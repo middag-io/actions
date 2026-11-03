@@ -6,9 +6,9 @@ Public repository, maintained by MIDDAG. Licensed under the [Apache License 2.0]
 
 ## Catalog
 
-| Component | Kind | What it does                                        | Since |
-| --------- | ---- | --------------------------------------------------- | ----- |
-| —         | —    | No component yet. Components enter by pull request. | —     |
+| Component                                    | Kind                                   | What it does                                                                                                                        | Since      |
+| -------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| [`wp-theme-check`](wp-theme-check/README.md) | reusable workflow and composite action | checks a WordPress theme with its own PHP CS Fixer, PHPStan and Rector, one job per PHP version; publishes nothing; deletes nothing | unreleased |
 
 Every component has its own `README.md` next to its `action.yml`. That README lists what the component does, what it **deletes**, its inputs, outputs and secrets, the permissions the caller must grant, and a call example pinned by SHA.
 
