@@ -138,14 +138,6 @@ runs:
           --dry-run="$DRY_RUN" \
           --has-app-credentials="$HAS_APP_CREDENTIALS"
 
-    - name: Set up PHP
-      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
-      with:
-        php-version: ${{ inputs.php-version }}
-        extensions: ${{ inputs.php-extensions }}
-        coverage: none
-        tools: composer
-
     - name: Set up Node.js with the public npm registry
       if: ${{ inputs.has-ui == 'true' && inputs.npm-github-packages-scope == '' }}
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -183,12 +175,35 @@ runs:
           --path="$PLUGIN_PATH" \
           --ui-check-file="$UI_CHECK_FILE"
 
-    - name: Install the Composer dependencies
+    # php-composer-setup comes from the same repository and commit as this
+    # action. It runs after the UI build, so that no npm script runs while
+    # the Composer credentials are on disk, and writes them to the global
+    # Composer auth.json of the runner, outside the plugin tree. Without
+    # Strauss it installs the production dependencies; with Strauss it
+    # installs every dependency, and the next step prefixes them and
+    # reinstalls without the development ones. The next step also runs the
+    # plugin's own scripts/strip-lock-tokens.php, when it has one. The download cache stays off:
+    # a release archive is built only from packages that Composer downloads
+    # in this run.
+    - name: Set up PHP and install the Composer dependencies
+      if: ${{ steps.validate.outputs.has-composer-json == 'true' }}
+      uses: $/php-composer-setup
+      with:
+        php-version: ${{ inputs.php-version }}
+        php-extensions: ${{ inputs.php-extensions }}
+        coverage: none
+        working-directory: ${{ inputs.path }}
+        composer-auth: ${{ inputs.composer-auth }}
+        no-dev: ${{ inputs.has-strauss != 'true' }}
+        optimize-autoloader: "true"
+        cache: "false"
+
+    - name: Finish the Composer dependencies
+      if: ${{ steps.validate.outputs.has-composer-json == 'true' }}
       shell: bash
       working-directory: ${{ inputs.path }}
       env:
         HAS_STRAUSS: ${{ inputs.has-strauss }}
-        COMPOSER_AUTH: ${{ inputs.composer-auth }}
       run: bash "$GITHUB_ACTION_PATH/scripts/composer-install.sh"
 
     - name: Build the archive

@@ -4,7 +4,7 @@ Builds the distribution ZIP of a WordPress plugin and attaches it to the GitHub 
 
 1. validates every input before any build step (names, paths, exclude patterns, the Composer authentication JSON, the App credentials outside a dry run);
 2. builds the UI in `<path>/ui` with `npm ci` and `npm run build` (only with `has-ui: true`) and checks that `ui-check-file` exists;
-3. installs the production Composer dependencies (skipped when the plugin has no `composer.json`), with an optional Strauss pass, then runs the plugin's own `scripts/strip-lock-tokens.php` when it exists;
+3. sets up PHP and installs the production Composer dependencies with the [`php-composer-setup`](../php-composer-setup/README.md) action of the same release (skipped when the plugin has no `composer.json`), with an optional Strauss pass, then runs the plugin's own `scripts/strip-lock-tokens.php` when it exists;
 4. writes `<zip-name>-<tag-name>.zip` from the plugin tree, minus the excluded paths, and prints its file listing;
 5. creates a GitHub App token narrowed to the calling repository and to `contents: write`, after every build step, and uploads the archive to the release of `tag-name`.
 
@@ -24,6 +24,7 @@ Two forms, one name:
 - **Replaces** the asset named `<zip-name>-<tag-name>.zip` on the release of `tag-name` when one exists (`gh release upload --clobber`), so that a re-run of the same release ends with one archive. Other assets and the release itself are not touched.
 - **Deletes nothing else.** It never deletes a release, a tag or another asset.
 - In the workspace, the build writes what `npm ci`, `npm run build` and `composer install` write (`ui/node_modules`, build output, `vendor/`, `composer.lock`), as the plugin's own build would. The archive is written under `$RUNNER_TEMP`, outside the plugin tree.
+- On the runner, `php-composer-setup` writes the entries of `composer-auth` to the global Composer `auth.json` (mode `0600`, outside the plugin tree), where they stay until the job ends.
 
 ## Archive contents
 
@@ -68,7 +69,7 @@ The secrets are stored as `WP_PLUGIN_RELEASE_APP_PRIVATE_KEY` and `WP_PLUGIN_REL
 | `ui-check-file` | both | no | `assets/dist/app.js` | relative to `path`; checked only with `has-ui` |
 | `has-strauss` | both | no | `false` | full install, `composer strauss`, reinstall without dev dependencies and without scripts, `dump-autoload --optimize` |
 | `node-version` | both | no | `22` | |
-| `php-version` | both | no | `8.4` | |
+| `php-version` | both | no | `8.4` | `X.Y`, `latest`, `nightly` or `pre-installed`, as `php-composer-setup` takes it |
 | `php-extensions` | both | no | `mbstring, xml, json, curl` | as `shivammathur/setup-php` takes them; list every extension the plugin's Composer install needs |
 | `extra-zip-excludes` | both | no | empty | see Archive contents |
 | `extra-zip-excludes-file` | both | no | empty | relative to `path`; must be a regular file when set |
@@ -179,4 +180,6 @@ Find `<sha40>` with `gh api repos/<owner>/actions/git/ref/tags/wp-plugin-release
 
 - The archive is written by `scripts/wp_plugin_release.py` (Python standard library, `zipfile`): files only, sorted, fixed timestamps, permissions kept without write bits for group and others. Exclude patterns use `fnmatch` on paths relative to `path`, the same matching as `zip -x` for these patterns.
 - `setup-node` runs with `package-manager-cache: false`: a release build does not restore a dependency cache.
-- The Composer authentication reaches Composer through the `COMPOSER_AUTH` environment variable of one step; no `auth.json` is written in the plugin tree.
+- PHP, the Composer credentials and the first `composer install` come from `php-composer-setup` of the same repository and commit (`uses: $/php-composer-setup`), after the UI build, so that no npm script runs while the credentials are on disk. Without Strauss it runs `composer install --no-interaction --prefer-dist --no-dev --optimize-autoloader`; with Strauss it installs every dependency, and `scripts/composer-install.sh` runs `composer strauss` and the reinstall without development dependencies.
+- The Composer download cache of `php-composer-setup` stays off (`cache: "false"`): a release archive is built only from packages downloaded in the same run.
+- The Composer authentication goes to the global Composer `auth.json` of the runner, never to the plugin tree, and `auth.json` is also in the always-excluded list of the archive.

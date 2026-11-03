@@ -19,6 +19,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 COMPONENT = os.path.dirname(HERE)
 ACTION = os.path.join(COMPONENT, "action.yml")
+SETUP_ACTION = os.path.join(os.path.dirname(COMPONENT), "php-composer-setup", "action.yml")
 COMPOSER_INSTALL = os.path.join(COMPONENT, "scripts", "composer-install.sh")
 STEP_RE = re.compile(r"^    - name: (.+)$")
 KEY_RE = re.compile(r"^      ([a-z-]+):\s*(.*)$")
@@ -26,7 +27,10 @@ ENV_RE = re.compile(r"^        ([A-Z0-9_]+): (.*)$")
 SECRET_INPUT_RE = re.compile(r"inputs\.(app-private-key|composer-auth)\b")
 
 VALIDATE = "Check the inputs"
-COMPOSER = "Install the Composer dependencies"
+SETUP = "Set up PHP and install the Composer dependencies"
+FINISH = "Finish the Composer dependencies"
+BUILD_UI = "Build the UI"
+WITH_RE = re.compile(r"^([a-z-]+): (.*)$")
 ARCHIVE = "Build the archive"
 TOKEN = "Create the GitHub App token"
 UPLOAD = "Upload the archive to the release"
@@ -91,12 +95,44 @@ class WiringTest(unittest.TestCase):
             with self.subTest(step=name):
                 self.assertFalse(any("inputs.app-private-key" in v for v in values if name != VALIDATE))
 
-    def test_composer_auth_reaches_only_validation_and_composer(self):
+    def test_composer_auth_reaches_only_validation_and_setup(self):
         for name, step in self.steps.items():
             values = list(step["env"].values()) + [step["with"], step["run"]]
             uses_auth = any("inputs.composer-auth" in v for v in values)
             with self.subTest(step=name):
-                self.assertEqual(uses_auth, name in (VALIDATE, COMPOSER))
+                self.assertEqual(uses_auth, name in (VALIDATE, SETUP))
+
+    def setup_with(self):
+        return dict(WITH_RE.match(line).groups() for line in self.steps[SETUP]["with"].splitlines() if line)
+
+    def test_setup_calls_php_composer_setup_of_this_commit_after_the_ui_build(self):
+        self.assertEqual(self.steps[SETUP]["uses"], "$/php-composer-setup")
+        self.assertLess(self.names.index(BUILD_UI), self.names.index(SETUP))
+        self.assertEqual(self.names.index(SETUP) + 1, self.names.index(FINISH))
+        for name in (SETUP, FINISH):
+            with self.subTest(step=name):
+                self.assertEqual(self.steps[name]["if"], "${{ steps.validate.outputs.has-composer-json == 'true' }}")
+
+    def test_setup_passes_only_inputs_of_php_composer_setup(self):
+        inputs, inside = set(), False
+        with open(SETUP_ACTION, encoding="utf-8") as handle:
+            for line in handle.read().splitlines():
+                if line == "inputs:":
+                    inside = True
+                elif inside and line and not line.startswith(" "):
+                    break
+                elif inside and re.match(r"^  [a-z-]+:$", line):
+                    inputs.add(line.strip()[:-1])
+        self.assertLessEqual(set(self.setup_with()), inputs)
+
+    def test_setup_installs_for_production_without_cache(self):
+        passed = self.setup_with()
+        self.assertEqual(passed["working-directory"], "${{ inputs.path }}")
+        self.assertEqual(passed["composer-auth"], "${{ inputs.composer-auth }}")
+        self.assertEqual(passed["no-dev"], "${{ inputs.has-strauss != 'true' }}")
+        self.assertEqual(passed["optimize-autoloader"], '"true"')
+        self.assertEqual(passed["cache"], '"false"')
+        self.assertNotIn("dry-run", passed)
 
     def test_no_expression_inside_run(self):
         for name, step in self.steps.items():
@@ -115,7 +151,7 @@ class WiringTest(unittest.TestCase):
 
     def test_third_party_actions_are_pinned(self):
         for name, step in self.steps.items():
-            if step["uses"]:
+            if step["uses"] and not step["uses"].startswith("$/"):
                 with self.subTest(step=name):
                     self.assertRegex(step["uses"], r"^[\w.-]+/[\w.-]+@[0-9a-f]{40} # v?\d+\.\d+\.\d+$")
 
@@ -205,10 +241,8 @@ class ComposerInstallTest(unittest.TestCase):
         open(os.path.join(self.work, "composer.json"), "w").close()
         result, calls = self.run_script("false")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            calls,
-            ["composer --version", "composer install --no-dev --optimize-autoloader --no-interaction --no-progress"],
-        )
+        # php-composer-setup has already run the production install.
+        self.assertEqual(calls, ["composer --version"])
 
     def test_strauss_then_reinstall_without_dev_and_strip_tokens(self):
         open(os.path.join(self.work, "composer.json"), "w").close()
@@ -220,7 +254,6 @@ class ComposerInstallTest(unittest.TestCase):
             calls,
             [
                 "composer --version",
-                "composer install --optimize-autoloader --no-interaction --no-progress",
                 "composer strauss --no-interaction",
                 "composer install --no-dev --optimize-autoloader --no-scripts --no-interaction --no-progress",
                 "composer dump-autoload --optimize --no-interaction",
