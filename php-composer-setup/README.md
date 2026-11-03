@@ -18,9 +18,10 @@ In a dry run it only validates the inputs and reports the plan: no PHP setup, no
 
 ## What it deletes or overwrites
 
-- Deletes nothing.
-- Overwrites, in the global Composer `auth.json` of the runner, the `http-basic` entry of `http-basic-host` and the `github-oauth` entry of `github.com`. Other entries stay.
-- `composer install` creates or replaces `vendor/` in the working directory, and writes `composer.lock` there when the repository has none.
+- Deletes no file of its own. `composer install` removes from `vendor/` every package that the lock file does not list; with `no-dev: true` that includes the development packages a previous install left there.
+- Overwrites, in the global Composer `auth.json` of the runner, the `http-basic` entry of `http-basic-host` and the `github-oauth` entry of `github.com`. Other entries stay. Without `github-token`, the `github-oauth` entry that `shivammathur/setup-php` writes (the job token) stays.
+- `shivammathur/setup-php` changes the runner for the rest of the job: it switches the default `php` and `composer`, installs the extensions and writes their `php.ini` settings.
+- `composer install` creates or replaces `vendor/` in the working directory, and writes `composer.lock` there when the repository has none. It runs the install scripts of the calling repository (`post-install-cmd` and the others), which can change more files.
 
 The credentials stay in the runner's Composer home until the job ends. They are never written inside the checkout, so a later step that archives the checkout does not pick them up.
 

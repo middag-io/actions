@@ -29,6 +29,7 @@ USERNAME_RE = re.compile(r"^[^\s:]{1,256}$")
 BOOLEAN_VALUES = ("true", "false")
 GITHUB_HOST = "github.com"
 AUTH_FILE_MODE = 0o600
+MERGED_AUTH_KEYS = ("http-basic", "github-oauth")
 
 
 class InputError(ValueError):
@@ -141,6 +142,9 @@ def read_auth_file(path):
         raise InputError(f"the existing Composer auth.json is not valid JSON (line {error.lineno})") from None
     if not isinstance(data, dict):
         raise InputError("the existing Composer auth.json is not a JSON object")
+    for key in MERGED_AUTH_KEYS:
+        if key in data and not isinstance(data[key], dict):
+            raise InputError(f"the {key} entry of the existing Composer auth.json is not a JSON object")
     return data
 
 
@@ -148,6 +152,9 @@ def write_auth_file(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, AUTH_FILE_MODE)
+    # O_CREAT applies the mode only to a new file: a leftover temporary file
+    # keeps its own mode, so set it before any credential is written.
+    os.fchmod(descriptor, AUTH_FILE_MODE)
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         json.dump(data, handle, indent=2, sort_keys=True)
         handle.write("\n")

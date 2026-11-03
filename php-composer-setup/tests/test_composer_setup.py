@@ -195,6 +195,25 @@ class AuthTest(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertFalse((Path(home) / "auth.json").exists())
 
+    def test_auth_keeps_private_mode_over_stale_temporary_file(self):
+        env = {"HTTP_BASIC_HOST": "", "COMPOSER_GITHUB_TOKEN": "token-value"}
+        with tempfile.TemporaryDirectory() as home, mock.patch.dict(os.environ, env):
+            stale = Path(home) / "auth.json.tmp"
+            stale.write_text("{}")
+            stale.chmod(0o644)
+            code, _ = run_quietly(composer_setup.main, ["auth", f"--composer-home={home}"])
+            mode = stat.S_IMODE((Path(home) / "auth.json").stat().st_mode)
+        self.assertEqual(code, 0)
+        self.assertEqual(mode, 0o600)
+
+    def test_auth_rejects_existing_entry_that_is_not_an_object(self):
+        env = {"HTTP_BASIC_HOST": "repo.example.com", "HTTP_BASIC_USERNAME": "user", "HTTP_BASIC_PASSWORD": "p", "COMPOSER_GITHUB_TOKEN": ""}
+        with tempfile.TemporaryDirectory() as home, mock.patch.dict(os.environ, env):
+            (Path(home) / "auth.json").write_text('{"http-basic": []}')
+            code, printed = run_quietly(composer_setup.main, ["auth", f"--composer-home={home}"])
+        self.assertEqual(code, 1)
+        self.assertIn("http-basic", printed)
+
     def test_auth_rejects_invalid_existing_file(self):
         env = {"HTTP_BASIC_HOST": "", "COMPOSER_GITHUB_TOKEN": "token-value"}
         with tempfile.TemporaryDirectory() as home, mock.patch.dict(os.environ, env):
