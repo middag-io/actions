@@ -2,6 +2,8 @@
 
 Generic reusable GitHub Actions components (composite actions and reusable workflows) for any adopter. This repository is public. The rules for users of the repository are in [README.md](README.md). This file holds the rules for changing it.
 
+Claude Code and Codex read this file; there is no `CLAUDE.md` in this repository.
+
 ## Language
 
 All files, comments, commit messages and pull requests are in English.
