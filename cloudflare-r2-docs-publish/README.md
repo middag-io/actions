@@ -82,7 +82,7 @@ The composite action reads no variable: it receives every value through `with:`.
 | `version` | both | no | `latest` of `manifest.json` | `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, no `..` |
 | `kinds` | both | no | `docs,xref,schemas` | kind names `^[a-z0-9][a-z0-9-]{0,62}$`, separated by commas or new lines; keep it to the kinds of the bucket's storage contract |
 | `bucket` | both | yes | variable (reusable) | `^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$` |
-| `endpoint` | composite | unless dry run | empty | `https://<host>[:port]`, no path; for R2 `https://<account-id>.r2.cloudflarestorage.com`; pass from a secret; masked in the logs |
+| `endpoint` | composite | unless dry run | empty | `https://<host>[:port]`, no path; for R2 `https://<account-id>.r2.cloudflarestorage.com`; pass from a secret: GitHub masks a secret in the logs, while a variable or a literal is printed in the step header |
 | `write-manifest` | both | no | `true` | write `<package-name>/manifest.json` after the version objects |
 | `dry-run` | both | no | `false` | validate and list only |
 | `timeout-minutes` | reusable | no | `15` | job timeout |
@@ -108,6 +108,10 @@ The composite action reads no variable: it receives every value through `with:`.
 ## Permissions
 
 The job needs `contents: read` only: the artifact download and the R2 writes do not use the GitHub token.
+
+## Concurrency
+
+The reusable workflow runs one publication at a time per package (`cloudflare-r2-docs-publish-<package-name>-publish`) and never cancels a running one. GitHub keeps only one pending job per group: when a third publication starts while one runs and one waits, the waiting one is cancelled. Run it again; its version is not yet in the bucket. A dry run has its own group per run.
 
 ## Calling the reusable workflow
 

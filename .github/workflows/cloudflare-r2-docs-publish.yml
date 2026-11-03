@@ -92,9 +92,10 @@ jobs:
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
-    # One publication queue per package; a dry run gets its own group per run
-    # and never waits for or replaces a publication. A queued publication is
-    # never cancelled: every version must reach the bucket.
+    # One publication at a time per package; a dry run gets its own group per
+    # run and never waits for or replaces a publication. A running publication
+    # is never cancelled. GitHub keeps only one pending job per group: a third
+    # publication replaces the one that waits, which then has to run again.
     concurrency:
       group: cloudflare-r2-docs-publish-${{ inputs.package-name || github.repository }}-${{ inputs.dry-run && github.run_id || 'publish' }}
       cancel-in-progress: false
