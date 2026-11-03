@@ -9,6 +9,12 @@
   "prerelease-type": "rc",
   "prerelease": true,
   "packages": {
+    "moodle-plugin-package": {
+      "component": "moodle-plugin-package",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
     "release-please": {
       "component": "release-please",
       "changelog-path": "CHANGELOG.md",

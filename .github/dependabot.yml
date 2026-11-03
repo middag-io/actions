@@ -5,6 +5,7 @@ updates:
   - package-ecosystem: github-actions
     directories:
       - /
+      - /moodle-plugin-package
       - /release-please
     schedule:
       interval: weekly

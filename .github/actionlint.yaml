@@ -4,8 +4,12 @@
 # `uses:`. Each reusable component workflow calls its composite action that
 # way, so that a fork runs its own copy. The ignore below matches only that
 # message, only for the named component, only in its own workflow file.
-# Remove it when actionlint supports the form.
+# Remove it when actionlint supports the form. While it is here, actionlint
+# skips the with: keys of that step; check-genericity.sh checks them instead.
 paths:
+  .github/workflows/moodle-plugin-package.yml:
+    ignore:
+      - 'specifying action "\$/moodle-plugin-package" in invalid format because ref is missing'
   .github/workflows/release-please.yml:
     ignore:
       - 'specifying action "\$/release-please" in invalid format because ref is missing'

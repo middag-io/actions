@@ -8,6 +8,7 @@ Public repository, maintained by MIDDAG. Licensed under the [Apache License 2.0]
 
 | Component | Kind | What it does                                        | Since |
 | --------- | ---- | --------------------------------------------------- | ----- |
+| [`moodle-plugin-package`](moodle-plugin-package/README.md) | composite action and reusable workflow | packages a Moodle plugin tree as a deterministic installable ZIP after checking `version.php`; uploads it as a workflow artifact and, from the composite action, to the existing release of a tag; deletes only the release asset of the same name, which it replaces | unreleased |
 | [`release-please`](release-please/README.md) | composite action and reusable workflow | runs release-please in manifest mode with a GitHub App installation token limited to the calling repository: opens or updates the release pull request, then creates the tags and releases; deletes no branch, tag or file, force-pushes the release branch | unreleased |
 
 Every component has its own `README.md` next to its `action.yml`. That README lists what the component does, what it **deletes**, its inputs, outputs and secrets, the permissions the caller must grant, and a call example pinned by SHA.
