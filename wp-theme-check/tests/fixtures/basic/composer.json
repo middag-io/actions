@@ -1,0 +1,13 @@
+{
+    "name": "example/example-theme",
+    "description": "Fixture theme for the wp-theme-check dry run.",
+    "type": "wordpress-theme",
+    "license": "Apache-2.0",
+    "require": {
+        "php": ">=8.3"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.0",
+        "phpstan/phpstan": "^2.0"
+    }
+}

@@ -13,6 +13,7 @@ updates:
       - /php-composer-setup
       - /release-please
       - /wp-plugin-check
+      - /wp-theme-check
     schedule:
       interval: weekly
     cooldown:

@@ -56,6 +56,12 @@
       "changelog-path": "CHANGELOG.md",
       "versioning": "default",
       "prerelease": false
+    },
+    "wp-theme-check": {
+      "component": "wp-theme-check",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
     }
   }
 }

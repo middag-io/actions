@@ -537,6 +537,41 @@ jobs:
             exit 1
           fi
 
+  # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on the fixture theme. A dry run: no PHP setup, no install, no
+  # credentials.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-wp-theme-check:
+    name: dry-run-wp-theme-check
+    permissions:
+      contents: read
+    uses: ./.github/workflows/wp-theme-check.yml # zizmor: ignore[self-repository]
+    with:
+      php-versions: '["8.3", "8.4"]'
+      working-directory: wp-theme-check/tests/fixtures/basic
+      composer-auth-host: packages.example.com
+      composer-auth-username: example
+      dry-run: true
+
+  # The dry run must plan the default checks, in run order.
+  dry-run-check-wp-theme-check:
+    name: dry-run-check-wp-theme-check
+    needs: dry-run-wp-theme-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Compare the dry-run outputs with the expected checks
+        env:
+          CHECKS: ${{ needs.dry-run-wp-theme-check.outputs.checks }}
+        run: |
+          echo "checks=$CHECKS"
+          if [ "$CHECKS" != "php-cs-fixer phpstan" ]; then
+            echo "::error::dry-run outputs differ: expected checks=php-cs-fixer phpstan"
+            exit 1
+          fi
+
   ci-gate:
     name: ci-gate
     needs:
@@ -561,6 +596,8 @@ jobs:
       - dry-run-check-php-composer-setup
       - dry-run-wp-plugin-check
       - dry-run-check-wp-plugin-check
+      - dry-run-wp-theme-check
+      - dry-run-check-wp-theme-check
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5

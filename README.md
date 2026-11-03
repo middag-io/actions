@@ -16,6 +16,7 @@ Public repository, maintained by MIDDAG. Licensed under the [Apache License 2.0]
 | [`php-composer-setup`](php-composer-setup/README.md) | composite action and reusable workflow | sets up PHP and Composer in the current job, writes the Composer credentials outside the checkout and runs `composer install`; deletes nothing | unreleased |
 | [`release-please`](release-please/README.md) | composite action and reusable workflow | runs release-please in manifest mode with a GitHub App installation token limited to the calling repository: opens or updates the release pull request, then creates the tags and releases; deletes no branch, tag or file, force-pushes the release branch | unreleased |
 | [`wp-plugin-check`](wp-plugin-check/README.md) | composite action and reusable workflow | validates a WordPress plugin in a change: `composer install` and the Composer scripts named by the caller, one job per PHP version, and optionally `npm ci`, `tsc --noEmit` and the npm scripts of its UI directory; publishes and deletes nothing | unreleased |
+| [`wp-theme-check`](wp-theme-check/README.md) | composite action and reusable workflow | checks a WordPress theme with its own PHP CS Fixer, PHPStan and Rector, one job per PHP version; publishes nothing; deletes nothing | unreleased |
 
 Every component has its own `README.md` next to its `action.yml`. That README lists what the component does, what it **deletes**, its inputs, outputs and secrets, the permissions the caller must grant, and a call example pinned by SHA.
 
