@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/middag-io/actions/compare/wp-theme-check-v1.0.0...wp-theme-check-v1.0.1) (2026-11-03)
+
+
+### Code Refactoring
+
+* **wp-theme-check:** set up PHP and Composer with php-composer-setup ([4fa5ca4](https://github.com/middag-io/actions/commit/4fa5ca43be197b6a1155000fcad97d55c458ce27))
+
 ## 1.0.0 (2026-11-03)
 
 
