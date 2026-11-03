@@ -1,0 +1,141 @@
+# Composite action: sets up PHP and Composer in the current job, writes the
+# Composer credentials and installs the dependencies of the calling
+# repository. See README.md next to this file for the inputs, what the action
+# overwrites and the permissions it needs.
+name: PHP Composer setup
+description: >-
+  Sets up PHP with shivammathur/setup-php, writes HTTP Basic and GitHub
+  credentials to the global Composer auth.json, and runs composer install in
+  the working directory.
+
+inputs:
+  php-version:
+    description: PHP version for shivammathur/setup-php (8.4, latest, nightly or pre-installed).
+    required: true
+  php-extensions:
+    description: PHP extensions, comma-separated, in the shivammathur/setup-php syntax.
+    required: false
+    default: mbstring, xml
+  coverage:
+    description: Code coverage driver (none, xdebug, xdebug2 or pcov).
+    required: false
+    default: none
+  working-directory:
+    description: Directory that holds composer.json, relative to the checkout.
+    required: false
+    default: "."
+  http-basic-host:
+    description: >-
+      Host of a Composer repository that needs HTTP Basic authentication. Empty:
+      no HTTP Basic credentials. Needs http-basic-username and, outside a dry
+      run, http-basic-password.
+    required: false
+    default: ""
+  http-basic-username:
+    description: HTTP Basic user name for http-basic-host.
+    required: false
+    default: ""
+  http-basic-password:
+    description: HTTP Basic password for http-basic-host, passed from a secret.
+    required: false
+    default: ""
+  github-token:
+    description: >-
+      Token that Composer uses for github.com (private VCS repositories and API
+      rate limits), passed from a secret or a GitHub App token step. Empty: the
+      token that shivammathur/setup-php configures is kept.
+    required: false
+    default: ""
+  install:
+    description: Run composer install (true or false).
+    required: false
+    default: "true"
+  no-dev:
+    description: Pass --no-dev to composer install (true or false).
+    required: false
+    default: "false"
+  optimize-autoloader:
+    description: Pass --optimize-autoloader to composer install (true or false).
+    required: false
+    default: "false"
+  dry-run:
+    description: Validate the inputs and report the plan only; no PHP setup, no credentials written, no install (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  php-version:
+    description: PHP version installed, in SemVer format (empty in a dry run).
+    value: ${{ steps.setup-php.outputs.php-version }}
+  auth-entries:
+    description: Credentials configured, comma-separated (http-basic:<host>, github-oauth:github.com); planned ones in a dry run.
+    value: ${{ steps.check.outputs.auth-entries }}
+  install-command:
+    description: The composer install command, run or planned (empty when install is false).
+    value: ${{ steps.check.outputs.install-command }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs
+      id: check
+      shell: bash
+      env:
+        PHP_VERSION: ${{ inputs.php-version }}
+        PHP_EXTENSIONS: ${{ inputs.php-extensions }}
+        COVERAGE: ${{ inputs.coverage }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        HTTP_BASIC_HOST: ${{ inputs.http-basic-host }}
+        HTTP_BASIC_USERNAME: ${{ inputs.http-basic-username }}
+        HAS_HTTP_BASIC_PASSWORD: ${{ inputs.http-basic-password != '' }}
+        HAS_GITHUB_TOKEN: ${{ inputs.github-token != '' }}
+        INSTALL: ${{ inputs.install }}
+        NO_DEV: ${{ inputs.no-dev }}
+        OPTIMIZE_AUTOLOADER: ${{ inputs.optimize-autoloader }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/composer_setup.py" check \
+          --php-version="$PHP_VERSION" \
+          --php-extensions="$PHP_EXTENSIONS" \
+          --coverage="$COVERAGE" \
+          --working-directory="$WORKING_DIRECTORY" \
+          --http-basic-host="$HTTP_BASIC_HOST" \
+          --http-basic-username="$HTTP_BASIC_USERNAME" \
+          --has-http-basic-password="$HAS_HTTP_BASIC_PASSWORD" \
+          --has-github-token="$HAS_GITHUB_TOKEN" \
+          --install="$INSTALL" \
+          --no-dev="$NO_DEV" \
+          --optimize-autoloader="$OPTIMIZE_AUTOLOADER" \
+          --dry-run="$DRY_RUN"
+
+    - name: Set up PHP
+      id: setup-php
+      if: ${{ inputs.dry-run != 'true' }}
+      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+      with:
+        php-version: ${{ inputs.php-version }}
+        extensions: ${{ inputs.php-extensions }}
+        coverage: ${{ inputs.coverage }}
+
+    - name: Write the Composer credentials
+      if: ${{ inputs.dry-run != 'true' && (inputs.http-basic-host != '' || inputs.github-token != '') }}
+      shell: bash
+      env:
+        HTTP_BASIC_HOST: ${{ inputs.http-basic-host }}
+        HTTP_BASIC_USERNAME: ${{ inputs.http-basic-username }}
+        HTTP_BASIC_PASSWORD: ${{ inputs.http-basic-password }}
+        COMPOSER_GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: python3 -I "$GITHUB_ACTION_PATH/scripts/composer_setup.py" auth
+
+    - name: Install the Composer dependencies
+      if: ${{ inputs.dry-run != 'true' && inputs.install == 'true' }}
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        NO_DEV: ${{ inputs.no-dev }}
+        OPTIMIZE_AUTOLOADER: ${{ inputs.optimize-autoloader }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/composer_setup.py" install \
+          --working-directory="$WORKING_DIRECTORY" \
+          --no-dev="$NO_DEV" \
+          --optimize-autoloader="$OPTIMIZE_AUTOLOADER"
