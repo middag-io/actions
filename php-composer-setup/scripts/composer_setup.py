@@ -10,7 +10,8 @@ only; run as ``python3 -I``. Subcommands:
   command line.
 - ``install``: runs ``composer install`` in the working directory.
 
-Secrets are never printed: the ``auth`` subcommand masks them first.
+Secrets are never printed. ``action.yml`` masks them before the ``auth``
+subcommand runs.
 """
 
 import argparse
@@ -174,19 +175,11 @@ def composer_home():
     return Path(home)
 
 
-def mask(value):
-    for line in value.splitlines():
-        if line:
-            print(f"::add-mask::{line}", flush=True)
-
-
 def run_auth(args):
     host = os.environ.get("HTTP_BASIC_HOST", "")
     username = os.environ.get("HTTP_BASIC_USERNAME", "")
     password = os.environ.get("HTTP_BASIC_PASSWORD", "")
     github_token = os.environ.get("COMPOSER_GITHUB_TOKEN", "")
-    mask(password)
-    mask(github_token)
     if not host and not github_token:
         print("No Composer credentials to configure.")
         return

@@ -5,6 +5,7 @@ import io
 import json
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -182,11 +183,8 @@ class AuthTest(unittest.TestCase):
         self.assertEqual(data["http-basic"]["repo.example.com"]["password"], "pass-value")
         self.assertEqual(data["github-oauth"]["github.com"], "token-value")
         self.assertEqual(mode, 0o600)
-        self.assertIn("::add-mask::pass-value", printed)
-        self.assertIn("::add-mask::token-value", printed)
-        unmasked = printed.replace("::add-mask::pass-value", "").replace("::add-mask::token-value", "")
-        self.assertNotIn("pass-value", unmasked)
-        self.assertNotIn("token-value", unmasked)
+        self.assertNotIn("pass-value", printed)
+        self.assertNotIn("token-value", printed)
 
     def test_auth_without_credentials_writes_nothing(self):
         env = {"HTTP_BASIC_HOST": "", "HTTP_BASIC_PASSWORD": "", "COMPOSER_GITHUB_TOKEN": ""}
@@ -243,6 +241,29 @@ class InstallTest(unittest.TestCase):
             code, _ = run_quietly(composer_setup.main, ["install"])
         self.assertEqual(code, 2)
 
+
+
+class ActionMaskTest(unittest.TestCase):
+    """The auth step of action.yml masks the secrets before the script runs."""
+
+    def auth_step_script(self):
+        text = (Path(__file__).resolve().parents[1] / "action.yml").read_text(encoding="utf-8")
+        step = text.split("- name: Write the Composer credentials", 1)[1].split("\n    - name:", 1)[0]
+        body = step.split("run: |\n", 1)[1]
+        return "\n".join(line[8:] for line in body.splitlines())
+
+    def test_masks_every_line_before_the_script(self):
+        script = self.auth_step_script()
+        self.assertLess(script.index("::add-mask::"), script.index("composer_setup.py"))
+        masking = script.split("python3", 1)[0]
+        result = subprocess.run(
+            ["bash", "-c", masking],
+            env={"HTTP_BASIC_PASSWORD": "pass-one\npass-two", "COMPOSER_GITHUB_TOKEN": "", "PATH": os.environ["PATH"]},
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(result.stdout.splitlines(), ["::add-mask::pass-one", "::add-mask::pass-two"])
 
 if __name__ == "__main__":
     unittest.main()

@@ -125,7 +125,18 @@ runs:
         HTTP_BASIC_USERNAME: ${{ inputs.http-basic-username }}
         HTTP_BASIC_PASSWORD: ${{ inputs.http-basic-password }}
         COMPOSER_GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: python3 -I "$GITHUB_ACTION_PATH/scripts/composer_setup.py" auth
+      # Mask each line of both values before the script runs, so that no
+      # later output of this job shows them, even when they do not come from
+      # a secret (for example an App token from an earlier step).
+      run: |
+        for value in "$HTTP_BASIC_PASSWORD" "$COMPOSER_GITHUB_TOKEN"; do
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              echo "::add-mask::$line"
+            fi
+          done <<<"$value"
+        done
+        python3 -I "$GITHUB_ACTION_PATH/scripts/composer_setup.py" auth
 
     - name: Install the Composer dependencies
       if: ${{ inputs.dry-run != 'true' && inputs.install == 'true' }}
