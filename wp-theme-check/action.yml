@@ -83,6 +83,13 @@ runs:
           --has-composer-auth-password="$HAS_COMPOSER_AUTH_PASSWORD" \
           --dry-run="$DRY_RUN"
 
+    - name: Prove the self-repository reference inside a composite action
+      uses: $/php-composer-setup
+      with:
+        php-version: ${{ inputs.php-version }}
+        working-directory: ${{ inputs.working-directory }}
+        dry-run: "true"
+
     - name: Set up PHP
       if: ${{ inputs.dry-run != 'true' }}
       uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
