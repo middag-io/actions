@@ -274,7 +274,8 @@ def command_validate(args):
             "(variable WP_PLUGIN_RELEASE_APP_CLIENT_ID and secret WP_PLUGIN_RELEASE_APP_PRIVATE_KEY "
             "in the reusable workflow)"
         )
-    write_outputs({"archive-name": f"{zip_name}-{tag}.zip"})
+    has_composer_json = os.path.isfile(os.path.join(root, "composer.json"))
+    write_outputs({"archive-name": f"{zip_name}-{tag}.zip", "has-composer-json": str(has_composer_json).lower()})
 
 
 def command_check_ui(args):

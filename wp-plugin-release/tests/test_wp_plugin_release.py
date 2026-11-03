@@ -88,6 +88,13 @@ class ValidateTest(WorkspaceTest):
         status, out, err = self.validate()
         self.assertEqual(status, 0, err)
         self.assertEqual(outputs_of(out)["archive-name"], "example-plugin-1.2.3.zip")
+        self.assertEqual(outputs_of(out)["has-composer-json"], "true")
+
+    def test_reports_a_plugin_without_composer_json(self):
+        os.remove(os.path.join(self.plugin, "composer.json"))
+        status, out, err = self.validate()
+        self.assertEqual(status, 0, err)
+        self.assertEqual(outputs_of(out)["has-composer-json"], "false")
 
     def test_release_requires_the_app_credentials(self):
         status, _, err = self.validate(dry_run="false")
