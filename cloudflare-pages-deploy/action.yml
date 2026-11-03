@@ -20,7 +20,7 @@ inputs:
     required: false
     default: ""
   account-id:
-    description: Cloudflare account id (32 hexadecimal characters). Required unless dry-run is true.
+    description: Cloudflare account id (32 hexadecimal characters), passed from a secret in a public repository. Masked in the logs from the first step of the action on. Required unless dry-run is true.
     required: false
     default: ""
   api-token:
@@ -92,7 +92,12 @@ runs:
         FORCE: ${{ inputs.force }}
         DRY_RUN: ${{ inputs.dry-run }}
         HAS_API_TOKEN: ${{ inputs.api-token != '' }}
+      # Masks the account id in the log lines that follow, also when it
+      # comes from an input or a variable rather than from a secret.
       run: |
+        if [ -n "$ACCOUNT_ID" ]; then
+          echo "::add-mask::$ACCOUNT_ID"
+        fi
         python3 -I "$GITHUB_ACTION_PATH/scripts/plan.py" \
           --docs-path="$DOCS_PATH" \
           --project-name="$PROJECT_NAME" \

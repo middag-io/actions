@@ -22,6 +22,8 @@ With `dry-run: true`, it runs steps 1 and 2 only and reports the plan: no creden
 
 Nothing in the repository. A deploy replaces the content served by the Pages environment of the branch: a file that is not in the new `dist-path` is no longer served there. Earlier deployments stay in the project and can be rolled back from Cloudflare.
 
+The component never creates the Pages project and never touches its custom domains or DNS records: manage them outside the component.
+
 ## Inputs
 
 | Input                     | Required                  | Default                                                    | Description                                                                                                                            |
@@ -29,7 +31,7 @@ Nothing in the repository. A deploy replaces the content served by the Pages env
 | `docs-path`               | yes                       | —                                                          | Directory of the site sources, relative to the repository root (for example `docs` or `.`).                                            |
 | `project-name`            | yes                       | variable `CLOUDFLARE_PAGES_DEPLOY_PROJECT_NAME` (workflow) | Cloudflare Pages project name. The component accepts 1 to 58 lowercase letters, digits and dashes, not starting or ending with a dash. |
 | `deploy-url`              | no                        | `https://<project-name>.pages.dev`                         | URL of the deployed site, where the last deploy wrote `.content-hash`. Use the custom domain when `pages.dev` is not reachable.        |
-| `account-id`              | unless `dry-run`          | variable `CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID` (workflow)   | Cloudflare account id (32 hexadecimal characters).                                                                                     |
+| `account-id`              | unless `dry-run`          | variable `CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID` (workflow)   | Cloudflare account id (32 hexadecimal characters). The workflow also takes it as the secret `account-id`, which wins over the input.   |
 | `node-version`            | no                        | `22`                                                       | Node.js version of the build.                                                                                                          |
 | `build-command`           | no                        | `npm run docs:build`                                       | Build command, run after `npm ci` in `build-working-directory`. It runs as written: it comes from the caller.                          |
 | `build-working-directory` | no                        | `docs-path`                                                | Directory where `npm ci` and the build command run.                                                                                    |
@@ -56,13 +58,16 @@ In the composite action, the variable defaults do not apply: pass every value th
 
 ## Variables and secrets
 
-| Name                                   | Kind     | Used for                                  |
-| -------------------------------------- | -------- | ----------------------------------------- |
-| `CLOUDFLARE_PAGES_DEPLOY_PROJECT_NAME` | variable | default of `project-name` (workflow only) |
-| `CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID`   | variable | default of `account-id` (workflow only)   |
-| `CLOUDFLARE_PAGES_DEPLOY_API_TOKEN`    | secret   | value the caller passes as `api-token`    |
+| Name                                   | Kind     | Used for                                                    |
+| -------------------------------------- | -------- | ----------------------------------------------------------- |
+| `CLOUDFLARE_PAGES_DEPLOY_PROJECT_NAME` | variable | default of `project-name` (workflow only)                   |
+| `CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID`   | secret   | value the caller passes as `account-id` (public repository) |
+| `CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID`   | variable | default of `account-id` (workflow only; private repository) |
+| `CLOUDFLARE_PAGES_DEPLOY_API_TOKEN`    | secret   | value the caller passes as `api-token`                      |
 
-A repository variable wins over an organization variable with the same name; an explicit input wins over both. The API token needs the permission to edit Cloudflare Pages in the account; it is never inherited.
+For `project-name`, a repository variable wins over an organization variable with the same name, and an explicit input wins over both. For `account-id`, the secret `account-id` of the workflow wins over the input and its variable default. The API token needs the permission to edit Cloudflare Pages in the account; it is never inherited.
+
+**Account id in a public repository: pass it as a secret.** The logs of a public repository are public. GitHub masks a value that comes from a secret in every log line. A value that comes from an input or a variable shows in the log of the step that receives it: the caller's step and the first step of the composite action. The action masks it (`::add-mask::`) from that first step on, which hides it in the Wrangler step and its output, not in those first lines. In a private repository, the variable is enough.
 
 ## Permissions
 
@@ -84,6 +89,7 @@ jobs:
       docs-path: docs-site
       project-name: example-docs
     secrets:
+      account-id: ${{ secrets.CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID }}
       api-token: ${{ secrets.CLOUDFLARE_PAGES_DEPLOY_API_TOKEN }}
 ```
 
@@ -98,7 +104,7 @@ steps:
     with:
       docs-path: docs
       project-name: example-docs
-      account-id: ${{ vars.CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID }}
+      account-id: ${{ secrets.CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID }}
       api-token: ${{ secrets.CLOUDFLARE_PAGES_DEPLOY_API_TOKEN }}
 ```
 

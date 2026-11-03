@@ -7,7 +7,9 @@
 # repository > variable of the calling organization. The project-name and
 # account-id defaults read the variables CLOUDFLARE_PAGES_DEPLOY_PROJECT_NAME
 # and CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID; in a called workflow, the vars
-# context resolves against the caller. The API token comes from one explicit
+# context resolves against the caller. The secret account-id, when set,
+# wins over the input: a public repository passes the account id that way,
+# so that GitHub masks it in the logs. The API token comes from one explicit
 # line in the caller; it is never inherited.
 # Reference it by full commit SHA with a version comment (see the README).
 name: Cloudflare Pages Deploy
@@ -30,7 +32,7 @@ on:
         required: false
         default: ""
       account-id:
-        description: Cloudflare account id. Default from the variable CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID; required unless dry-run is true.
+        description: Cloudflare account id. Default from the variable CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID; the secret account-id wins over it. Required, as input or secret, unless dry-run is true.
         type: string
         required: false
         default: ${{ vars.CLOUDFLARE_PAGES_DEPLOY_ACCOUNT_ID }}
@@ -75,6 +77,9 @@ on:
         required: false
         default: 20
     secrets:
+      account-id:
+        description: Cloudflare account id, passed as a secret so that GitHub masks it in the logs; use it in a public repository. Wins over the input account-id.
+        required: false
       api-token:
         description: Cloudflare API token allowed to deploy to Pages. Required unless dry-run is true.
         required: false
@@ -130,7 +135,7 @@ jobs:
           docs-path: ${{ inputs.docs-path }}
           project-name: ${{ inputs.project-name }}
           deploy-url: ${{ inputs.deploy-url }}
-          account-id: ${{ inputs.account-id }}
+          account-id: ${{ secrets.account-id || inputs.account-id }}
           node-version: ${{ inputs.node-version }}
           build-command: ${{ inputs.build-command }}
           build-working-directory: ${{ inputs.build-working-directory }}
