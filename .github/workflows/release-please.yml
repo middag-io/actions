@@ -1,0 +1,107 @@
+# Reusable workflow of the release-please component. It checks out the
+# release-please configuration and manifest of the calling repository and
+# gives the composite action a job, minimum permissions, a timeout and a
+# concurrency group. The composite action does the work: see
+# release-please/README.md.
+#
+# Values, most specific first: explicit input > variable of the calling
+# repository > variable of the calling organization. The app-client-id
+# default reads the variable RELEASE_PLEASE_APP_CLIENT_ID; in a called
+# workflow, the vars context resolves against the caller. The private key
+# comes from one explicit line in the caller; it is never inherited.
+# Reference it by full commit SHA with a version comment (see the README).
+name: Release Please
+
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: Path of the release-please configuration, relative to the repository root.
+        type: string
+        required: false
+        default: release-please-config.json
+      manifest-file:
+        description: Path of the release-please manifest, relative to the repository root.
+        type: string
+        required: false
+        default: .release-please-manifest.json
+      target-branch:
+        description: Branch that the release pull request targets. Empty uses the default branch of the repository.
+        type: string
+        required: false
+        default: ""
+      app-client-id:
+        description: Client id of the GitHub App. Default from the variable RELEASE_PLEASE_APP_CLIENT_ID; required unless dry-run is true.
+        type: string
+        required: false
+        default: ${{ vars.RELEASE_PLEASE_APP_CLIENT_ID }}
+      dry-run:
+        description: Check the inputs, the configuration and the manifest only; no token and no writes.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 10
+    secrets:
+      app-private-key:
+        description: Private key of the GitHub App that runs release-please. Required unless dry-run is true.
+        required: false
+    outputs:
+      release-created:
+        description: true when this run created a release of the root package ("."), false otherwise.
+        value: ${{ jobs.release.outputs.release-created }}
+      tag-name:
+        description: Tag of the release of the root package created by this run; empty when none.
+        value: ${{ jobs.release.outputs.tag-name }}
+      version:
+        description: Version of the release of the root package created by this run; empty when none.
+        value: ${{ jobs.release.outputs.version }}
+      packages:
+        description: Package paths of the configuration, as a sorted JSON array.
+        value: ${{ jobs.release.outputs.packages }}
+
+permissions: {}
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    # contents: read only checks out the configuration. release-please writes
+    # (release branch, pull request, tag, release) with the GitHub App token.
+    permissions:
+      contents: read
+    # One release-please run at a time per repository and target branch; a
+    # dry run gets its own group per run. A queued run is never cancelled.
+    concurrency:
+      group: release-please-${{ github.repository }}-${{ inputs.dry-run && github.run_id || inputs.target-branch || github.ref_name }}
+      cancel-in-progress: false
+    outputs:
+      release-created: ${{ steps.release.outputs.release-created }}
+      tag-name: ${{ steps.release.outputs.tag-name }}
+      version: ${{ steps.release.outputs.version }}
+      packages: ${{ steps.release.outputs.packages }}
+    steps:
+      - name: Check out the release-please configuration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.target-branch }}
+          persist-credentials: false
+          sparse-checkout: |
+            ${{ inputs.config-file }}
+            ${{ inputs.manifest-file }}
+          sparse-checkout-cone-mode: false
+
+      - name: Run release-please
+        id: release
+        uses: $/release-please
+        with:
+          config-file: ${{ inputs.config-file }}
+          manifest-file: ${{ inputs.manifest-file }}
+          target-branch: ${{ inputs.target-branch }}
+          app-client-id: ${{ inputs.app-client-id }}
+          dry-run: ${{ inputs.dry-run }}
+          app-private-key: ${{ !inputs.dry-run && secrets.app-private-key || '' }}
