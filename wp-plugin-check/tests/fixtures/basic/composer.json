@@ -1,0 +1,15 @@
+{
+  "name": "example/example-plugin",
+  "description": "Fixture of the wp-plugin-check dry run. Never installed.",
+  "type": "wordpress-plugin",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.3"
+  },
+  "scripts": {
+    "check:style": "php-cs-fixer check",
+    "check:stan": "phpstan analyse",
+    "check:rector": "rector process --dry-run",
+    "test": "phpunit"
+  }
+}
