@@ -5,6 +5,9 @@
   "include-v-in-tag": true,
   "tag-separator": "-",
   "separate-pull-requests": false,
+  "versioning": "prerelease",
+  "prerelease-type": "rc",
+  "prerelease": true,
   "packages": {
     "wp-theme-check": {
       "component": "wp-theme-check",
