@@ -10,6 +10,7 @@ updates:
       - /cloudflare-workers-deploy
       - /moodle-plugin-check
       - /moodle-plugin-package
+      - /php-composer-setup
       - /release-please
     schedule:
       interval: weekly

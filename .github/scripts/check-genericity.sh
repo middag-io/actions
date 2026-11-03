@@ -23,7 +23,7 @@ set -euo pipefail
 cd "${1:-.}"
 
 readonly WORKFLOW_DIR=".github/workflows"
-readonly COMPONENT_NAME_RE='^(google-cloud|cloudflare|aws|github|docker|node|php|wp|moodle)-[a-z0-9]+(-[a-z0-9]+)*-(check|build|package|release|publish|deploy|sync|dispatch|lint|scan)$'
+readonly COMPONENT_NAME_RE='^(google-cloud|cloudflare|aws|github|docker|node|php|wp|moodle)-[a-z0-9]+(-[a-z0-9]+)*-(check|build|package|release|publish|deploy|sync|dispatch|lint|scan|setup)$'
 # Wrappers of well-known tools keep the tool name (README, Naming convention).
 readonly WRAPPER_NAMES=" release-please "
 # Lines that hold an expression: "${{ ... }}" or an "if:" key.
