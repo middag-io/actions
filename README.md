@@ -6,9 +6,9 @@ Public repository, maintained by MIDDAG. Licensed under the [Apache License 2.0]
 
 ## Catalog
 
-| Component | Kind | What it does                                        | Since |
-| --------- | ---- | --------------------------------------------------- | ----- |
-| —         | —    | No component yet. Components enter by pull request. | —     |
+| Component                                            | Kind                                   | What it does                                                                                                                                   | Since      |
+| ---------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| [`php-composer-setup`](php-composer-setup/README.md) | composite action and reusable workflow | sets up PHP and Composer in the current job, writes the Composer credentials outside the checkout and runs `composer install`; deletes nothing | unreleased |
 
 Every component has its own `README.md` next to its `action.yml`. That README lists what the component does, what it **deletes**, its inputs, outputs and secrets, the permissions the caller must grant, and a call example pinned by SHA.
 
@@ -19,18 +19,19 @@ Every component has its own `README.md` next to its `action.yml`. That README li
    - `{object}` is the product, spelled out as its provider names it.
    - `{verb}` states the expected result. Closed list:
 
-     | Verb       | Meaning                                           |
-     | ---------- | ------------------------------------------------- |
-     | `check`    | validates a change; publishes nothing             |
-     | `build`    | builds an artifact                                |
-     | `package`  | packages a built artifact                         |
-     | `release`  | creates a version                                 |
-     | `publish`  | uploads to a registry or store                    |
-     | `deploy`   | ships to a running environment                    |
-     | `sync`     | mirrors a source to a target, including deletions |
-     | `dispatch` | triggers another workflow or system               |
-     | `lint`     | reports style or correctness problems             |
-     | `scan`     | looks for vulnerabilities or secrets              |
+     | Verb       | Meaning                                                                                 |
+     | ---------- | --------------------------------------------------------------------------------------- |
+     | `check`    | validates a change; publishes nothing                                                   |
+     | `build`    | builds an artifact                                                                      |
+     | `package`  | packages a built artifact                                                               |
+     | `release`  | creates a version                                                                       |
+     | `publish`  | uploads to a registry or store                                                          |
+     | `deploy`   | ships to a running environment                                                          |
+     | `sync`     | mirrors a source to a target, including deletions                                       |
+     | `dispatch` | triggers another workflow or system                                                     |
+     | `lint`     | reports style or correctness problems                                                   |
+     | `scan`     | looks for vulnerabilities or secrets                                                    |
+     | `setup`    | prepares a tool or runtime in the current job for the steps after it; publishes nothing |
 
    - Abbreviations: only the widely recognized ones (`wp`, `aws`, `php`, `node`). Spell out products and platforms: `google-cloud`, never `gcp`; `cloudflare`, never `cf`.
    - Exception: a wrapper of a well-known tool keeps the tool name (for example `release-please`).
@@ -101,7 +102,8 @@ steps:
 - A breaking change of an input, output or secret is a major version.
 - Release tags are immutable. Pre-releases are never marked as latest.
 - Only release-please writes `CHANGELOG.md` and the release manifest.
-- The release configuration and the tag format enter with the first component. Until then, this repository has no release.
+- Each component has its own version. `release-please-config.json` has one package per component folder, and release-please assigns a change to a component only through the files under `<component>/`: a change to `.github/workflows/<component>.yml` comes with a change under `<component>/`.
+- Tags: `<component>-vX.Y.Z` for each release. Pin the commit SHA of the tag of the component you call.
 
 ## Forks
 

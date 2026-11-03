@@ -26,44 +26,44 @@ The credentials stay in the runner's Composer home until the job ends. They are 
 
 ## Inputs
 
-| Input | Required | Default | Description |
-| --- | --- | --- | --- |
-| `php-version` | yes (workflow: no) | workflow: `PHP_COMPOSER_SETUP_PHP_VERSION`, then `8.4` | `8.4`, `latest`, `nightly` or `pre-installed` |
-| `php-extensions` | no | `mbstring, xml` (workflow: `PHP_COMPOSER_SETUP_PHP_EXTENSIONS` first) | comma-separated, in the `shivammathur/setup-php` syntax |
-| `coverage` | no | `none` | `none`, `xdebug`, `xdebug2` or `pcov` |
-| `working-directory` | no | `.` | directory that holds `composer.json`, relative to the checkout |
-| `http-basic-host` | no | empty (workflow: `PHP_COMPOSER_SETUP_HTTP_BASIC_HOST`) | host of a Composer repository that needs HTTP Basic authentication, with an optional port |
-| `http-basic-username` | with `http-basic-host` | empty (workflow: `PHP_COMPOSER_SETUP_HTTP_BASIC_USERNAME`) | HTTP Basic user name |
-| `http-basic-password` | with `http-basic-host`, outside a dry run | empty | composite action only; the workflow takes the secret `http-basic-password` |
-| `github-token` | no | empty | composite action only; the workflow takes the secret `github-token`. Empty keeps the token that `shivammathur/setup-php` configures |
-| `install` | no | `true` | run `composer install` |
-| `no-dev` | no | `false` | pass `--no-dev` |
-| `optimize-autoloader` | no | `false` | pass `--optimize-autoloader` |
-| `dry-run` | no | `false` | validate and report only |
-| `timeout-minutes` | no | `15` | workflow only: timeout of the job |
+| Input                 | Required                                  | Default                                                               | Description                                                                                                                         |
+| --------------------- | ----------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `php-version`         | yes (workflow: no)                        | workflow: `PHP_COMPOSER_SETUP_PHP_VERSION`, then `8.4`                | `8.4`, `latest`, `nightly` or `pre-installed`                                                                                       |
+| `php-extensions`      | no                                        | `mbstring, xml` (workflow: `PHP_COMPOSER_SETUP_PHP_EXTENSIONS` first) | comma-separated, in the `shivammathur/setup-php` syntax                                                                             |
+| `coverage`            | no                                        | `none`                                                                | `none`, `xdebug`, `xdebug2` or `pcov`                                                                                               |
+| `working-directory`   | no                                        | `.`                                                                   | directory that holds `composer.json`, relative to the checkout                                                                      |
+| `http-basic-host`     | no                                        | empty (workflow: `PHP_COMPOSER_SETUP_HTTP_BASIC_HOST`)                | host of a Composer repository that needs HTTP Basic authentication, with an optional port                                           |
+| `http-basic-username` | with `http-basic-host`                    | empty (workflow: `PHP_COMPOSER_SETUP_HTTP_BASIC_USERNAME`)            | HTTP Basic user name                                                                                                                |
+| `http-basic-password` | with `http-basic-host`, outside a dry run | empty                                                                 | composite action only; the workflow takes the secret `http-basic-password`                                                          |
+| `github-token`        | no                                        | empty                                                                 | composite action only; the workflow takes the secret `github-token`. Empty keeps the token that `shivammathur/setup-php` configures |
+| `install`             | no                                        | `true`                                                                | run `composer install`                                                                                                              |
+| `no-dev`              | no                                        | `false`                                                               | pass `--no-dev`                                                                                                                     |
+| `optimize-autoloader` | no                                        | `false`                                                               | pass `--optimize-autoloader`                                                                                                        |
+| `dry-run`             | no                                        | `false`                                                               | validate and report only                                                                                                            |
+| `timeout-minutes`     | no                                        | `15`                                                                  | workflow only: timeout of the job                                                                                                   |
 
 The composite action takes `true` or `false` strings for booleans; the workflow takes `type: boolean` inputs.
 
 ## Outputs
 
-| Output | Description |
-| --- | --- |
-| `php-version` | PHP version installed, in SemVer format; empty in a dry run |
-| `auth-entries` | credentials configured, comma-separated: `http-basic:<host>`, `github-oauth:github.com`; the planned ones in a dry run |
-| `install-command` | the `composer install` command, run or planned; empty when `install` is `false` |
+| Output            | Description                                                                                                            |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `php-version`     | PHP version installed, in SemVer format; empty in a dry run                                                            |
+| `auth-entries`    | credentials configured, comma-separated: `http-basic:<host>`, `github-oauth:github.com`; the planned ones in a dry run |
+| `install-command` | the `composer install` command, run or planned; empty when `install` is `false`                                        |
 
 ## Variables and secrets
 
 The reusable workflow fills its inputs from these variables of the caller (repository first, then organization) when the caller passes no value:
 
-| Name | Kind | Input |
-| --- | --- | --- |
-| `PHP_COMPOSER_SETUP_PHP_VERSION` | variable | `php-version` |
-| `PHP_COMPOSER_SETUP_PHP_EXTENSIONS` | variable | `php-extensions` |
-| `PHP_COMPOSER_SETUP_HTTP_BASIC_HOST` | variable | `http-basic-host` |
-| `PHP_COMPOSER_SETUP_HTTP_BASIC_USERNAME` | variable | `http-basic-username` |
-| `PHP_COMPOSER_SETUP_HTTP_BASIC_PASSWORD` | secret | `http-basic-password` |
-| `PHP_COMPOSER_SETUP_GITHUB_TOKEN` | secret | `github-token`, when a long-lived token is used |
+| Name                                     | Kind     | Input                                           |
+| ---------------------------------------- | -------- | ----------------------------------------------- |
+| `PHP_COMPOSER_SETUP_PHP_VERSION`         | variable | `php-version`                                   |
+| `PHP_COMPOSER_SETUP_PHP_EXTENSIONS`      | variable | `php-extensions`                                |
+| `PHP_COMPOSER_SETUP_HTTP_BASIC_HOST`     | variable | `http-basic-host`                               |
+| `PHP_COMPOSER_SETUP_HTTP_BASIC_USERNAME` | variable | `http-basic-username`                           |
+| `PHP_COMPOSER_SETUP_HTTP_BASIC_PASSWORD` | secret   | `http-basic-password`                           |
+| `PHP_COMPOSER_SETUP_GITHUB_TOKEN`        | secret   | `github-token`, when a long-lived token is used |
 
 The caller passes each secret with one explicit line. Never `secrets: inherit`. A token minted in the calling job by a GitHub App (for private Composer packages hosted as GitHub repositories) goes to the `github-token` input of the composite action directly.
 

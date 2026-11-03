@@ -45,7 +45,11 @@ All files, comments, commit messages and pull requests are in English.
 
 ## Gates
 
-This repository has no CI yet. The CI workflow, its aggregated required check and the release configuration enter before the first component. Until then, every pull request records in its description the local checks that ran: Markdown lint, and a search of the diff, the title and the description for secrets and internal references.
+`.github/workflows/_ci.yml` must be green before a change is delivered: `actionlint`, `zizmor` (online, `known-vulnerable-actions` included), `gitleaks`, `unit-tests`, a dry run of each reusable component workflow with the comparison of its outputs, and the aggregated `ci-gate`. Every pull request also records in its description the local checks that ran, including a search of the diff, the title and the description for secrets and internal references.
+
+- A new CI job is added to the `needs:` list of `ci-gate`.
+- Every reusable component workflow declares a boolean `dry-run` input: in dry-run mode the component validates and reports what it would do, without credentials and without writes.
+- A new component gets a dry-run job in `_ci.yml` that calls its reusable workflow by `./` with `dry-run: true` on a fixture under `<component>/tests/fixtures/`, a job that compares the outputs with expected values, both listed in the `needs:` of `ci-gate`, its directory in `.github/dependabot.yml`, its package in `release-please-config.json`, and its entry in `.github/actionlint.yaml` for the `$/<component>` form.
 
 ## Commits and pull requests
 
