@@ -19,11 +19,17 @@ In a dry run (`dry-run: true`) only step 1 runs: no token, no call to the GitHub
 
 ## What it deletes
 
-Nothing. What it writes, through release-please:
+It deletes no branch, tag, release or file. What it overwrites, removes or closes, through release-please:
 
-- the release branch `release-please--branches--<target branch>`, which release-please **force-pushes** on every run that updates the release pull request;
-- the release pull request, its labels and its body;
-- the tag and the GitHub release of each package released by the run;
+- the release branch `release-please--branches--<target branch>`: release-please **force-pushes** it on every run that updates the release pull request, which discards any commit pushed to it by hand;
+- the title and body of the open release pull request, rewritten on every update;
+- the label `autorelease: pending` of a merged release pull request, removed and replaced by `autorelease: tagged` once its releases exist;
+- issues: the release pull request body lists every commit since the last release. release-please-action v5.0.0 (release-please 17.6.0) writes "closes #N" there for each issue reference in a commit message, `Refs #N` included, so merging the release pull request closes those issues. The change to "refs" is in release-please 17.10.4 and later, which no release-please-action release ships yet ([googleapis/release-please pull request 2851](https://github.com/googleapis/release-please/pull/2851)). Until then, keep issue references (`#N`) out of commit messages and out of pull request titles in a repository that uses this component.
+
+What it creates:
+
+- the release branch and the release pull request, with its labels;
+- the tag and the GitHub release of each package released by the run, and a comment on the merged release pull request that lists them;
 - the `CHANGELOG.md` and version files of each package, through the release pull request.
 
 ## Inputs
@@ -66,7 +72,7 @@ The secret is never inherited: the caller passes it in its `secrets:` block.
 
 ## Triggers
 
-The calling workflow runs on `push` to the release branch and, to retry or to apply a `Release-As:` commit, on `workflow_dispatch`. Do not add `paths` or `paths-ignore` to that trigger: the merge of the release pull request must always run release-please, or the tag and the release are never created.
+The calling workflow runs on `push` to the release branch and, to retry or to apply a `Release-As:` commit, on `workflow_dispatch`. A `workflow_run` trigger (release after the CI of the release branch succeeds) also works. Outside a dry run, the configuration and the manifest are checked on the target branch (the `target-branch` input, else the default branch), the branch release-please reads, whatever branch started the run. Do not add `paths` or `paths-ignore` to that trigger: the merge of the release pull request must always run release-please, or the tag and the release are never created.
 
 ## Example
 

@@ -76,8 +76,10 @@ jobs:
       contents: read
     # One release-please run at a time per repository and target branch; a
     # dry run gets its own group per run. A queued run is never cancelled.
+    # The target branch is the one release-please reads: the input, else the
+    # default branch of the repository, whatever branch started the run.
     concurrency:
-      group: release-please-${{ github.repository }}-${{ inputs.dry-run && github.run_id || inputs.target-branch || github.ref_name }}
+      group: release-please-${{ github.repository }}-${{ inputs.dry-run && github.run_id || inputs.target-branch || github.event.repository.default_branch || github.ref_name }}
       cancel-in-progress: false
     outputs:
       release-created: ${{ steps.release.outputs.release-created }}
@@ -85,10 +87,15 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       packages: ${{ steps.release.outputs.packages }}
     steps:
+      # release-please reads the configuration and the manifest from the
+      # target branch through the GitHub API, not from this checkout. Outside
+      # a dry run, check out that same branch (the input, else the default
+      # branch), so that a workflow_dispatch from another branch checks the
+      # files release-please uses. A dry run checks the files of the run's ref.
       - name: Check out the release-please configuration
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.target-branch }}
+          ref: ${{ inputs.target-branch || (!inputs.dry-run && github.event.repository.default_branch) || '' }}
           persist-credentials: false
           sparse-checkout: |
             ${{ inputs.config-file }}
