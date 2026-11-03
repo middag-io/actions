@@ -47,6 +47,8 @@ Each value comes from the most specific level that sets it:
 | --- | --- | --- |
 | `account-id` | `CLOUDFLARE_WORKERS_DEPLOY_ACCOUNT_ID` | Wrangler takes the account of the configuration (`account_id`) |
 
+In the reusable workflow, the secret `account-id` wins over the input and its variable default. A dry run reads no secret, so it checks only the input `account-id`.
+
 The secret is stored as `CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN` and passed with one explicit line (never `secrets: inherit`). Use an API token allowed to edit Workers scripts on the target account, and nothing more.
 
 The composite action reads no variable: it receives every value through `with:`.
@@ -63,7 +65,7 @@ The composite action reads no variable: it receives every value through `with:`.
 | `wrangler-config` | both | no | detected | `.jsonc`, `.json` or `.toml`, relative to `working-directory`, inside it |
 | `wrangler-environment` | both | no | empty | `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`; passed as `--env` |
 | `worker-name` | both | no | empty | `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`; passed as `--name` |
-| `account-id` | both | no | variable (reusable) | 32 lowercase hexadecimal characters; set as `CLOUDFLARE_ACCOUNT_ID` for Wrangler |
+| `account-id` | both | no | variable (reusable) | 32 lowercase hexadecimal characters; set as `CLOUDFLARE_ACCOUNT_ID` for Wrangler; the reusable workflow also takes it as the secret `account-id`, which wins over the input |
 | `github-environment` | reusable | no | `production` | GitHub environment of the deployment job (protection rules and deployment history); not used in a dry run |
 | `dry-run` | both | no | `false` | validate and print the plan only |
 | `timeout-minutes` | reusable | no | `20` | job timeout |
@@ -73,7 +75,10 @@ The composite action reads no variable: it receives every value through `with:`.
 
 | Secret | Required | Content |
 | --- | --- | --- |
+| `account-id` | no | Cloudflare account id; wins over the input `account-id`. Use it in a public repository |
 | `api-token` | unless `dry-run` | Cloudflare API token; Wrangler reads it as `CLOUDFLARE_API_TOKEN` |
+
+**Account id in a public repository: pass it as a secret.** The logs of a public repository are public. GitHub masks a value that comes from a secret in every log line. A value that comes from an input or a variable shows in the log of the step that receives it: the caller's step and the first step of the composite action. The action masks it (`::add-mask::`) from that first step on, which hides it in the Wrangler step and its output, not in those first lines. For the same reason, keep `account_id` out of the Wrangler configuration of a public repository. In a private repository, the variable is enough.
 
 ## Outputs
 
@@ -106,6 +111,7 @@ jobs:
       wrangler-environment: production
       github-environment: production
     secrets:
+      account-id: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_ACCOUNT_ID }}
       api-token: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN }}
 ```
 
@@ -130,6 +136,7 @@ jobs:
         with:
           build-script: build:worker
           wrangler-environment: production
+          account-id: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_ACCOUNT_ID }}
           api-token: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN }}
 ```
 

@@ -2,7 +2,8 @@
 
 The plan step validates everything and holds no credential. Only the deploy
 step receives the API token: the install and the build run the project's
-code without it. Every step after the plan is skipped in a dry run.
+code without it. The plan step masks the account id before anything else.
+Every step after the plan is skipped in a dry run.
 
 The steps are read with a small reader for the layout of action.yml (two-space
 indentation, "- name:" first in each step), standard library only.
@@ -71,6 +72,12 @@ class WiringTest(unittest.TestCase):
         for name, value in plan["env"].items():
             with self.subTest(name=name):
                 self.assertNotRegex(value, r"inputs\.api-token *\}\}")
+
+    def test_plan_masks_the_account_id_first(self):
+        plan = self.steps[PLAN]
+        self.assertEqual(plan["env"]["ACCOUNT_ID"], "${{ inputs.account-id }}")
+        lines = plan["run"].removeprefix("|").splitlines()
+        self.assertEqual(lines[:3], ['if [ -n "$ACCOUNT_ID" ]; then', 'echo "::add-mask::$ACCOUNT_ID"', "fi"])
 
     def test_every_later_step_is_skipped_in_a_dry_run(self):
         for name in (SETUP, INSTALL, BUILD, DEPLOY):

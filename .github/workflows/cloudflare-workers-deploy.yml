@@ -6,12 +6,15 @@
 # Values, most specific first: explicit input > variable of the calling
 # repository > variable of the calling organization. The account-id default
 # reads the variable CLOUDFLARE_WORKERS_DEPLOY_ACCOUNT_ID; in a called
-# workflow, the vars context resolves against the caller. The API token comes
-# from one explicit line in the caller; it is never inherited.
+# workflow, the vars context resolves against the caller. The secret
+# account-id, when set, wins over the input: a public repository passes the
+# account id that way, so that GitHub masks it in the logs. The API token
+# comes from one explicit line in the caller; it is never inherited.
 #
 # Two jobs, one per mode: a deployment runs in the GitHub environment named by
 # github-environment; a dry run never references an environment, so it waits
-# for no protection rule and creates no deployment record.
+# for no protection rule and creates no deployment record. A dry run reads no
+# secret, the secret account-id included.
 # Reference it by full commit SHA with a version comment (see the README).
 name: Cloudflare Workers deploy
 
@@ -49,7 +52,7 @@ on:
         required: false
         default: ""
       account-id:
-        description: Cloudflare account id. Default from the variable CLOUDFLARE_WORKERS_DEPLOY_ACCOUNT_ID; empty keeps the account of the Wrangler configuration.
+        description: Cloudflare account id. Default from the variable CLOUDFLARE_WORKERS_DEPLOY_ACCOUNT_ID; the secret account-id wins over it. Empty in both keeps the account of the Wrangler configuration.
         type: string
         required: false
         default: ${{ vars.CLOUDFLARE_WORKERS_DEPLOY_ACCOUNT_ID }}
@@ -69,6 +72,9 @@ on:
         required: false
         default: 20
     secrets:
+      account-id:
+        description: Cloudflare account id, passed as a secret so that GitHub masks it in the logs; use it in a public repository. Wins over the input account-id.
+        required: false
       api-token:
         description: Cloudflare API token allowed to deploy the Worker. Required unless dry-run is true.
         required: false
@@ -125,7 +131,7 @@ jobs:
           wrangler-config: ${{ inputs.wrangler-config }}
           wrangler-environment: ${{ inputs.wrangler-environment }}
           worker-name: ${{ inputs.worker-name }}
-          account-id: ${{ inputs.account-id }}
+          account-id: ${{ secrets.account-id || inputs.account-id }}
           api-token: ${{ secrets.api-token }}
           dry-run: false
 
