@@ -29,7 +29,7 @@ inputs:
     description: Bucket name.
     required: true
   endpoint:
-    description: S3 API endpoint, https://<host> (for R2, https://<account-id>.r2.cloudflarestorage.com). It carries the account id, so pass it from a secret: GitHub masks a secret in the logs, a variable or a literal is printed in the step header before any mask. Required unless dry-run is true.
+    description: S3 API endpoint, https://<host> (for R2, https://<account-id>.r2.cloudflarestorage.com). It carries the account id, so pass it from a secret. GitHub masks a secret in the logs; a variable or a literal is printed in the step header before any mask. Required unless dry-run is true.
     required: false
     default: ""
   access-key-id:
