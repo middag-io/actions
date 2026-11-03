@@ -23,7 +23,7 @@ set -euo pipefail
 cd "${1:-.}"
 
 readonly WORKFLOW_DIR=".github/workflows"
-readonly COMPONENT_NAME_RE='^(google-cloud|cloudflare|aws|github|docker|node|php|wp|moodle)-[a-z0-9]+(-[a-z0-9]+)*-(check|build|package|release|publish|deploy|sync|dispatch|lint|scan)$'
+readonly COMPONENT_NAME_RE='^(google-cloud|cloudflare|aws|github|docker|node|php|wp|moodle)-[a-z0-9]+(-[a-z0-9]+)*-(check|build|package|release|publish|deploy|sync|dispatch|lint|scan|setup)$'
 # Wrappers of well-known tools keep the tool name (README, Naming convention).
 readonly WRAPPER_NAMES=" release-please "
 # Lines that hold an expression: "${{ ... }}" or an "if:" key.
@@ -398,7 +398,7 @@ END {
 
 # Inputs of the reusable workflow that only the workflow uses: a bare name
 # applies to every component, <component>:<input> to that component only.
-readonly WORKFLOW_ONLY_INPUTS=" timeout-minutes wp-theme-check:php-versions "
+readonly WORKFLOW_ONLY_INPUTS=" timeout-minutes cloudflare-workers-deploy:github-environment moodle-plugin-check:php-versions wp-plugin-check:php-versions wp-theme-check:php-versions "
 
 check_component_wiring() {
   local file component action file_name line message

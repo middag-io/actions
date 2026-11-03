@@ -1,0 +1,140 @@
+# Reusable workflow of the moodle-plugin-check component. It gives the
+# composite action a job per PHP version, minimum permissions, a timeout and
+# a concurrency group, and fills the App inputs from the caller's
+# variables. The composite action does the work: see
+# moodle-plugin-check/README.md.
+#
+# Values, most specific first: explicit input > variable of the calling
+# repository > variable of the calling organization. Only app-client-id and
+# app-repositories read a variable (MOODLE_PLUGIN_CHECK_APP_CLIENT_ID and
+# MOODLE_PLUGIN_CHECK_APP_REPOSITORIES); in a called workflow, the vars
+# context resolves against the caller. The secret comes from one
+# explicit line in the caller; it is never inherited.
+# Reference it by full commit SHA with a version comment (see the README).
+name: Moodle plugin check
+
+on:
+  workflow_call:
+    inputs:
+      path:
+        description: Plugin directory (the one that holds version.php), relative to the checkout.
+        type: string
+        required: false
+        default: "."
+      component:
+        description: Expected frankenstyle name (for example local_example). Empty skips the comparison with version.php.
+        type: string
+        required: false
+        default: ""
+      php-versions:
+        description: JSON array of the PHP versions to check, one job each.
+        type: string
+        required: false
+        default: '["8.2", "8.3", "8.4"]'
+      php-extensions:
+        description: PHP extensions to install, separated by commas.
+        type: string
+        required: false
+        default: "soap, xml, curl, mbstring, bcmath, zip, gd, intl"
+      composer-validate:
+        description: Run composer validate when the plugin has a composer.json.
+        type: boolean
+        required: false
+        default: true
+      composer-options:
+        description: Extra long options of composer install, separated by spaces.
+        type: string
+        required: false
+        default: "--prefer-dist --optimize-autoloader"
+      composer-scripts:
+        description: Composer scripts to run in order after the install, separated by commas or new lines (for example check:style, test).
+        type: string
+        required: false
+        default: ""
+      app-client-id:
+        description: Client id of a GitHub App that reads private Composer dependencies. Default from the variable MOODLE_PLUGIN_CHECK_APP_CLIENT_ID; empty means public dependencies only.
+        type: string
+        required: false
+        default: ${{ vars.MOODLE_PLUGIN_CHECK_APP_CLIENT_ID }}
+      app-repositories:
+        description: Repositories of the App owner that the token reaches, separated by commas or new lines. Default from the variable MOODLE_PLUGIN_CHECK_APP_REPOSITORIES; required with app-client-id.
+        type: string
+        required: false
+        default: ${{ vars.MOODLE_PLUGIN_CHECK_APP_REPOSITORIES }}
+      app-owner:
+        description: Owner whose installation of the App mints the token. Empty means the owner of the calling repository.
+        type: string
+        required: false
+        default: ""
+      dry-run:
+        description: Validate the inputs and the plugin metadata and print the Composer commands only; no credentials, no PHP set-up, no Composer run.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of each job, in minutes.
+        type: number
+        required: false
+        default: 20
+    secrets:
+      app-private-key:
+        description: Private key of the GitHub App. Required with app-client-id unless dry-run is true.
+        required: false
+    outputs:
+      component:
+        description: Frankenstyle name read from version.php.
+        value: ${{ jobs.check.outputs.component }}
+      version:
+        description: $plugin->version read from version.php.
+        value: ${{ jobs.check.outputs.version }}
+      commands:
+        description: JSON array of the Composer commands planned, in order.
+        value: ${{ jobs.check.outputs.commands }}
+
+permissions: {}
+
+jobs:
+  check:
+    name: check (PHP ${{ matrix.php-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    # One queue per workflow, ref, plugin and PHP version: a newer check of
+    # the same change waits instead of running beside the older one. A dry
+    # run gets its own group per run.
+    concurrency:
+      group: moodle-plugin-check-${{ github.workflow }}-${{ inputs.dry-run && github.run_id || github.ref }}-${{ inputs.path }}-${{ matrix.php-version }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ${{ fromJSON(inputs.php-versions) }}
+    # Every job of the matrix checks the same version.php and plans the same
+    # commands, so these outputs do not depend on which job ends last.
+    outputs:
+      component: ${{ steps.check.outputs.component }}
+      version: ${{ steps.check.outputs.version }}
+      commands: ${{ steps.check.outputs.commands }}
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the Moodle plugin
+        id: check
+        uses: $/moodle-plugin-check
+        with:
+          path: ${{ inputs.path }}
+          component: ${{ inputs.component }}
+          php-version: ${{ matrix.php-version }}
+          php-extensions: ${{ inputs.php-extensions }}
+          composer-validate: ${{ inputs.composer-validate }}
+          composer-options: ${{ inputs.composer-options }}
+          composer-scripts: ${{ inputs.composer-scripts }}
+          app-client-id: ${{ inputs.app-client-id }}
+          app-owner: ${{ inputs.app-owner }}
+          app-repositories: ${{ inputs.app-repositories }}
+          app-private-key: ${{ !inputs.dry-run && secrets.app-private-key || '' }}
+          dry-run: ${{ inputs.dry-run }}

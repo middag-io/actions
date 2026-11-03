@@ -9,6 +9,54 @@
   "prerelease-type": "rc",
   "prerelease": true,
   "packages": {
+    "cloudflare-pages-deploy": {
+      "component": "cloudflare-pages-deploy",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
+    "cloudflare-workers-check": {
+      "component": "cloudflare-workers-check",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
+    "cloudflare-workers-deploy": {
+      "component": "cloudflare-workers-deploy",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
+    "moodle-plugin-check": {
+      "component": "moodle-plugin-check",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
+    "moodle-plugin-package": {
+      "component": "moodle-plugin-package",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
+    "php-composer-setup": {
+      "component": "php-composer-setup",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
+    "release-please": {
+      "component": "release-please",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
+    "wp-plugin-check": {
+      "component": "wp-plugin-check",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
     "wp-theme-check": {
       "component": "wp-theme-check",
       "changelog-path": "CHANGELOG.md",

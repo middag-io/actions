@@ -192,6 +192,352 @@ jobs:
           done
 
   # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture configuration. A dry run: no token, no GitHub API call.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-release-please:
+    name: dry-run-release-please
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-please.yml # zizmor: ignore[self-repository]
+    with:
+      config-file: release-please/tests/fixtures/basic/release-please-config.json
+      manifest-file: release-please/tests/fixtures/basic/.release-please-manifest.json
+      dry-run: true
+
+  # The dry run must list the packages of the fixture configuration and
+  # create no release.
+  dry-run-check-release-please:
+    name: dry-run-check-release-please
+    needs: dry-run-release-please
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Compare the dry-run outputs with the fixture
+        env:
+          PACKAGES: ${{ needs.dry-run-release-please.outputs.packages }}
+          RELEASE_CREATED: ${{ needs.dry-run-release-please.outputs.release-created }}
+          TAG_NAME: ${{ needs.dry-run-release-please.outputs.tag-name }}
+        run: |
+          echo "packages=$PACKAGES release-created=$RELEASE_CREATED tag-name=$TAG_NAME"
+          if [ "$PACKAGES" != '["."]' ] || [ "$RELEASE_CREATED" != "false" ] || [ -n "$TAG_NAME" ]; then
+            echo '::error::dry-run outputs differ: expected packages=["."] release-created=false tag-name='
+            exit 1
+          fi
+
+  # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture plugin tree. A dry run: no credentials, no dependency
+  # install, no artifact and no release upload.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-moodle-plugin-package:
+    name: dry-run-moodle-plugin-package
+    permissions:
+      contents: read
+    uses: ./.github/workflows/moodle-plugin-package.yml # zizmor: ignore[self-repository]
+    with:
+      zip-name: local_example
+      path: moodle-plugin-package/tests/fixtures/basic
+      dry-run: true
+
+  # The dry run must package exactly the files of the reference listing
+  # (tests/fixtures/expected/basic.sha256) and read version.php.
+  dry-run-check-moodle-plugin-package:
+    name: dry-run-check-moodle-plugin-package
+    needs: dry-run-moodle-plugin-package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected listing
+        env:
+          VERSION: ${{ needs.dry-run-moodle-plugin-package.outputs.version }}
+          RELEASE: ${{ needs.dry-run-moodle-plugin-package.outputs.release }}
+          FILES: ${{ needs.dry-run-moodle-plugin-package.outputs.files }}
+          LISTING_SHA256: ${{ needs.dry-run-moodle-plugin-package.outputs.listing-sha256 }}
+        run: |
+          expected="moodle-plugin-package/tests/fixtures/expected/basic.sha256"
+          expected_sha="$(sha256sum "$expected" | cut -d' ' -f1)"
+          expected_files="$(grep -c . "$expected")"
+          echo "version=$VERSION release=$RELEASE files=$FILES listing-sha256=$LISTING_SHA256"
+          if [ "$VERSION" != "2026110300" ] || [ "$RELEASE" != "1.2.0" ] || [ "$FILES" != "$expected_files" ] || [ "$LISTING_SHA256" != "$expected_sha" ]; then
+            echo "::error::dry-run outputs differ: expected version=2026110300 release=1.2.0 files=$expected_files listing-sha256=$expected_sha"
+            exit 1
+          fi
+
+  # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture plugin. A dry run: no credentials, no PHP set-up, no
+  # Composer run.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-moodle-plugin-check:
+    name: dry-run-moodle-plugin-check
+    permissions:
+      contents: read
+    uses: ./.github/workflows/moodle-plugin-check.yml # zizmor: ignore[self-repository]
+    with:
+      path: moodle-plugin-check/tests/fixtures/basic
+      component: local_example
+      php-versions: '["8.2", "8.3"]'
+      composer-scripts: check:style, test
+      dry-run: true
+
+  # The dry run must plan exactly the commands of the reference plan
+  # (tests/fixtures/expected/basic.json) for the plugin of the fixture.
+  dry-run-check-moodle-plugin-check:
+    name: dry-run-check-moodle-plugin-check
+    needs: dry-run-moodle-plugin-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected plan
+        env:
+          COMPONENT: ${{ needs.dry-run-moodle-plugin-check.outputs.component }}
+          VERSION: ${{ needs.dry-run-moodle-plugin-check.outputs.version }}
+          COMMANDS: ${{ needs.dry-run-moodle-plugin-check.outputs.commands }}
+        run: |
+          python3 -I -B moodle-plugin-check/tests/compare_plan.py \
+            moodle-plugin-check/tests/fixtures/expected/basic.json
+
+  # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture Workers project. A dry run: no credentials, no npm
+  # install, no npm script and no Wrangler run.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-cloudflare-workers-check:
+    name: dry-run-cloudflare-workers-check
+    permissions:
+      contents: read
+    uses: ./.github/workflows/cloudflare-workers-check.yml # zizmor: ignore[self-repository]
+    with:
+      path: cloudflare-workers-check/tests/fixtures/basic
+      npm-scripts: build
+      npm-scripts-if-present: typecheck, lint
+      wrangler-dry-run: true
+      dry-run: true
+
+  # The dry run must plan exactly the commands of the reference plan
+  # (tests/fixtures/expected/basic.json) for the project of the fixture.
+  dry-run-check-cloudflare-workers-check:
+    name: dry-run-check-cloudflare-workers-check
+    needs: dry-run-cloudflare-workers-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected plan
+        env:
+          NAME: ${{ needs.dry-run-cloudflare-workers-check.outputs.name }}
+          WRANGLER_CONFIG: ${{ needs.dry-run-cloudflare-workers-check.outputs.wrangler-config }}
+          COMMANDS: ${{ needs.dry-run-cloudflare-workers-check.outputs.commands }}
+        run: |
+          python3 -I -B cloudflare-workers-check/tests/compare_plan.py \
+            cloudflare-workers-check/tests/fixtures/expected/basic.json
+
+  # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture site. A dry run: no credentials, no fetch of the
+  # deployed hash, no build and no deploy.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-cloudflare-pages-deploy:
+    name: dry-run-cloudflare-pages-deploy
+    permissions:
+      contents: read
+    uses: ./.github/workflows/cloudflare-pages-deploy.yml # zizmor: ignore[self-repository]
+    with:
+      docs-path: cloudflare-pages-deploy/tests/fixtures/basic/site
+      project-name: example-docs
+      dry-run: true
+
+  # The dry run must plan exactly the values of
+  # cloudflare-pages-deploy/tests/fixtures/expected/basic.env and deploy
+  # nothing.
+  dry-run-check-cloudflare-pages-deploy:
+    name: dry-run-check-cloudflare-pages-deploy
+    needs: dry-run-cloudflare-pages-deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected values
+        env:
+          CONTENT_HASH: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.content-hash }}
+          DEPLOY: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.deploy }}
+          DIST_PATH: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.dist-path }}
+          COMMAND: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.command }}
+          DEPLOYMENT_URL: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.deployment-url }}
+        run: |
+          expected="cloudflare-pages-deploy/tests/fixtures/expected/basic.env"
+          actual="$(printf 'content-hash=%s\ndeploy=%s\ndist-path=%s\ncommand=%s\n' "$CONTENT_HASH" "$DEPLOY" "$DIST_PATH" "$COMMAND")"
+          echo "$actual"
+          if ! diff -u <(grep -E '^(content-hash|deploy|dist-path|command)=' "$expected") - <<<"$actual" || [ -n "$DEPLOYMENT_URL" ]; then
+            echo "::error::dry-run outputs differ from $expected, or the dry run deployed"
+            exit 1
+          fi
+
+  # Calls the reusable workflow of cloudflare-workers-deploy by a relative
+  # path on a fixture project. A dry run: no credentials, no install, no
+  # build, no deployment.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-cloudflare-workers-deploy:
+    name: dry-run-cloudflare-workers-deploy
+    permissions:
+      contents: read
+    uses: ./.github/workflows/cloudflare-workers-deploy.yml # zizmor: ignore[self-repository]
+    with:
+      working-directory: cloudflare-workers-deploy/tests/fixtures/basic
+      wrangler-environment: production
+      account-id: ""
+      dry-run: true
+
+  # The dry run must find the fixture's Wrangler configuration.
+  dry-run-check-cloudflare-workers-deploy:
+    name: dry-run-check-cloudflare-workers-deploy
+    needs: dry-run-cloudflare-workers-deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Compare the dry-run outputs with the fixture
+        env:
+          WRANGLER_CONFIG: ${{ needs.dry-run-cloudflare-workers-deploy.outputs.wrangler-config }}
+          VERSION_ID: ${{ needs.dry-run-cloudflare-workers-deploy.outputs.version-id }}
+        run: |
+          echo "wrangler-config=$WRANGLER_CONFIG version-id=$VERSION_ID"
+          if [ "$WRANGLER_CONFIG" != "wrangler.toml" ] || [ -n "$VERSION_ID" ]; then
+            echo "::error::dry-run outputs differ: expected wrangler-config=wrangler.toml and an empty version-id"
+            exit 1
+          fi
+
+  # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture tree. A dry run: no credentials, no PHP setup, no
+  # install.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-php-composer-setup:
+    name: dry-run-php-composer-setup
+    permissions:
+      contents: read
+    uses: ./.github/workflows/php-composer-setup.yml # zizmor: ignore[self-repository]
+    with:
+      php-version: "8.4"
+      working-directory: php-composer-setup/tests/fixtures/basic
+      http-basic-host: repo.example.com
+      http-basic-username: example-user
+      no-dev: true
+      optimize-autoloader: true
+      dry-run: true
+
+  # The dry run must plan exactly the outputs of
+  # php-composer-setup/tests/fixtures/expected/basic.env.
+  dry-run-check-php-composer-setup:
+    name: dry-run-check-php-composer-setup
+    needs: dry-run-php-composer-setup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected values
+        env:
+          PHP_VERSION: ${{ needs.dry-run-php-composer-setup.outputs.php-version }}
+          AUTH_ENTRIES: ${{ needs.dry-run-php-composer-setup.outputs.auth-entries }}
+          INSTALL_COMMAND: ${{ needs.dry-run-php-composer-setup.outputs.install-command }}
+        run: |
+          expected="php-composer-setup/tests/fixtures/expected/basic.env"
+          actual="$(printf 'php-version=%s\nauth-entries=%s\ninstall-command=%s\n' "$PHP_VERSION" "$AUTH_ENTRIES" "$INSTALL_COMMAND")"
+          echo "$actual"
+          if ! diff -u "$expected" - <<<"$actual"; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
+  # Calls the reusable workflow by a relative path, as a caller would by SHA,
+  # on the fixture plugin. A dry run: no setup, no install, no credentials.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-wp-plugin-check:
+    name: dry-run-wp-plugin-check
+    permissions:
+      contents: read
+    uses: ./.github/workflows/wp-plugin-check.yml # zizmor: ignore[self-repository]
+    with:
+      path: wp-plugin-check/tests/fixtures/basic
+      php-versions: '["8.3", "8.4"]'
+      composer-scripts: check:style, check:stan, check:rector, test
+      app-client-id: ""
+      ui-directory: ui
+      npm-scripts: lint, build
+      dry-run: true
+
+  # The dry run must plan exactly the commands of the reference listings
+  # (tests/fixtures/expected/php.plan and ui.plan).
+  dry-run-check-wp-plugin-check:
+    name: dry-run-check-wp-plugin-check
+    needs: dry-run-wp-plugin-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected plans
+        env:
+          PHP_COMMANDS: ${{ needs.dry-run-wp-plugin-check.outputs.php-commands }}
+          PHP_PLAN_SHA256: ${{ needs.dry-run-wp-plugin-check.outputs.php-plan-sha256 }}
+          UI_COMMANDS: ${{ needs.dry-run-wp-plugin-check.outputs.ui-commands }}
+          UI_PLAN_SHA256: ${{ needs.dry-run-wp-plugin-check.outputs.ui-plan-sha256 }}
+        run: |
+          expected="wp-plugin-check/tests/fixtures/expected"
+          php_sha="$(sha256sum "$expected/php.plan" | cut -d' ' -f1)"
+          ui_sha="$(sha256sum "$expected/ui.plan" | cut -d' ' -f1)"
+          php_commands="$(grep -c . "$expected/php.plan")"
+          ui_commands="$(grep -c . "$expected/ui.plan")"
+          echo "php: commands=$PHP_COMMANDS plan-sha256=$PHP_PLAN_SHA256"
+          echo "ui: commands=$UI_COMMANDS plan-sha256=$UI_PLAN_SHA256"
+          if [ "$PHP_COMMANDS" != "$php_commands" ] || [ "$PHP_PLAN_SHA256" != "$php_sha" ] \
+            || [ "$UI_COMMANDS" != "$ui_commands" ] || [ "$UI_PLAN_SHA256" != "$ui_sha" ]; then
+            echo "::error::dry-run outputs differ: expected php commands=$php_commands plan-sha256=$php_sha, ui commands=$ui_commands plan-sha256=$ui_sha"
+            exit 1
+          fi
+
+  # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on the fixture theme. A dry run: no PHP setup, no install, no
   # credentials.
   # zizmor self-repository: "./" is the documented form of this test job; in
@@ -234,6 +580,22 @@ jobs:
       - gitleaks
       - check-genericity
       - unit-tests
+      - dry-run-release-please
+      - dry-run-check-release-please
+      - dry-run-moodle-plugin-package
+      - dry-run-check-moodle-plugin-package
+      - dry-run-moodle-plugin-check
+      - dry-run-check-moodle-plugin-check
+      - dry-run-cloudflare-workers-check
+      - dry-run-check-cloudflare-workers-check
+      - dry-run-cloudflare-pages-deploy
+      - dry-run-check-cloudflare-pages-deploy
+      - dry-run-cloudflare-workers-deploy
+      - dry-run-check-cloudflare-workers-deploy
+      - dry-run-php-composer-setup
+      - dry-run-check-php-composer-setup
+      - dry-run-wp-plugin-check
+      - dry-run-check-wp-plugin-check
       - dry-run-wp-theme-check
       - dry-run-check-wp-theme-check
     if: ${{ always() }}
