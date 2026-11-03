@@ -1,0 +1,144 @@
+# Composite action: checks a Moodle plugin in a change. See README.md next to
+# this file for the inputs, what the action deletes (nothing) and the
+# permissions it needs.
+name: Moodle plugin check
+description: >-
+  Validates the metadata of a Moodle plugin (version.php and the English
+  language file), then runs composer validate, composer install and the
+  Composer scripts that the caller names, on one PHP version. Publishes
+  nothing.
+
+inputs:
+  path:
+    description: Plugin directory (the one that holds version.php), relative to the checkout.
+    required: false
+    default: "."
+  component:
+    description: Expected frankenstyle name (for example local_example). Empty skips the comparison with version.php.
+    required: false
+    default: ""
+  php-version:
+    description: PHP version to set up (for example 8.3).
+    required: true
+  php-extensions:
+    description: PHP extensions to install, separated by commas.
+    required: false
+    default: "soap, xml, curl, mbstring, bcmath, zip, gd, intl"
+  composer-validate:
+    description: Run composer validate when the plugin has a composer.json (true or false).
+    required: false
+    default: "true"
+  composer-options:
+    description: Extra long options of composer install, separated by spaces.
+    required: false
+    default: "--prefer-dist --optimize-autoloader"
+  composer-scripts:
+    description: Composer scripts to run in order after the install, separated by commas or new lines (for example check:style, test).
+    required: false
+    default: ""
+  app-client-id:
+    description: Client id of a GitHub App that reads private Composer dependencies on GitHub. Empty means public dependencies only.
+    required: false
+    default: ""
+  app-owner:
+    description: Owner whose installation of the App mints the token. Empty means the owner of the calling repository.
+    required: false
+    default: ""
+  app-repositories:
+    description: >-
+      Repositories of the App owner that the token reaches, separated by commas
+      or new lines (the private Composer dependencies). Required with
+      app-client-id; the calling repository is not added.
+    required: false
+    default: ""
+  app-private-key:
+    description: Private key of the GitHub App, passed from a secret. Required with app-client-id outside a dry run.
+    required: false
+    default: ""
+  dry-run:
+    description: Validate the inputs and the plugin metadata and print the Composer commands only; no credentials, no PHP set-up, no Composer run (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  component:
+    description: Frankenstyle name read from version.php.
+    value: ${{ steps.plan.outputs.component }}
+  version:
+    description: $plugin->version read from version.php.
+    value: ${{ steps.plan.outputs.version }}
+  release:
+    description: $plugin->release read from version.php (empty when not set).
+    value: ${{ steps.plan.outputs.release }}
+  maturity:
+    description: $plugin->maturity read from version.php (empty when not set).
+    value: ${{ steps.plan.outputs.maturity }}
+  commands:
+    description: JSON array of the Composer commands planned, in order.
+    value: ${{ steps.plan.outputs.commands }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs and the plugin metadata
+      id: plan
+      shell: bash
+      env:
+        PLUGIN_PATH: ${{ inputs.path }}
+        COMPONENT: ${{ inputs.component }}
+        PHP_VERSION: ${{ inputs.php-version }}
+        PHP_EXTENSIONS: ${{ inputs.php-extensions }}
+        COMPOSER_VALIDATE: ${{ inputs.composer-validate }}
+        COMPOSER_OPTIONS: ${{ inputs.composer-options }}
+        COMPOSER_SCRIPTS: ${{ inputs.composer-scripts }}
+        APP_CLIENT_ID: ${{ inputs.app-client-id }}
+        APP_REPOSITORIES: ${{ inputs.app-repositories }}
+        HAS_APP_PRIVATE_KEY: ${{ inputs.app-private-key != '' }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        plan_file="$(mktemp "$RUNNER_TEMP/moodle-plugin-check.XXXXXX")"
+        python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" plan \
+          --workspace="$GITHUB_WORKSPACE" \
+          --path="$PLUGIN_PATH" \
+          --component="$COMPONENT" \
+          --php-version="$PHP_VERSION" \
+          --php-extensions="$PHP_EXTENSIONS" \
+          --composer-validate="$COMPOSER_VALIDATE" \
+          --composer-options="$COMPOSER_OPTIONS" \
+          --composer-scripts="$COMPOSER_SCRIPTS" \
+          --app-client-id="$APP_CLIENT_ID" \
+          --app-repositories="$APP_REPOSITORIES" \
+          --has-app-private-key="$HAS_APP_PRIVATE_KEY" \
+          --dry-run="$DRY_RUN" \
+          --plan-file="$plan_file" \
+          --github-output="$GITHUB_OUTPUT"
+
+    # Read-only token for private Composer dependencies on GitHub, narrowed
+    # to the repositories named in app-repositories (checked non-empty above).
+    - name: Mint a read-only GitHub App token
+      id: app-token
+      if: ${{ inputs.dry-run != 'true' && inputs.app-client-id != '' }}
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.app-client-id }}
+        private-key: ${{ inputs.app-private-key }}
+        owner: ${{ inputs.app-owner }}
+        repositories: ${{ inputs.app-repositories }}
+        permission-contents: read
+
+    - name: Set up PHP
+      if: ${{ inputs.dry-run != 'true' }}
+      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+      with:
+        php-version: ${{ inputs.php-version }}
+        extensions: ${{ inputs.php-extensions }}
+        tools: composer:v2
+        coverage: none
+
+    - name: Run the Composer checks
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        PLAN_FILE: ${{ steps.plan.outputs.plan-file }}
+        COMPOSER_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+      run: python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" run --plan-file="$PLAN_FILE"

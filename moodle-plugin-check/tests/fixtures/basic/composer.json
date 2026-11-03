@@ -1,0 +1,11 @@
+{
+    "name": "example/moodle-local_example",
+    "description": "Example Moodle plugin for the moodle-plugin-check tests.",
+    "type": "moodle-local",
+    "license": "Apache-2.0",
+    "require": {},
+    "scripts": {
+        "check:style": "echo style",
+        "test": "echo test"
+    }
+}
