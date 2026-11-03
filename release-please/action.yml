@@ -1,0 +1,96 @@
+# Composite action: runs release-please in manifest mode with a GitHub App
+# installation token, after checking the configuration and the manifest of
+# the calling repository. See README.md next to this file for the inputs and
+# what release-please writes.
+name: Release Please
+description: >-
+  Checks the release-please configuration and manifest of the repository,
+  then runs googleapis/release-please-action with a GitHub App installation
+  token: it opens or updates the release pull request, and creates the tag
+  and the GitHub release when that pull request merges.
+
+inputs:
+  config-file:
+    description: Path of the release-please configuration, relative to the repository root. The file must be checked out in the workspace.
+    required: false
+    default: release-please-config.json
+  manifest-file:
+    description: Path of the release-please manifest, relative to the repository root. The file must be checked out in the workspace.
+    required: false
+    default: .release-please-manifest.json
+  target-branch:
+    description: Branch that the release pull request targets. Empty uses the default branch of the repository.
+    required: false
+    default: ""
+  app-client-id:
+    description: Client id of the GitHub App whose installation token runs release-please. Required unless dry-run is true.
+    required: false
+    default: ""
+  app-private-key:
+    description: Private key of the GitHub App, passed from a secret. Required unless dry-run is true.
+    required: false
+    default: ""
+  dry-run:
+    description: Check the inputs, the configuration and the manifest only; no token, no network, no writes (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  release-created:
+    description: true when this run created a release of the root package ("."), false otherwise (always false in a dry run).
+    value: ${{ steps.release.outputs.release_created || 'false' }}
+  tag-name:
+    description: Tag of the release of the root package created by this run; empty when none.
+    value: ${{ steps.release.outputs.tag_name }}
+  version:
+    description: Version of the release of the root package created by this run; empty when none.
+    value: ${{ steps.release.outputs.version }}
+  packages:
+    description: Package paths of the configuration, as a sorted JSON array (for example ["."]).
+    value: ${{ steps.check.outputs.packages }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs, the configuration and the manifest
+      id: check
+      shell: bash
+      env:
+        CONFIG_FILE: ${{ inputs.config-file }}
+        MANIFEST_FILE: ${{ inputs.manifest-file }}
+        TARGET_BRANCH: ${{ inputs.target-branch }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        HAS_APP_CLIENT_ID: ${{ inputs.app-client-id != '' }}
+        HAS_APP_PRIVATE_KEY: ${{ inputs.app-private-key != '' }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/check_config.py" \
+          --config-file="$CONFIG_FILE" \
+          --manifest-file="$MANIFEST_FILE" \
+          --target-branch="$TARGET_BRANCH" \
+          --dry-run="$DRY_RUN" \
+          --has-app-client-id="$HAS_APP_CLIENT_ID" \
+          --has-app-private-key="$HAS_APP_PRIVATE_KEY"
+
+    # Without owner and repositories, the token is limited to the current
+    # repository, with write access to contents and pull requests only. A
+    # pull request opened with it triggers the workflows of the repository;
+    # one opened with GITHUB_TOKEN would not.
+    - name: Create the GitHub App token
+      id: app-token
+      if: ${{ inputs.dry-run != 'true' }}
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.app-client-id }}
+        private-key: ${{ inputs.app-private-key }}
+        permission-contents: write
+        permission-pull-requests: write
+
+    - name: Run release-please
+      id: release
+      if: ${{ inputs.dry-run != 'true' }}
+      uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      with:
+        token: ${{ steps.app-token.outputs.token }}
+        config-file: ${{ inputs.config-file }}
+        manifest-file: ${{ inputs.manifest-file }}
+        target-branch: ${{ inputs.target-branch }}

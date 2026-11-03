@@ -1,0 +1,145 @@
+# Reusable workflow of the moodle-plugin-package component. It checks out the
+# calling repository at the tag (or the triggering ref) and gives the
+# composite action a job, minimum permissions, a timeout and a concurrency
+# group. The composite action does the work: see
+# moodle-plugin-package/README.md.
+#
+# The job token holds contents: read only, so this form neither uploads to a
+# GitHub release nor reads private GitHub Packages. A caller that needs either
+# calls the composite action from its own job (see the README). The secret
+# comes from one explicit line in the caller; it is never inherited.
+# Reference it by full commit SHA with a version comment (see the README).
+name: Moodle plugin package
+
+on:
+  workflow_call:
+    inputs:
+      zip-name:
+        description: Plugin directory inside the ZIP and archive name prefix; the Moodle frankenstyle name (for example local_example).
+        type: string
+        required: true
+      tag-name:
+        description: Tag to check out and package. Empty packages the triggering ref and names the archive after the short commit SHA.
+        type: string
+        required: false
+        default: ""
+      path:
+        description: Plugin tree (version.php at its root), relative to the repository root.
+        type: string
+        required: false
+        default: "."
+      php-version:
+        description: PHP version for the Composer install.
+        type: string
+        required: false
+        default: "8.4"
+      php-extensions:
+        description: PHP extensions to install, separated by commas.
+        type: string
+        required: false
+        default: soap, xml, curl, mbstring, bcmath, zip, gd, intl
+      composer-options:
+        description: Options of composer install, separated by spaces.
+        type: string
+        required: false
+        default: --no-dev --prefer-dist --optimize-autoloader --no-interaction
+      dist-excludes-file:
+        description: rsync exclude file, relative to path. A missing .distignore is ignored; any other missing file fails the run. Empty uses no file.
+        type: string
+        required: false
+        default: .distignore
+      npm-build-command:
+        description: npm script that builds shipped assets before packaging. Empty skips Node.
+        type: string
+        required: false
+        default: ""
+      npm-working-dir:
+        description: Directory, relative to path, that holds package.json for npm-build-command.
+        type: string
+        required: false
+        default: "."
+      node-version:
+        description: Node version for npm-build-command.
+        type: string
+        required: false
+        default: "22"
+      retention-days:
+        description: Retention of the workflow artifact, in days.
+        type: number
+        required: false
+        default: 30
+      dry-run:
+        description: Validate and build the ZIP in the runner only; no dependency install, no artifact, no credentials.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 20
+    secrets:
+      composer-auth:
+        description: COMPOSER_AUTH JSON for private Composer repositories. Not needed for public dependencies.
+        required: false
+    outputs:
+      archive-name:
+        description: File name of the ZIP, also the name of the workflow artifact.
+        value: ${{ jobs.package.outputs.archive-name }}
+      version:
+        description: $plugin->version read from version.php.
+        value: ${{ jobs.package.outputs.version }}
+      release:
+        description: $plugin->release read from version.php.
+        value: ${{ jobs.package.outputs.release }}
+      files:
+        description: Number of files in the ZIP.
+        value: ${{ jobs.package.outputs.files }}
+      listing-sha256:
+        description: SHA-256 of the sorted "<sha256>  <zip-name>/<path>" listing of the files in the ZIP.
+        value: ${{ jobs.package.outputs.listing-sha256 }}
+
+permissions: {}
+
+jobs:
+  package:
+    name: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    # One packaging run per tag; a run without a tag, or a dry run, gets its
+    # own group. A queued run is never cancelled.
+    concurrency:
+      group: moodle-plugin-package-${{ github.repository }}-${{ (inputs.dry-run || inputs.tag-name == '') && github.run_id || inputs.tag-name }}
+      cancel-in-progress: false
+    outputs:
+      archive-name: ${{ steps.package.outputs.archive-name }}
+      version: ${{ steps.package.outputs.version }}
+      release: ${{ steps.package.outputs.release }}
+      files: ${{ steps.package.outputs.files }}
+      listing-sha256: ${{ steps.package.outputs.listing-sha256 }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag-name || github.ref }}
+          persist-credentials: false
+
+      - name: Package the Moodle plugin
+        id: package
+        uses: $/moodle-plugin-package
+        with:
+          path: ${{ inputs.path }}
+          zip-name: ${{ inputs.zip-name }}
+          tag-name: ${{ inputs.tag-name }}
+          php-version: ${{ inputs.php-version }}
+          php-extensions: ${{ inputs.php-extensions }}
+          composer-options: ${{ inputs.composer-options }}
+          composer-auth: ${{ !inputs.dry-run && secrets.composer-auth || '' }}
+          dist-excludes-file: ${{ inputs.dist-excludes-file }}
+          npm-build-command: ${{ inputs.npm-build-command }}
+          npm-working-dir: ${{ inputs.npm-working-dir }}
+          node-version: ${{ inputs.node-version }}
+          retention-days: ${{ inputs.retention-days }}
+          dry-run: ${{ inputs.dry-run }}

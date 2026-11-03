@@ -6,6 +6,9 @@ updates:
     directories:
       - /
       - /cloudflare-workers-check
+      - /moodle-plugin-check
+      - /moodle-plugin-package
+      - /release-please
     schedule:
       interval: weekly
     cooldown:

@@ -1,0 +1,10 @@
+{
+  "component": "local_example",
+  "version": "2026110300",
+  "commands": [
+    "composer validate --no-interaction",
+    "composer install --no-interaction --prefer-dist --optimize-autoloader",
+    "composer run-script check:style",
+    "composer run-script test"
+  ]
+}

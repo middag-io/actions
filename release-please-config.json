@@ -11,9 +11,27 @@
   "packages": {
     "cloudflare-workers-check": {
       "component": "cloudflare-workers-check",
-      "release-as": "1.0.0",
-      "prerelease": false,
-      "versioning": "default"
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
+    "moodle-plugin-check": {
+      "component": "moodle-plugin-check",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
+    "moodle-plugin-package": {
+      "component": "moodle-plugin-package",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
+    "release-please": {
+      "component": "release-please",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
     }
   }
 }
