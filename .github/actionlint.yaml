@@ -28,3 +28,6 @@ paths:
   .github/workflows/release-please.yml:
     ignore:
       - 'specifying action "\$/release-please" in invalid format because ref is missing'
+  .github/workflows/wp-plugin-check.yml:
+    ignore:
+      - 'specifying action "\$/wp-plugin-check" in invalid format because ref is missing'

@@ -484,6 +484,59 @@ jobs:
             exit 1
           fi
 
+  # Calls the reusable workflow by a relative path, as a caller would by SHA,
+  # on the fixture plugin. A dry run: no setup, no install, no credentials.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-wp-plugin-check:
+    name: dry-run-wp-plugin-check
+    permissions:
+      contents: read
+    uses: ./.github/workflows/wp-plugin-check.yml # zizmor: ignore[self-repository]
+    with:
+      path: wp-plugin-check/tests/fixtures/basic
+      php-versions: '["8.3", "8.4"]'
+      composer-scripts: check:style, check:stan, check:rector, test
+      app-client-id: ""
+      ui-directory: ui
+      npm-scripts: lint, build
+      dry-run: true
+
+  # The dry run must plan exactly the commands of the reference listings
+  # (tests/fixtures/expected/php.plan and ui.plan).
+  dry-run-check-wp-plugin-check:
+    name: dry-run-check-wp-plugin-check
+    needs: dry-run-wp-plugin-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected plans
+        env:
+          PHP_COMMANDS: ${{ needs.dry-run-wp-plugin-check.outputs.php-commands }}
+          PHP_PLAN_SHA256: ${{ needs.dry-run-wp-plugin-check.outputs.php-plan-sha256 }}
+          UI_COMMANDS: ${{ needs.dry-run-wp-plugin-check.outputs.ui-commands }}
+          UI_PLAN_SHA256: ${{ needs.dry-run-wp-plugin-check.outputs.ui-plan-sha256 }}
+        run: |
+          expected="wp-plugin-check/tests/fixtures/expected"
+          php_sha="$(sha256sum "$expected/php.plan" | cut -d' ' -f1)"
+          ui_sha="$(sha256sum "$expected/ui.plan" | cut -d' ' -f1)"
+          php_commands="$(grep -c . "$expected/php.plan")"
+          ui_commands="$(grep -c . "$expected/ui.plan")"
+          echo "php: commands=$PHP_COMMANDS plan-sha256=$PHP_PLAN_SHA256"
+          echo "ui: commands=$UI_COMMANDS plan-sha256=$UI_PLAN_SHA256"
+          if [ "$PHP_COMMANDS" != "$php_commands" ] || [ "$PHP_PLAN_SHA256" != "$php_sha" ] \
+            || [ "$UI_COMMANDS" != "$ui_commands" ] || [ "$UI_PLAN_SHA256" != "$ui_sha" ]; then
+            echo "::error::dry-run outputs differ: expected php commands=$php_commands plan-sha256=$php_sha, ui commands=$ui_commands plan-sha256=$ui_sha"
+            exit 1
+          fi
+
   ci-gate:
     name: ci-gate
     needs:
@@ -506,6 +559,8 @@ jobs:
       - dry-run-check-cloudflare-workers-deploy
       - dry-run-php-composer-setup
       - dry-run-check-php-composer-setup
+      - dry-run-wp-plugin-check
+      - dry-run-check-wp-plugin-check
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5

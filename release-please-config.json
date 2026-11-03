@@ -50,6 +50,12 @@
       "changelog-path": "CHANGELOG.md",
       "versioning": "default",
       "prerelease": false
+    },
+    "wp-plugin-check": {
+      "component": "wp-plugin-check",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
     }
   }
 }

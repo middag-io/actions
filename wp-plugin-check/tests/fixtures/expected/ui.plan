@@ -1,0 +1,4 @@
+wp-plugin-check/tests/fixtures/basic/ui	npm ci
+wp-plugin-check/tests/fixtures/basic/ui	npx --no-install tsc --noEmit
+wp-plugin-check/tests/fixtures/basic/ui	npm run lint
+wp-plugin-check/tests/fixtures/basic/ui	npm run build

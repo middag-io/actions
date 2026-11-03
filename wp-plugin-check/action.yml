@@ -1,0 +1,180 @@
+# Composite action: checks a WordPress plugin in a change. One call checks one
+# target: "php" (Composer install and Composer scripts on one PHP version) or
+# "ui" (npm install, TypeScript check and npm scripts of the UI directory).
+# See README.md next to this file for the inputs, the credentials and what the
+# action writes.
+name: WordPress plugin check
+description: >-
+  Checks a WordPress plugin: installs its Composer dependencies and runs the
+  chosen Composer scripts on one PHP version, or installs its UI dependencies
+  with npm and runs the TypeScript check and the chosen npm scripts. Publishes
+  nothing.
+
+inputs:
+  target:
+    description: What to check, php or ui.
+    required: true
+  path:
+    description: Plugin directory (composer.json), relative to the workspace.
+    required: false
+    default: "."
+  php-version:
+    description: PHP version for the php target (for example 8.4).
+    required: false
+    default: ""
+  php-extensions:
+    description: PHP extensions to install for the php target, separated by commas.
+    required: false
+    default: mbstring, xml
+  composer-scripts:
+    description: Composer scripts to run after composer install, separated by commas or new lines. Each one must be declared in composer.json.
+    required: false
+    default: ""
+  composer-auth:
+    description: Composer credentials in the COMPOSER_AUTH JSON format, passed from a secret. Reaches only composer install.
+    required: false
+    default: ""
+  app-client-id:
+    description: Client id of a GitHub App whose token reads the private Composer packages hosted on GitHub. Needs app-private-key.
+    required: false
+    default: ""
+  app-private-key:
+    description: Private key of the GitHub App of app-client-id, passed from a secret.
+    required: false
+    default: ""
+  app-repositories:
+    description: Repositories of the calling repository's owner that the App token reads, separated by commas or new lines. Empty reads the calling repository only.
+    required: false
+    default: ""
+  ui-directory:
+    description: UI directory (package.json and package-lock.json) for the ui target, relative to path.
+    required: false
+    default: ui
+  node-version:
+    description: Node.js version for the ui target.
+    required: false
+    default: "22"
+  npm-scripts:
+    description: npm scripts to run after npm ci, separated by commas or new lines. Each one must be declared in package.json.
+    required: false
+    default: ""
+  typecheck:
+    description: Run tsc --noEmit with the TypeScript of the UI directory after npm ci (true or false).
+    required: false
+    default: "true"
+  github-packages-npm-scope:
+    description: npm scope (for example @owner) installed from GitHub Packages with the job token. Empty installs every package from the URLs of package-lock.json, without a token.
+    required: false
+    default: ""
+  dry-run:
+    description: Validate the inputs and the plugin files and report the commands only; no setup, no install, no credentials (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  commands:
+    description: Number of commands of the check plan.
+    value: ${{ steps.plan.outputs.commands }}
+  plan-sha256:
+    description: SHA-256 of the check plan (one line per command, README "Outputs").
+    value: ${{ steps.plan.outputs.plan-sha256 }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate the inputs and plan the checks
+      id: plan
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        PLUGIN_PATH: ${{ inputs.path }}
+        PHP_VERSION: ${{ inputs.php-version }}
+        COMPOSER_SCRIPTS: ${{ inputs.composer-scripts }}
+        UI_DIRECTORY: ${{ inputs.ui-directory }}
+        NPM_SCRIPTS: ${{ inputs.npm-scripts }}
+        TYPECHECK: ${{ inputs.typecheck }}
+        NPM_SCOPE: ${{ inputs.github-packages-npm-scope }}
+        HAS_APP_CLIENT_ID: ${{ inputs.app-client-id != '' }}
+        HAS_APP_PRIVATE_KEY: ${{ inputs.app-private-key != '' }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        case "$DRY_RUN" in true|false) ;; *) echo "::error::input dry-run must be true or false"; exit 1 ;; esac
+        python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" plan \
+          --target="$TARGET" \
+          --path="$PLUGIN_PATH" \
+          --php-version="$PHP_VERSION" \
+          --composer-scripts="$COMPOSER_SCRIPTS" \
+          --ui-directory="$UI_DIRECTORY" \
+          --npm-scripts="$NPM_SCRIPTS" \
+          --typecheck="$TYPECHECK" \
+          --github-packages-npm-scope="$NPM_SCOPE" \
+          --has-app-client-id="$HAS_APP_CLIENT_ID" \
+          --has-app-private-key="$HAS_APP_PRIVATE_KEY"
+
+    - name: Create a GitHub App token for Composer
+      id: app-token
+      if: ${{ inputs.dry-run != 'true' && inputs.target == 'php' && inputs.app-client-id != '' }}
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.app-client-id }}
+        private-key: ${{ inputs.app-private-key }}
+        # Empty: the calling repository only. The owner is the owner of the
+        # calling repository.
+        repositories: ${{ inputs.app-repositories }}
+        permission-contents: read
+
+    - name: Set up PHP
+      if: ${{ inputs.dry-run != 'true' && inputs.target == 'php' }}
+      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+      with:
+        php-version: ${{ inputs.php-version }}
+        extensions: ${{ inputs.php-extensions }}
+        coverage: none
+        tools: composer
+
+    - name: Set up Node.js
+      if: ${{ inputs.dry-run != 'true' && inputs.target == 'ui' && inputs.github-packages-npm-scope == '' }}
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        package-manager-cache: false
+
+    - name: Set up Node.js with GitHub Packages for the scope
+      if: ${{ inputs.dry-run != 'true' && inputs.target == 'ui' && inputs.github-packages-npm-scope != '' }}
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        registry-url: https://npm.pkg.github.com
+        scope: ${{ inputs.github-packages-npm-scope }}
+        package-manager-cache: false
+
+    - name: Run the checks
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        PLUGIN_PATH: ${{ inputs.path }}
+        PHP_VERSION: ${{ inputs.php-version }}
+        COMPOSER_SCRIPTS: ${{ inputs.composer-scripts }}
+        UI_DIRECTORY: ${{ inputs.ui-directory }}
+        NPM_SCRIPTS: ${{ inputs.npm-scripts }}
+        TYPECHECK: ${{ inputs.typecheck }}
+        NPM_SCOPE: ${{ inputs.github-packages-npm-scope }}
+        HAS_APP_CLIENT_ID: ${{ inputs.app-client-id != '' }}
+        HAS_APP_PRIVATE_KEY: ${{ inputs.app-private-key != '' }}
+        # check.py hands each credential to its install command only.
+        WP_PLUGIN_CHECK_COMPOSER_AUTH: ${{ inputs.composer-auth }}
+        WP_PLUGIN_CHECK_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        WP_PLUGIN_CHECK_NPM_TOKEN: ${{ inputs.github-packages-npm-scope != '' && github.token || '' }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" run \
+          --target="$TARGET" \
+          --path="$PLUGIN_PATH" \
+          --php-version="$PHP_VERSION" \
+          --composer-scripts="$COMPOSER_SCRIPTS" \
+          --ui-directory="$UI_DIRECTORY" \
+          --npm-scripts="$NPM_SCRIPTS" \
+          --typecheck="$TYPECHECK" \
+          --github-packages-npm-scope="$NPM_SCOPE" \
+          --has-app-client-id="$HAS_APP_CLIENT_ID" \
+          --has-app-private-key="$HAS_APP_PRIVATE_KEY"
