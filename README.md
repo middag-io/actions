@@ -1,5 +1,123 @@
 # actions
 
-Reusable GitHub Actions components: composite actions and reusable workflows that adopters call from their own repositories. The components are generic. Each adopter keeps its own configuration in its calling workflow and in its own variables and secrets.
+Reusable GitHub Actions components: composite actions and reusable workflows that adopters call from their own repositories. The components are generic. Each adopter keeps its own configuration in its calling workflow and in its own variables and secrets. Some components do one task. Others combine several tasks.
 
-Public repository. Licensed under Apache-2.0; the `LICENSE` file, the catalog and the components enter by pull request.
+Public repository, maintained by MIDDAG. Licensed under the [Apache License 2.0](LICENSE).
+
+## Catalog
+
+| Component | Kind | What it does                                        | Since |
+| --------- | ---- | --------------------------------------------------- | ----- |
+| —         | —    | No component yet. Components enter by pull request. | —     |
+
+Every component has its own `README.md` next to its `action.yml`. That README lists what the component does, what it **deletes**, its inputs, outputs and secrets, the permissions the caller must grant, and a call example pinned by SHA.
+
+## Naming convention
+
+1. A component is named `{scope}-{object}-{verb}` and uses only `[a-z0-9-]`.
+   - `{scope}` is the provider or ecosystem that the component touches. Closed list: `google-cloud`, `cloudflare`, `aws`, `github`, `docker`, `node`, `php`, `wp`, `moodle`.
+   - `{object}` is the product, spelled out as its provider names it.
+   - `{verb}` states the expected result. Closed list:
+
+     | Verb       | Meaning                                           |
+     | ---------- | ------------------------------------------------- |
+     | `check`    | validates a change; publishes nothing             |
+     | `build`    | builds an artifact                                |
+     | `package`  | packages a built artifact                         |
+     | `release`  | creates a version                                 |
+     | `publish`  | uploads to a registry or store                    |
+     | `deploy`   | ships to a running environment                    |
+     | `sync`     | mirrors a source to a target, including deletions |
+     | `dispatch` | triggers another workflow or system               |
+     | `lint`     | reports style or correctness problems             |
+     | `scan`     | looks for vulnerabilities or secrets              |
+
+   - Abbreviations: only the widely recognized ones (`wp`, `aws`, `php`, `node`). Spell out products and platforms: `google-cloud`, never `gcp`; `cloudflare`, never `cf`.
+   - Exception: a wrapper of a well-known tool keeps the tool name (for example `release-please`).
+2. One name serves both forms of a component: the composite action at `<name>/action.yml` and the reusable workflow at `.github/workflows/<name>.yml`. GitHub does not accept subdirectories in `.github/workflows/`.
+3. The `_` prefix marks an internal workflow of this repository (`_ci.yml`, `_release.yml`). Nothing outside this repository calls an internal workflow.
+4. Interface names (inputs, outputs and secrets declared in `workflow_call`) are kebab-case and neutral: no organization, GitHub App or client name. Booleans use `type: boolean`. Every input has a `description` and either a neutral default or `required: true`.
+5. Inside a file: `name:` in English with the provider spelled out; the job id is the verb; step names are imperative English; the concurrency group is `<name>-<key>`.
+6. A component that needs a GitHub App takes the input `app-client-id` and the secret `app-private-key`.
+
+Examples:
+
+| Component                 | Reads as                                 |
+| ------------------------- | ---------------------------------------- |
+| `cloudflare-pages-deploy` | deploys a site to Cloudflare Pages       |
+| `wp-plugin-check`         | validates a WordPress plugin in a change |
+
+## Triggers
+
+A workflow in this repository runs only on `pull_request`, `push` to `main`, `workflow_dispatch` and `workflow_call`. Never `pull_request_target`, `workflow_run`, `issue_comment` or `schedule`.
+
+## Variables and secrets
+
+A component reads configuration through inputs. A reusable workflow can also fill an input from a variable of the caller.
+
+- **Names.** A variable or secret read by a component is named `<COMPONENT_IN_UPPER_SNAKE>_<INPUT_IN_UPPER_SNAKE>`. The prefix is the component, not the organization and not the provider. Example for a component `cloudflare-pages-deploy` with the input `project-name`: the variable `CLOUDFLARE_PAGES_DEPLOY_PROJECT_NAME`. A generic name such as `CLOUDFLARE_PROJECT_NAME` would collide with other uses of the same provider.
+- **Three levels, most specific first.**
+  1. An explicit input in the caller's `with:`.
+  2. A variable of the caller's repository.
+  3. A variable of the caller's organization.
+
+  The reusable workflow declares the input default as `${{ vars.<NAME> }}`. In a called workflow, `vars` resolves against the caller. GitHub already prefers a repository variable over an organization variable with the same name.
+
+- **Composite actions** receive values only through `with:`. The variable fallback lives in the reusable workflow.
+- **Missing value.** When no input and no variable supply a required value, the component fails before any other step. The error names the input and the variable.
+- **Secrets.** Never `secrets: inherit`. The caller passes each secret with one explicit line:
+
+  ```yaml
+  secrets:
+    api-token: ${{ secrets.CLOUDFLARE_PAGES_DEPLOY_API_TOKEN }}
+  ```
+
+- **No adopter values.** A component never carries an adopter's value: no project, bucket, data store, organization name or client name, not even as a default.
+
+## Referencing a component
+
+Pin every reference to the full 40-character commit SHA of a release tag and add the release version as a comment:
+
+```yaml
+jobs:
+  deploy:
+    uses: <owner>/actions/.github/workflows/<component>.yml@<sha40> # <release version>
+```
+
+```yaml
+steps:
+  - uses: <owner>/actions/<component>@<sha40> # <release version>
+```
+
+- Never `@main`, a branch or a moving tag.
+- Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/<tag>`. When the object type is `tag` (annotated tag), dereference it with `gh api repos/<owner>/actions/git/tags/<object-sha>` and use the commit SHA it points to.
+- Third-party actions used inside this repository follow the same rule. Dependabot updates the SHA and the version comment together.
+- Inside this repository, a component refers to another one only through the self-repository form (`$/<component>`) or a relative path (`./<component>`). It never refers to `<owner>/actions@...`.
+- A component in this public repository never calls a component of a private repository.
+
+## Versioning and releases
+
+- Versions follow SemVer and come from release-please, driven by Conventional Commits. The commit scope is the component name.
+- A breaking change of an input, output or secret is a major version.
+- Release tags are immutable. Pre-releases are never marked as latest.
+- Only release-please writes `CHANGELOG.md` and the release manifest.
+- The release configuration and the tag format enter with the first component. Until then, this repository has no release.
+
+## Forks
+
+- Every component runs unchanged in a fork owned by another organization. Nothing in a component names an owner, an organization variable or an organization secret.
+- Keep the original repository as the `upstream` remote and sync by release tag.
+- Internal workflows can be guarded by repository owner. Release automation does not run in a fork.
+- Callers in the fork owner's organization pin the fork's SHAs, not the upstream ones.
+
+## Contributing
+
+Contributions are welcome by pull request. Read [AGENTS.md](AGENTS.md) first: it holds the rules for changing this repository. Under section 5 of the Apache License 2.0, a contribution you submit is licensed under the same terms, unless you state otherwise.
+
+## Security
+
+See [SECURITY.md](SECURITY.md).
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).
