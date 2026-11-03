@@ -1,0 +1,4 @@
+# Code owner of every file in this repository. GitHub asks this owner for a
+# review on each pull request. The branch ruleset of main does not require
+# a code owner review, so this file only requests the review.
+* @michaelmeneses

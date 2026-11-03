@@ -85,6 +85,7 @@ for tests in */tests; do python3 -I -B -m unittest discover -s "$tests"; done
 
 ## Not in scope without an explicit decision
 
-- `CODEOWNERS` and a `NOTICE` file.
+- A `NOTICE` file.
+- Requiring a code owner review in a ruleset. `.github/CODEOWNERS` only requests the review of the code owner.
 - Repository or organization settings, rulesets and GitHub App permissions.
 - Moving tags other than the major tag `<component>-vN` of the release workflow.
