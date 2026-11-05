@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/middag-io/actions/compare/github-release-major-check-v1.0.0...github-release-major-check-v1.0.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* **github-release-major-check:** one concurrency group per package ([42a8bfc](https://github.com/middag-io/actions/commit/42a8bfcb533775ffc716cde22e80512f1a243a5b))
+
 ## 1.0.0 (2026-11-05)
 
 
