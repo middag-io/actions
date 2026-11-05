@@ -1,0 +1,151 @@
+# Reusable workflow of the php-library-check component. It gives the
+# composite action a job per PHP version, minimum permissions, a timeout and
+# a concurrency group. The static checks run in the job of the first PHP
+# version of php-versions; the dependency audit and the test script run in
+# every job. The composite action does the work: see
+# php-library-check/README.md.
+#
+# Only audit-blocking-severities reads a variable of the caller
+# (PHP_LIBRARY_CHECK_AUDIT_BLOCKING_SEVERITIES); in a called workflow, the
+# vars context resolves against the caller. The secret comes from one
+# explicit line in the caller; it is never inherited.
+# Reference it by full commit SHA with a version comment (see the README).
+name: PHP library check
+
+on:
+  workflow_call:
+    inputs:
+      php-versions:
+        description: JSON array of the PHP versions to check, one job each; the static checks run on the first one.
+        type: string
+        required: false
+        default: '["8.2", "8.3", "8.4"]'
+      path:
+        description: Directory of the library (the one that holds composer.json), relative to the checkout.
+        type: string
+        required: false
+        default: "."
+      php-extensions:
+        description: PHP extensions to install, separated by commas.
+        type: string
+        required: false
+        default: "mbstring, xml, curl, intl"
+      composer-validate:
+        description: Run composer validate --no-check-publish --no-check-lock as a static check (true or false).
+        type: boolean
+        required: false
+        default: true
+      composer-validate-strict:
+        description: Add --strict to composer validate, so that warnings fail (true or false).
+        type: boolean
+        required: false
+        default: false
+      strict-psr:
+        description: Run composer dump-autoload --optimize --strict-psr as a static check, which fails on a class outside its PSR-4 path (true or false).
+        type: boolean
+        required: false
+        default: true
+      lint-script:
+        description: Composer script of the PHP syntax lint, a static check. Empty skips it.
+        type: string
+        required: false
+        default: ""
+      phpstan-script:
+        description: Composer script that runs PHPStan, a static check. Empty skips it.
+        type: string
+        required: false
+        default: check:stan
+      cs-fixer-script:
+        description: Composer script that runs PHP-CS-Fixer without fixing, a static check. Empty skips it.
+        type: string
+        required: false
+        default: check:style
+      rector-script:
+        description: Composer script that runs Rector in dry-run mode, a static check. Empty skips it.
+        type: string
+        required: false
+        default: check:rector
+      composer-scripts:
+        description: More Composer scripts to run after the static checks, in order, separated by commas or new lines; static checks too.
+        type: string
+        required: false
+        default: ""
+      test-script:
+        description: Composer script that runs the tests (PHPUnit), in every job. Empty skips it.
+        type: string
+        required: false
+        default: test
+      audit-blocking-severities:
+        description: Severities of a dependency advisory that fail the job, separated by commas (critical, high, medium, low). Default from the variable PHP_LIBRARY_CHECK_AUDIT_BLOCKING_SEVERITIES, else critical.
+        type: string
+        required: false
+        default: ${{ vars.PHP_LIBRARY_CHECK_AUDIT_BLOCKING_SEVERITIES || 'critical' }}
+      dry-run:
+        description: Validate the inputs and print the planned commands only; no credentials, no PHP set-up, no install, no audit, no check.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of each job, in minutes.
+        type: number
+        required: false
+        default: 20
+    secrets:
+      composer-auth:
+        description: Composer credentials as a JSON object in the COMPOSER_AUTH format, for private dependencies.
+        required: false
+    outputs:
+      commands:
+        description: JSON array of the Composer commands planned after the install, of the last job that ended; pass one PHP version for a stable value.
+        value: ${{ jobs.check.outputs.commands }}
+      audit-command:
+        description: The dependency audit command, run or planned.
+        value: ${{ jobs.check.outputs.audit-command }}
+
+permissions: {}
+
+jobs:
+  check:
+    name: check (PHP ${{ matrix.php-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    # Nothing outside the job is written: one group per run attempt, path
+    # and PHP version keeps the jobs of a caller's matrix apart.
+    concurrency:
+      group: php-library-check-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.path }}-${{ matrix.php-version }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ${{ fromJSON(inputs.php-versions) }}
+    outputs:
+      commands: ${{ steps.check.outputs.commands }}
+      audit-command: ${{ steps.check.outputs.audit-command }}
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the library
+        id: check
+        uses: $/php-library-check
+        with:
+          path: ${{ inputs.path }}
+          php-version: ${{ matrix.php-version }}
+          php-extensions: ${{ inputs.php-extensions }}
+          static-checks: ${{ matrix.php-version == fromJSON(inputs.php-versions)[0] }}
+          composer-validate: ${{ inputs.composer-validate }}
+          composer-validate-strict: ${{ inputs.composer-validate-strict }}
+          strict-psr: ${{ inputs.strict-psr }}
+          lint-script: ${{ inputs.lint-script }}
+          phpstan-script: ${{ inputs.phpstan-script }}
+          cs-fixer-script: ${{ inputs.cs-fixer-script }}
+          rector-script: ${{ inputs.rector-script }}
+          composer-scripts: ${{ inputs.composer-scripts }}
+          test-script: ${{ inputs.test-script }}
+          audit-blocking-severities: ${{ inputs.audit-blocking-severities }}
+          composer-auth: ${{ !inputs.dry-run && secrets.composer-auth || '' }}
+          dry-run: ${{ inputs.dry-run }}

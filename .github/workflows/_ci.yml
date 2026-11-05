@@ -612,6 +612,53 @@ jobs:
             exit 1
           fi
 
+  # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture library. A dry run: no credentials, no PHP set-up, no
+  # install, no audit and no check.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-php-library-check:
+    name: dry-run-php-library-check
+    permissions:
+      contents: read
+    uses: ./.github/workflows/php-library-check.yml # zizmor: ignore[self-repository]
+    with:
+      php-versions: '["8.2"]'
+      path: php-library-check/tests/fixtures/basic
+      lint-script: lint
+      composer-scripts: check:schemas
+      audit-blocking-severities: critical, high
+      dry-run: true
+
+  # The dry run must plan exactly the commands and the audit command of
+  # php-library-check/tests/fixtures/expected/basic.json.
+  dry-run-check-php-library-check:
+    name: dry-run-check-php-library-check
+    needs: dry-run-php-library-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected plan
+        env:
+          COMMANDS: ${{ needs.dry-run-php-library-check.outputs.commands }}
+          AUDIT_COMMAND: ${{ needs.dry-run-php-library-check.outputs.audit-command }}
+        run: |
+          expected="php-library-check/tests/fixtures/expected/basic.json"
+          echo "commands=$COMMANDS"
+          echo "audit-command=$AUDIT_COMMAND"
+          if ! jq -e --argjson commands "$COMMANDS" --arg audit "$AUDIT_COMMAND" \
+            '.commands == $commands and .["audit-command"] == $audit' "$expected" >/dev/null; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
   # Calls the reusable workflow by a relative path, as a caller would by SHA,
   # on the fixture plugin. A dry run: no setup, no install, no credentials.
   # zizmor self-repository: "./" is the documented form of this test job; in
@@ -843,6 +890,8 @@ jobs:
       - dry-run-check-php-composer-setup
       - dry-run-php-composer-scan
       - dry-run-check-php-composer-scan
+      - dry-run-php-library-check
+      - dry-run-check-php-library-check
       - dry-run-node-npm-scan
       - dry-run-check-node-npm-scan
       - dry-run-wp-plugin-check

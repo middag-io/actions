@@ -69,6 +69,12 @@
       "versioning": "default",
       "prerelease": false
     },
+    "php-library-check": {
+      "component": "php-library-check",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
     "release-please": {
       "component": "release-please",
       "changelog-path": "CHANGELOG.md",

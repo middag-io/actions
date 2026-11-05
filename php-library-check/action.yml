@@ -1,0 +1,157 @@
+# Composite action: checks a PHP library (a Composer package) in a change, on
+# one PHP version. PHP, Composer and the install come from the
+# php-composer-setup action of this repository, and the dependency audit from
+# its php-composer-scan action. See README.md next to this file for the
+# inputs, what the action deletes (nothing) and the permissions it needs.
+name: PHP library check
+description: >-
+  Installs a Composer package on one PHP version, audits its dependencies,
+  and runs composer validate, the PSR-4 autoload check, the lint, PHPStan,
+  PHP-CS-Fixer and Rector scripts (static checks) and the test script that
+  the caller names. Publishes nothing.
+
+inputs:
+  path:
+    description: Directory of the library (the one that holds composer.json), relative to the checkout.
+    required: false
+    default: "."
+  php-version:
+    description: PHP version to set up (for example 8.3).
+    required: true
+  php-extensions:
+    description: PHP extensions to install, separated by commas.
+    required: false
+    default: "mbstring, xml, curl, intl"
+  static-checks:
+    description: Run the static checks in this job (true or false); the test script runs either way.
+    required: false
+    default: "true"
+  composer-validate:
+    description: Run composer validate --no-check-publish --no-check-lock as a static check (true or false).
+    required: false
+    default: "true"
+  composer-validate-strict:
+    description: Add --strict to composer validate, so that warnings fail (true or false).
+    required: false
+    default: "false"
+  strict-psr:
+    description: Run composer dump-autoload --optimize --strict-psr as a static check, which fails on a class outside its PSR-4 path (true or false).
+    required: false
+    default: "true"
+  lint-script:
+    description: Composer script of the PHP syntax lint, a static check. Empty skips it.
+    required: false
+    default: ""
+  phpstan-script:
+    description: Composer script that runs PHPStan, a static check. Empty skips it.
+    required: false
+    default: check:stan
+  cs-fixer-script:
+    description: Composer script that runs PHP-CS-Fixer without fixing, a static check. Empty skips it.
+    required: false
+    default: check:style
+  rector-script:
+    description: Composer script that runs Rector in dry-run mode, a static check. Empty skips it.
+    required: false
+    default: check:rector
+  composer-scripts:
+    description: More Composer scripts to run after the static checks, in order, separated by commas or new lines; static checks too.
+    required: false
+    default: ""
+  test-script:
+    description: Composer script that runs the tests (PHPUnit), in every job. Empty skips it.
+    required: false
+    default: test
+  audit-blocking-severities:
+    description: Severities of a dependency advisory that fail the job, separated by commas (critical, high, medium, low); lower severities are only reported.
+    required: false
+    default: critical
+  composer-auth:
+    description: Composer credentials as a JSON object in the COMPOSER_AUTH format, passed from a secret, for private dependencies. Empty means public dependencies only.
+    required: false
+    default: ""
+  dry-run:
+    description: Validate the inputs and print the planned commands only; no PHP set-up, no install, no audit, no check (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  commands:
+    description: JSON array of the Composer commands planned after the install, in order.
+    value: ${{ steps.plan.outputs.commands }}
+  audit-command:
+    description: The dependency audit command, run or planned.
+    value: ${{ steps.audit.outputs.command }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs and plan the checks
+      id: plan
+      shell: bash
+      env:
+        LIBRARY_PATH: ${{ inputs.path }}
+        PHP_VERSION: ${{ inputs.php-version }}
+        STATIC_CHECKS: ${{ inputs.static-checks }}
+        COMPOSER_VALIDATE: ${{ inputs.composer-validate }}
+        COMPOSER_VALIDATE_STRICT: ${{ inputs.composer-validate-strict }}
+        STRICT_PSR: ${{ inputs.strict-psr }}
+        LINT_SCRIPT: ${{ inputs.lint-script }}
+        PHPSTAN_SCRIPT: ${{ inputs.phpstan-script }}
+        CS_FIXER_SCRIPT: ${{ inputs.cs-fixer-script }}
+        RECTOR_SCRIPT: ${{ inputs.rector-script }}
+        COMPOSER_SCRIPTS: ${{ inputs.composer-scripts }}
+        TEST_SCRIPT: ${{ inputs.test-script }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        plan_file="$(mktemp "$RUNNER_TEMP/php-library-check.XXXXXX")"
+        python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" plan \
+          --workspace="$GITHUB_WORKSPACE" \
+          --path="$LIBRARY_PATH" \
+          --php-version="$PHP_VERSION" \
+          --static-checks="$STATIC_CHECKS" \
+          --composer-validate="$COMPOSER_VALIDATE" \
+          --composer-validate-strict="$COMPOSER_VALIDATE_STRICT" \
+          --strict-psr="$STRICT_PSR" \
+          --lint-script="$LINT_SCRIPT" \
+          --phpstan-script="$PHPSTAN_SCRIPT" \
+          --cs-fixer-script="$CS_FIXER_SCRIPT" \
+          --rector-script="$RECTOR_SCRIPT" \
+          --composer-scripts="$COMPOSER_SCRIPTS" \
+          --test-script="$TEST_SCRIPT" \
+          --dry-run="$DRY_RUN" \
+          --plan-file="$plan_file" \
+          --github-output="$GITHUB_OUTPUT"
+
+    # php-composer-setup comes from the same repository and commit as this
+    # action. It validates its own inputs, sets up PHP and Composer, writes
+    # composer-auth to the global Composer auth.json of the runner (outside
+    # the checkout), restores the Composer download cache and runs composer
+    # install. In a dry run it only validates and reports, like this action.
+    - name: Set up PHP and install the Composer dependencies
+      uses: $/php-composer-setup
+      with:
+        php-version: ${{ inputs.php-version }}
+        php-extensions: ${{ inputs.php-extensions }}
+        coverage: none
+        working-directory: ${{ inputs.path }}
+        composer-auth: ${{ inputs.composer-auth }}
+        dry-run: ${{ inputs.dry-run }}
+
+    # php-composer-scan, same repository and commit: composer audit on the
+    # installed packages; fails only on audit-blocking-severities. In a dry
+    # run it only validates and reports.
+    - name: Audit the Composer dependencies
+      id: audit
+      uses: $/php-composer-scan
+      with:
+        working-directory: ${{ inputs.path }}
+        blocking-severities: ${{ inputs.audit-blocking-severities }}
+        dry-run: ${{ inputs.dry-run }}
+
+    - name: Run the library checks
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        PLAN_FILE: ${{ steps.plan.outputs.plan-file }}
+      run: python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" run --plan-file="$PLAN_FILE"

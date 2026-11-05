@@ -1,0 +1,22 @@
+{
+    "name": "example/library",
+    "description": "Fixture of the php-library-check component: a library whose scripts only print.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": ">=8.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Example\\Library\\": "src/"
+        }
+    },
+    "scripts": {
+        "lint": "@php -l src/Greeting.php",
+        "check:stan": "@php -r \"echo 'phpstan', PHP_EOL;\"",
+        "check:style": "@php -r \"echo 'php-cs-fixer', PHP_EOL;\"",
+        "check:rector": "@php -r \"echo 'rector', PHP_EOL;\"",
+        "check:schemas": "@php -r \"echo 'schemas', PHP_EOL;\"",
+        "test": "@php -r \"require 'vendor/autoload.php'; exit(Example\\Library\\Greeting::hello() === 'hello' ? 0 : 1);\""
+    }
+}
