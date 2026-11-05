@@ -1,0 +1,124 @@
+# Composite action: installs a throwaway Moodle host of one version and runs a
+# probe script that boots the code under test inside it. PHP, Composer and
+# the dependencies of the code under test come from the php-composer-setup
+# action of this repository. The caller provides an empty PostgreSQL
+# database. See README.md next to this file for the inputs, what the action
+# deletes (nothing) and the permissions it needs.
+name: Moodle host check
+description: >-
+  Clones one Moodle branch, installs it on an empty PostgreSQL database and
+  runs a PHP probe script that loads the code under test (a Composer package)
+  inside that Moodle. Publishes nothing.
+
+inputs:
+  moodle-branch:
+    description: Moodle branch to install (for example MOODLE_405_STABLE or main).
+    required: true
+  moodle-repository:
+    description: GitHub repository (owner/name) to clone Moodle from.
+    required: false
+    default: moodle/moodle
+  php-version:
+    description: PHP version to set up (for example 8.3). It must be one that the Moodle branch supports.
+    required: true
+  php-extensions:
+    description: PHP extensions to install, separated by commas.
+    required: false
+    default: "pgsql, intl, zip, gd, soap, xml, mbstring, curl, sodium, exif"
+  path:
+    description: Directory of the code under test (the one that holds composer.json), relative to the checkout. Its dependencies are installed for php-version.
+    required: false
+    default: "."
+  probe-script:
+    description: PHP script of the checkout to run against the host, relative to the checkout. Empty runs the built-in probe.
+    required: false
+    default: ""
+  db-host:
+    description: Host of the empty PostgreSQL database.
+    required: false
+    default: 127.0.0.1
+  db-port:
+    description: Port of the PostgreSQL database.
+    required: false
+    default: "5432"
+  db-name:
+    description: Name of the empty PostgreSQL database; the Moodle tables are created there.
+    required: false
+    default: moodle
+  db-user:
+    description: PostgreSQL user that logs in without a password (trust authentication) and owns db-name.
+    required: false
+    default: postgres
+  composer-auth:
+    description: Composer credentials as a JSON object in the COMPOSER_AUTH format, passed from a secret, for private dependencies of the code under test. Empty means public dependencies only.
+    required: false
+    default: ""
+  dry-run:
+    description: Validate the inputs and print the planned commands only; no PHP set-up, no clone, no install, no probe (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  commands:
+    description: JSON array of the planned commands, with <moodle> for the Moodle directory and <builtin-probe> for the built-in probe.
+    value: ${{ steps.plan.outputs.commands }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs and plan the host
+      id: plan
+      shell: bash
+      env:
+        MOODLE_BRANCH: ${{ inputs.moodle-branch }}
+        MOODLE_REPOSITORY: ${{ inputs.moodle-repository }}
+        PHP_VERSION: ${{ inputs.php-version }}
+        PHP_EXTENSIONS: ${{ inputs.php-extensions }}
+        CODE_PATH: ${{ inputs.path }}
+        PROBE_SCRIPT: ${{ inputs.probe-script }}
+        DB_HOST: ${{ inputs.db-host }}
+        DB_PORT: ${{ inputs.db-port }}
+        DB_NAME: ${{ inputs.db-name }}
+        DB_USER: ${{ inputs.db-user }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        plan_file="$(mktemp "$RUNNER_TEMP/moodle-host-check.XXXXXX")"
+        python3 -I "$GITHUB_ACTION_PATH/scripts/host.py" plan \
+          --workspace="$GITHUB_WORKSPACE" \
+          --moodle-branch="$MOODLE_BRANCH" \
+          --moodle-repository="$MOODLE_REPOSITORY" \
+          --php-version="$PHP_VERSION" \
+          --php-extensions="$PHP_EXTENSIONS" \
+          --path="$CODE_PATH" \
+          --probe-script="$PROBE_SCRIPT" \
+          --db-host="$DB_HOST" \
+          --db-port="$DB_PORT" \
+          --db-name="$DB_NAME" \
+          --db-user="$DB_USER" \
+          --dry-run="$DRY_RUN" \
+          --plan-file="$plan_file" \
+          --github-output="$GITHUB_OUTPUT"
+
+    # php-composer-setup comes from the same repository and commit as this
+    # action. It validates its own inputs, sets up PHP and Composer, writes
+    # composer-auth to the global Composer auth.json of the runner (outside
+    # the checkout) and installs the dependencies of the code under test for
+    # this PHP version. In a dry run it only validates and reports.
+    - name: Set up PHP and install the code under test
+      uses: $/php-composer-setup
+      with:
+        php-version: ${{ inputs.php-version }}
+        php-extensions: ${{ inputs.php-extensions }}
+        coverage: none
+        working-directory: ${{ inputs.path }}
+        composer-auth: ${{ inputs.composer-auth }}
+        dry-run: ${{ inputs.dry-run }}
+
+    - name: Install the Moodle host and run the probe
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        PLAN_FILE: ${{ steps.plan.outputs.plan-file }}
+      run: |
+        work_dir="$(mktemp -d "$RUNNER_TEMP/moodle-host-check-host.XXXXXX")"
+        python3 -I "$GITHUB_ACTION_PATH/scripts/host.py" run --plan-file="$PLAN_FILE" --work-dir="$work_dir"

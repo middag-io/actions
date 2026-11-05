@@ -1,0 +1,14 @@
+{
+    "name": "example/moodle-library",
+    "description": "Fixture of moodle-host-check: a Composer package probed inside a Moodle host.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": ">=8.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Example\\MoodleLibrary\\": "src/"
+        }
+    }
+}
