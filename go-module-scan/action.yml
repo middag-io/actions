@@ -1,0 +1,78 @@
+# Composite action: scans the packages of a Go module for known
+# vulnerabilities with govulncheck and fails only on a blocking severity.
+# Go comes from the job (actions/setup-go before this action); govulncheck is
+# installed at a fixed version into a temporary directory.
+# See README.md next to this file for the inputs, the severity mapping, what
+# the action deletes (nothing) and the permissions it needs.
+name: Go module scan
+description: >-
+  Runs govulncheck on the packages of a Go module and fails when a vulnerability has a severity listed in
+  blocking-severities: a called vulnerable symbol is critical, an imported package or a required module is low.
+  Publishes nothing.
+
+inputs:
+  working-directory:
+    description: Directory of the module (holds go.mod), relative to the checkout.
+    required: false
+    default: "."
+  blocking-severities:
+    description: >-
+      Severities that fail the scan, separated by commas: any of critical,
+      high, medium and low. A called vulnerable symbol is critical; an
+      imported package or a required module is low. Lower severities are
+      only reported.
+    required: false
+    default: critical
+  dry-run:
+    description: Validate the inputs and print the scan command only; no install, no scan (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  command:
+    description: The scan command, run or planned.
+    value: ${{ steps.plan.outputs.command }}
+  tool:
+    description: The Go package and version of govulncheck that the scan installs.
+    value: ${{ steps.plan.outputs.tool }}
+  blocking-severities:
+    description: The blocking severities read from the input, comma-separated, from the highest.
+    value: ${{ steps.plan.outputs.blocking-severities }}
+  advisories:
+    description: Number of vulnerabilities found (empty in a dry run).
+    value: ${{ steps.scan.outputs.advisories }}
+  blocking:
+    description: Number of vulnerabilities with a blocking severity (empty in a dry run).
+    value: ${{ steps.scan.outputs.blocking }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs
+      id: plan
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        BLOCKING_SEVERITIES: ${{ inputs.blocking-severities }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/scan.py" plan \
+          --workspace="$GITHUB_WORKSPACE" \
+          --working-directory="$WORKING_DIRECTORY" \
+          --blocking-severities="$BLOCKING_SEVERITIES" \
+          --dry-run="$DRY_RUN" \
+          --github-output="$GITHUB_OUTPUT"
+
+    - name: Scan the Go module
+      id: scan
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        BLOCKING_SEVERITIES: ${{ inputs.blocking-severities }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/scan.py" run \
+          --workspace="$GITHUB_WORKSPACE" \
+          --working-directory="$WORKING_DIRECTORY" \
+          --blocking-severities="$BLOCKING_SEVERITIES" \
+          --github-output="$GITHUB_OUTPUT"
