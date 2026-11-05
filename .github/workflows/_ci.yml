@@ -483,6 +483,93 @@ jobs:
             exit 1
           fi
 
+  # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture project. A dry run: no credentials, no PHP set-up, no install,
+  # no audit.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-php-composer-scan:
+    name: dry-run-php-composer-scan
+    permissions:
+      contents: read
+    uses: ./.github/workflows/php-composer-scan.yml # zizmor: ignore[self-repository]
+    with:
+      working-directory: php-composer-scan/tests/fixtures/basic
+      blocking-severities: high, critical
+      dry-run: true
+
+  # The dry run must plan exactly the outputs of
+  # php-composer-scan/tests/fixtures/expected/basic.env.
+  dry-run-check-php-composer-scan:
+    name: dry-run-check-php-composer-scan
+    needs: dry-run-php-composer-scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected values
+        env:
+          COMMAND: ${{ needs.dry-run-php-composer-scan.outputs.command }}
+          BLOCKING_SEVERITIES: ${{ needs.dry-run-php-composer-scan.outputs.blocking-severities }}
+          ADVISORIES: ${{ needs.dry-run-php-composer-scan.outputs.advisories }}
+        run: |
+          expected="php-composer-scan/tests/fixtures/expected/basic.env"
+          actual="$(printf 'command=%s\nblocking-severities=%s\n' "$COMMAND" "$BLOCKING_SEVERITIES")"
+          echo "$actual"
+          if ! diff -u "$expected" - <<<"$actual" || [ -n "$ADVISORIES" ]; then
+            echo "::error::dry-run outputs differ from $expected, or the dry run audited"
+            exit 1
+          fi
+
+  # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture project. A dry run: no Node.js set-up, no audit.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-node-npm-scan:
+    name: dry-run-node-npm-scan
+    permissions:
+      contents: read
+    uses: ./.github/workflows/node-npm-scan.yml # zizmor: ignore[self-repository]
+    with:
+      working-directory: node-npm-scan/tests/fixtures/basic
+      blocking-severities: critical, high
+      dry-run: true
+
+  # The dry run must plan exactly the outputs of
+  # node-npm-scan/tests/fixtures/expected/basic.env.
+  dry-run-check-node-npm-scan:
+    name: dry-run-check-node-npm-scan
+    needs: dry-run-node-npm-scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected values
+        env:
+          COMMAND: ${{ needs.dry-run-node-npm-scan.outputs.command }}
+          BLOCKING_SEVERITIES: ${{ needs.dry-run-node-npm-scan.outputs.blocking-severities }}
+          ADVISORIES: ${{ needs.dry-run-node-npm-scan.outputs.advisories }}
+        run: |
+          expected="node-npm-scan/tests/fixtures/expected/basic.env"
+          actual="$(printf 'command=%s\nblocking-severities=%s\n' "$COMMAND" "$BLOCKING_SEVERITIES")"
+          echo "$actual"
+          if ! diff -u "$expected" - <<<"$actual" || [ -n "$ADVISORIES" ]; then
+            echo "::error::dry-run outputs differ from $expected, or the dry run audited"
+            exit 1
+          fi
+
   # Calls the reusable workflow by a relative path, as a caller would by SHA,
   # on the fixture plugin. A dry run: no setup, no install, no credentials.
   # zizmor self-repository: "./" is the documented form of this test job; in
@@ -710,6 +797,10 @@ jobs:
       - dry-run-check-cloudflare-workers-deploy
       - dry-run-php-composer-setup
       - dry-run-check-php-composer-setup
+      - dry-run-php-composer-scan
+      - dry-run-check-php-composer-scan
+      - dry-run-node-npm-scan
+      - dry-run-check-node-npm-scan
       - dry-run-wp-plugin-check
       - dry-run-check-wp-plugin-check
       - dry-run-wp-theme-check

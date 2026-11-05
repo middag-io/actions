@@ -6,6 +6,9 @@
 # message, only for the named component, only in its own workflow file.
 # Remove it when actionlint supports the form. While it is here, actionlint
 # skips the with: keys of that step; check-genericity.sh checks them instead.
+# php-composer-scan is the one workflow that also calls another component
+# (php-composer-setup, to install before the audit): its file ignores the
+# same message for that second "$/" step.
 paths:
   .github/workflows/cloudflare-pages-deploy.yml:
     ignore:
@@ -25,6 +28,13 @@ paths:
   .github/workflows/moodle-plugin-package.yml:
     ignore:
       - 'specifying action "\$/moodle-plugin-package" in invalid format because ref is missing'
+  .github/workflows/node-npm-scan.yml:
+    ignore:
+      - 'specifying action "\$/node-npm-scan" in invalid format because ref is missing'
+  .github/workflows/php-composer-scan.yml:
+    ignore:
+      - 'specifying action "\$/php-composer-scan" in invalid format because ref is missing'
+      - 'specifying action "\$/php-composer-setup" in invalid format because ref is missing'
   .github/workflows/php-composer-setup.yml:
     ignore:
       - 'specifying action "\$/php-composer-setup" in invalid format because ref is missing'

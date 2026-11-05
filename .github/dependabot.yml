@@ -11,6 +11,8 @@ updates:
       - /cloudflare-workers-deploy
       - /moodle-plugin-check
       - /moodle-plugin-package
+      - /node-npm-scan
+      - /php-composer-scan
       - /php-composer-setup
       - /release-please
       - /wp-plugin-check
