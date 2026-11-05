@@ -38,6 +38,11 @@ on:
         type: string
         required: false
         default: ""
+      window-branch:
+        description: Branch whose pull requests the window applies to; a pull request into any other branch (a maintenance branch such as release/X.Y) sees the window closed. Empty uses the default branch of the repository.
+        type: string
+        required: false
+        default: ""
       dry-run:
         description: Read the manifest from the checkout and check the title only; report findings as warnings and never fail on them.
         type: boolean
@@ -102,4 +107,6 @@ jobs:
           title: ${{ inputs.title || github.event.pull_request.title }}
           base-sha: ${{ !inputs.dry-run && github.event.pull_request.base.sha || '' }}
           head-sha: ${{ !inputs.dry-run && github.event.pull_request.head.sha || '' }}
+          base-ref: ${{ !inputs.dry-run && github.event.pull_request.base.ref || '' }}
+          window-branch: ${{ inputs.window-branch || github.event.repository.default_branch }}
           dry-run: ${{ inputs.dry-run }}

@@ -60,6 +60,10 @@ class WorkflowWiringTest(unittest.TestCase):
         self.assertIn("head-sha: ${{ !inputs.dry-run && github.event.pull_request.head.sha || '' }}", self.text)
         self.assertIn("persist-credentials: false", self.text)
 
+    def test_base_branch_and_window_branch_reach_the_action(self):
+        self.assertIn("base-ref: ${{ !inputs.dry-run && github.event.pull_request.base.ref || '' }}", self.text)
+        self.assertIn("window-branch: ${{ inputs.window-branch || github.event.repository.default_branch }}", self.text)
+
     def test_window_defaults_to_the_component_variable(self):
         self.assertIn("default: ${{ vars.PHP_VERSION_FAMILY_CHECK_WINDOW }}", self.text)
 

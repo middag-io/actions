@@ -6,8 +6,8 @@
 name: PHP version family check
 description: >-
   Fails a pull request whose title or commits carry a feature while the
-  version family window is closed, or a breaking change outside a family
-  MAJOR window. Reads the package version from the release-please manifest
+  version family window is closed, a breaking change outside a family
+  MAJOR window, or a Release-As footer other than the open window's. Reads the package version from the release-please manifest
   of the base commit. Publishes nothing.
 
 inputs:
@@ -36,6 +36,14 @@ inputs:
     default: ""
   head-sha:
     description: Full SHA of the head commit of the pull request. Required unless dry-run is true; the checkout must hold the history of both commits.
+    required: false
+    default: ""
+  base-ref:
+    description: Name of the base branch of the pull request. With window-branch, the window applies only to a pull request into window-branch; empty skips that rule.
+    required: false
+    default: ""
+  window-branch:
+    description: Branch whose pull requests the window applies to (usually the default branch); a pull request into any other branch, such as a maintenance branch, sees the window closed. Empty skips that rule.
     required: false
     default: ""
   dry-run:
@@ -71,6 +79,8 @@ runs:
         PR_TITLE: ${{ inputs.title }}
         BASE_SHA: ${{ inputs.base-sha }}
         HEAD_SHA: ${{ inputs.head-sha }}
+        BASE_REF: ${{ inputs.base-ref }}
+        WINDOW_BRANCH: ${{ inputs.window-branch }}
         DRY_RUN: ${{ inputs.dry-run }}
       run: |
         python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" \
@@ -81,6 +91,8 @@ runs:
           --title="$PR_TITLE" \
           --base-sha="$BASE_SHA" \
           --head-sha="$HEAD_SHA" \
+          --base-ref="$BASE_REF" \
+          --window-branch="$WINDOW_BRANCH" \
           --dry-run="$DRY_RUN" \
           --workspace="$GITHUB_WORKSPACE" \
           --github-output="$GITHUB_OUTPUT"

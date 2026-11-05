@@ -48,6 +48,7 @@ def args(**overrides):
     values = {
         "window": "", "manifest_file": ".release-please-manifest.json", "package": ".",
         "family_from": "2.0.0", "title": "fix: correct a typo", "base_sha": BASE, "head_sha": HEAD,
+        "base_ref": "main", "window_branch": "main",
         "dry_run": "false", "workspace": ".", "github_output": "",
     }
     values.update(overrides)
@@ -111,7 +112,12 @@ class MessageTest(unittest.TestCase):
             "chore: update a pin": ("chore", False),
             'Revert "feat: add a thing"': (None, False),
             "feature: not a type we gate": ("feature", False),
-            "feat:no space": (None, False),
+            "feat:no space": ("feat", False),
+            "feat :space before the colon": ("feat", False),
+            "Feat(api):x": ("feat", False),
+            "feat (api) ! : drop a thing": ("feat", True),
+            "FEAT!:x": ("feat", True),
+            "a plain sentence": (None, False),
         }
         for message, expected in cases.items():
             with self.subTest(message=message):
@@ -122,6 +128,45 @@ class MessageTest(unittest.TestCase):
         self.assertEqual(check.parse_message("fix: a\n\nBREAKING-CHANGE: the input x is gone"), ("fix", True))
         self.assertEqual(check.parse_message("fix: a\n\nThis is not a BREAKING CHANGE: prose"), ("fix", False))
         self.assertEqual(check.parse_message("BREAKING CHANGE: only a header"), (None, False))
+
+    def test_near_miss_breaking_footers(self):
+        for footer in ("BREAKING CHANGE : y", "BREAKING CHANGE:y", "BREAKING-CHANGE :y", "  BREAKING CHANGE: y"):
+            with self.subTest(footer=footer):
+                self.assertEqual(check.parse_message(f"fix: a\n\n{footer}"), ("fix", True))
+
+    def test_release_as_footers(self):
+        self.assertEqual(check.release_as_versions("fix: x\n\nRelease-As: 3.0.0"), ["3.0.0"])
+        self.assertEqual(check.release_as_versions("fix: x\n\nrelease-as:2.1.0"), ["2.1.0"])
+        self.assertEqual(check.release_as_versions("fix: x\n\nRELEASE AS : v2.1.0"), ["v2.1.0"])
+        self.assertEqual(check.release_as_versions("fix: x\n\nRelease-As:"), [""])
+        self.assertEqual(check.release_as_versions("fix: x\n\nWe never use a Release-As: here"), [])
+        self.assertEqual(check.release_as_versions("Release-As: 3.0.0"), [])
+
+
+class EffectiveWindowTest(unittest.TestCase):
+    def kind(self, window, version):
+        kind, label, target = check.parse_window(window)
+        return check.effective_window(kind, label, target, check.parse_version("v", version))[0]
+
+    def test_a_window_counts_only_when_ahead_of_the_base_version(self):
+        cases = [
+            ("2.1", "2.0.3", check.MINOR),
+            ("2.3", "2.1.0", check.MINOR),
+            ("2.1", "2.1.0", check.CLOSED),  # left set after the family 2.1.0
+            ("2.1", "2.2.4", check.CLOSED),
+            ("2.1", "1.31.3", check.CLOSED),  # MINOR window of another MAJOR
+            ("3.1", "2.4.0", check.CLOSED),
+            ("2.0", "1.31.3", check.MAJOR),  # the 2.0 cut from 1.x
+            ("2.0", "0.4.0", check.MAJOR),  # the 2.0 cut from 0.x
+            ("2.0", "2.0.0-rc.1", check.MAJOR),
+            ("2.0", "2.0.0", check.CLOSED),  # left set after the cut
+            ("3.0", "2.4.1", check.MAJOR),
+            ("3.0", "3.0.2", check.CLOSED),
+            ("", "2.0.0", check.CLOSED),
+        ]
+        for window, version, expected in cases:
+            with self.subTest(window=window, version=version):
+                self.assertEqual(self.kind(window, version), expected)
 
 
 class CheckTest(unittest.TestCase):
@@ -198,6 +243,63 @@ class CheckTest(unittest.TestCase):
         self.assertNotIn("\x00", "".join(git.calls[1]))
 
 
+class StaleWindowTest(unittest.TestCase):
+    def test_stale_minor_window_fails_feat(self):
+        status, out, outputs = run("2.1.2", window="2.1", title="feat: add a thing")
+        self.assertEqual((status, outputs["window-kind"]), (1, "closed"))
+        self.assertIn("minor window 2.1 is not ahead of version 2.1.2", out)
+
+    def test_release_branch_of_the_previous_major_refuses_feat_and_bang(self):
+        # A pull request into release/2.4 while the 3.0 MAJOR window is open on main.
+        for title in ("feat: add a thing", "fix!: change a default"):
+            with self.subTest(title=title):
+                status, out, outputs = run("2.4.3", window="3.0", title=title, base_ref="release/2.4")
+                self.assertEqual((status, outputs["window-kind"]), (1, "closed"))
+                self.assertIn("major window 3.0 applies to pull requests into main; this one is into release/2.4", out)
+
+    def test_same_version_into_main_keeps_the_major_window(self):
+        status, _, outputs = run("2.4.3", window="3.0", title="fix!: change a default")
+        self.assertEqual((status, outputs["window-kind"]), (0, "major"))
+
+    def test_release_branch_of_the_previous_major_refuses_feat_in_a_minor_window(self):
+        status, _, _ = run("2.4.3", window="3.1", title="feat: add a thing", base_ref="release/2.4")
+        self.assertEqual(status, 1)
+
+    def test_branch_rule_is_skipped_without_names(self):
+        status, _, _ = run("2.0.3", window="2.1", title="feat: add a thing", base_ref="", window_branch="")
+        self.assertEqual(status, 0)
+
+
+class ReleaseAsTest(unittest.TestCase):
+    def test_release_as_fails_while_closed(self):
+        for footer in ("Release-As: 3.0.0", "Release-As: 2.1.0", "release-as: 2.0.4"):
+            with self.subTest(footer=footer):
+                status, out, _ = run("2.0.3", commits=[commit("1" * 40, f"fix: x\n\n{footer}")])
+                self.assertEqual(status, 1)
+                self.assertIn("a Release-As footer", out)
+                self.assertIn("allows no Release-As", out)
+
+    def test_release_as_of_another_version_fails_in_an_open_window(self):
+        status, out, _ = run("2.0.3", window="2.1", commits=[commit("1" * 40, "chore: x\n\nRelease-As: 3.0.0")])
+        self.assertEqual(status, 1)
+        self.assertIn("allows only Release-As: 2.1.0", out)
+
+    def test_release_as_of_the_window_passes(self):
+        cases = [("2.0.3", "2.1", "2.1.0"), ("1.31.3", "2.0", "2.0.0"), ("0.4.0", "2.0", "v2.0.0"), ("2.4.1", "3.0", "3.0.0")]
+        for version, window, release in cases:
+            with self.subTest(window=window, version=version):
+                status, _, _ = run(version, window=window, commits=[commit("1" * 40, f"chore: x\n\nRelease-As: {release}")])
+                self.assertEqual(status, 0)
+
+    def test_release_as_fails_on_1x_while_closed(self):
+        status, _, _ = run("1.31.3", commits=[commit("1" * 40, "fix: x\n\nRelease-As: 1.32.0")])
+        self.assertEqual(status, 1)
+
+    def test_release_as_of_a_stale_window_fails(self):
+        status, _, _ = run("2.1.0", window="2.1", commits=[commit("1" * 40, "chore: x\n\nRelease-As: 2.1.0")])
+        self.assertEqual(status, 1)
+
+
 class InputTest(unittest.TestCase):
     def test_rejects_bad_inputs(self):
         cases = {
@@ -209,6 +311,8 @@ class InputTest(unittest.TestCase):
             "title": {"title": " "},
             "base-sha": {"base_sha": "main"},
             "head-sha": {"head_sha": ""},
+            "base-ref": {"base_ref": "../main"},
+            "window-branch": {"window_branch": "-x"},
         }
         for name, override in cases.items():
             with self.subTest(input=name), self.assertRaises(check.CheckError) as raised:

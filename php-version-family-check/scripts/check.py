@@ -8,6 +8,14 @@ window. The window comes from one input (usually an organization variable):
 - "X.Y" with Y > 0: a family MINOR window;
 - "X.0": a family MAJOR window.
 
+A window counts as open only for a pull request into the window branch
+(window-branch, given with base-ref), and only when it is ahead of the
+version of the package in the release-please manifest of the base commit:
+a MINOR window X.Y when X is the MAJOR of that version and Y is above its
+MINOR, a MAJOR window X.0 when X.0.0 is above that version. Otherwise (a
+pull request into a maintenance branch such as release/X.Y, or a window
+left set after its release) it counts as closed.
+
 The check reads the Conventional Commits header of the pull request title
 and the header and footers of every commit of the pull request that is not
 a merge commit (commits base..head), and fails when:
@@ -16,7 +24,14 @@ a merge commit (commits base..head), and fails when:
   "BREAKING-CHANGE:" footer, unless a MAJOR window is open;
 - a header has the type feat while no window is open, but only when the
   version of the package in the release-please manifest of the base commit
-  is at least family-from (empty: always).
+  is at least family-from (empty: always);
+- a message has a "Release-As:" footer, unless a window is open and the
+  footer names its first version X.Y.0: a family MINOR or MAJOR is one
+  coordinated version, never one package's own.
+
+The header match is lenient (any case, white space around "(scope)", "!"
+and ":"), so that it recognises at least what the release tooling reads as
+a feature or a breaking change.
 
 Every other header passes, a header that is not a Conventional Commit
 included: this check enforces the family window, not the commit format.
@@ -46,10 +61,15 @@ PATH_RE = re.compile(r"^(?!/)(?!.*(?:^|/)\.\.(?:/|$))[A-Za-z0-9._/-]+$")
 # A manifest key: "." or a repository-relative path.
 PACKAGE_RE = re.compile(r"^(\.|(?!/)(?!.*(?:^|/)\.\.(?:/|$))[A-Za-z0-9._/-]+)$")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-# Conventional Commits header: type, optional scope, optional "!", ": ".
-HEADER_RE = re.compile(r"^(?P<type>[A-Za-z]+)(?:\([^()\r\n]*\))?(?P<bang>!)?: \S")
+# A branch name: no leading "/" or "-", no "..", no white space.
+BRANCH_RE = re.compile(r"^(?![/-])(?!.*\.\.)[A-Za-z0-9._/-]+$")
+# Conventional Commits header: type, optional scope, optional "!", ":". Lenient
+# on purpose (white space, no space after ":"): a near miss is still gated.
+HEADER_RE = re.compile(r"^\s*(?P<type>[A-Za-z]+)\s*(?:\([^()\r\n]*\)\s*)?(?P<bang>!)?\s*:")
 # Breaking change footer, at the start of a line after the header.
-BREAKING_FOOTER_RE = re.compile(r"^BREAKING[ -]CHANGE: ", re.MULTILINE)
+BREAKING_FOOTER_RE = re.compile(r"^[ \t]*BREAKING[ -]CHANGE[ \t]*:", re.MULTILINE)
+# Release-As footer, at the start of a line after the header, any case.
+RELEASE_AS_RE = re.compile(r"^[ \t]*release[ -]as[ \t]*:[ \t]*(?P<version>\S*)", re.MULTILINE | re.IGNORECASE)
 
 CLOSED, MINOR, MAJOR = "closed", "minor", "major"
 # Separators of the git log records, and the git format escapes that print them
@@ -61,8 +81,10 @@ SHORT_SHA = 7
 GUIDANCE = (
     "How to proceed: a feature waits on its pull request for a family MINOR window, and a breaking "
     "change for a family MAJOR window. Keep this pull request open and keep it current by merging the "
-    "base branch into it (never rebase or force-push). When the window opens, re-run this check. "
-    "A removal is first a deprecation in a family MINOR and leaves in the next family MAJOR. If a commit "
+    "base branch into it (never rebase or force-push). When the window opens, re-run this check, or "
+    "push a merge of the base branch (a re-run reads the title and the commits of the original event). "
+    "A family version (Release-As) is set by whoever coordinates the family release, not by one "
+    "pull request. A removal is first a deprecation in a family MINOR and leaves in the next family MAJOR. If a commit "
     "carries the wrong type (for example a fix typed as feat), do not rewrite this branch: open a new "
     "pull request whose commits carry the right type."
 )
@@ -80,15 +102,49 @@ def parse_bool(name, value):
 
 
 def parse_window(value):
-    """Returns (kind, label) of the window input: closed, minor or major."""
+    """Returns (kind, label, target) of the window input: closed, minor or major.
+
+    target is the first version of the window, (X, Y, 0, ()), or None when closed.
+    """
     value = value.strip()
     if value == "":
-        return CLOSED, "closed"
+        return CLOSED, "closed", None
     match = WINDOW_RE.match(value)
     if not match:
         raise CheckError(f"input window must be empty (closed) or MAJOR.MINOR such as 2.1 or 3.0, got {value!r}")
     kind = MAJOR if match.group(2) == "0" else MINOR
-    return kind, f"{kind} window {value}"
+    return kind, f"{kind} window {value}", (int(match.group(1)), int(match.group(2)), 0, ())
+
+
+def effective_window(kind, label, target, version, base_ref="", window_branch=""):
+    """Returns (kind, label) of the window for this pull request: closed when it does not apply.
+
+    The window applies to a pull request into window_branch (when both names
+    are given), and when it is ahead of the base version: a MINOR window X.Y
+    is ahead of a version of MAJOR X and MINOR below Y; a MAJOR window X.0 is
+    ahead of a version below X.0.0.
+    """
+    if kind == CLOSED:
+        return kind, label
+    if base_ref and window_branch and base_ref != window_branch:
+        return CLOSED, (
+            f"closed ({label} applies to pull requests into {window_branch}; this one is into {base_ref})"
+        )
+    ahead = not version_at_least(version, target)
+    if kind == MINOR:
+        ahead = ahead and target[0] == version[0]
+    if ahead:
+        return kind, label
+    base = format_version(version)
+    return CLOSED, (
+        f"closed ({label} is not ahead of version {base} of the base branch: the window was left set after "
+        f"its release, or the base branch is on another line)"
+    )
+
+
+def format_version(version):
+    core = f"{version[0]}.{version[1]}.{version[2]}"
+    return f"{core}-{'.'.join(version[3])}" if version[3] else core
 
 
 def parse_version(name, value):
@@ -128,9 +184,20 @@ def parse_message(message):
     return match.group("type").lower(), breaking or bool(match.group("bang"))
 
 
-def evaluate(window_kind, feat_gated, messages, window_label=None):
-    """Returns the findings of (label, message) pairs, one string each."""
+def release_as_versions(message):
+    """Returns the versions of the Release-As footers of a message (after its header)."""
+    body = "\n".join(message.splitlines()[1:])
+    return [match.group("version") for match in RELEASE_AS_RE.finditer(body)]
+
+
+def evaluate(window_kind, feat_gated, messages, window_label=None, window_target=None):
+    """Returns the findings of (label, message) pairs, one string each.
+
+    window_kind is the effective kind (closed when the window is not ahead of
+    the base version); window_target is its first version, or None.
+    """
     window_label = window_label or window_kind
+    allowed_release = format_version(window_target) if window_kind != CLOSED and window_target else None
     findings = []
     for label, message in messages:
         commit_type, breaking = parse_message(message)
@@ -140,7 +207,14 @@ def evaluate(window_kind, feat_gated, messages, window_label=None):
                 f"(window X.0); the window is {window_label}"
             )
         elif commit_type == "feat" and feat_gated and window_kind == CLOSED:
-            findings.append(f"{label}: type feat needs an open family window (MINOR X.Y or MAJOR X.0); the window is closed")
+            findings.append(f"{label}: type feat needs an open family window (MINOR X.Y or MAJOR X.0); the window is {window_label}")
+        for version in release_as_versions(message):
+            if allowed_release is None or version.lstrip("vV") != allowed_release:
+                expected = f"only Release-As: {allowed_release}" if allowed_release else "no Release-As"
+                findings.append(
+                    f"{label}: a Release-As footer ({version or 'empty'}) cuts a version outside the family; "
+                    f"the window is {window_label}, which allows {expected}"
+                )
     return findings
 
 
@@ -203,25 +277,28 @@ def write_outputs(path, outputs):
 def load_inputs(args):
     """Validates every input before any read; returns the parsed values."""
     dry_run = parse_bool("dry-run", args.dry_run)
-    window_kind, window_label = parse_window(args.window)
+    window = parse_window(args.window)
     if not PATH_RE.match(args.manifest_file):
         raise CheckError(f"input manifest-file must be a path relative to the repository root, got {args.manifest_file!r}")
     if not PACKAGE_RE.match(args.package):
         raise CheckError(f"input package must be \".\" or a path relative to the repository root, got {args.package!r}")
     family_from = parse_version("input family-from", args.family_from) if args.family_from else None
+    for name, value in (("base-ref", args.base_ref), ("window-branch", args.window_branch)):
+        if value and not BRANCH_RE.match(value):
+            raise CheckError(f"input {name} must be a branch name, got {value!r}")
     if not args.title.strip():
         raise CheckError("input title is empty: run this check on a pull_request event or pass the title")
     if not dry_run:
         for name, value in (("base-sha", args.base_sha), ("head-sha", args.head_sha)):
             if not SHA_RE.match(value):
                 raise CheckError(f"input {name} must be a full commit SHA; run this check on a pull_request event")
-    return dry_run, window_kind, window_label, family_from
+    return dry_run, window, family_from
 
 
 def check(args, git=None):
     """Runs the check; returns the exit status."""
     git = git or (lambda *a: run_git(args.workspace, *a))
-    dry_run, window_kind, window_label, family_from = load_inputs(args)
+    dry_run, (window_kind, window_label, window_target), family_from = load_inputs(args)
     if dry_run:
         path = os.path.join(args.workspace, args.manifest_file)
         if not os.path.isfile(path):
@@ -233,6 +310,9 @@ def check(args, git=None):
     version_text = manifest_version(text, args.manifest_file, args.package)
     version = parse_version(f"version of {args.package!r} in {args.manifest_file}", version_text)
     feat_gated = family_from is None or version_at_least(version, family_from)
+    window_kind, window_label = effective_window(
+        window_kind, window_label, window_target, version, args.base_ref, args.window_branch
+    )
     print(f"version {version_text} of {args.package!r}; {window_label}; feat {'needs a window' if feat_gated else 'passes (below family-from)'}")
 
     messages = [("pull request title", args.title)]
@@ -240,7 +320,7 @@ def check(args, git=None):
         print("dry run: the commits base..head are not read; only the title is checked")
     else:
         messages += read_commits(git, args.base_sha, args.head_sha)
-    findings = evaluate(window_kind, feat_gated, messages, window_label)
+    findings = evaluate(window_kind, feat_gated, messages, window_label, window_target)
     print(f"{len(messages)} message(s) checked, {len(findings)} finding(s)")
 
     write_outputs(args.github_output, {
@@ -265,6 +345,8 @@ def build_parser():
     parser.add_argument("--title", default="")
     parser.add_argument("--base-sha", default="")
     parser.add_argument("--head-sha", default="")
+    parser.add_argument("--base-ref", default="")
+    parser.add_argument("--window-branch", default="")
     parser.add_argument("--dry-run", default="false")
     parser.add_argument("--workspace", default=".")
     parser.add_argument("--github-output", default="")
