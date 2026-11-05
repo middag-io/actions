@@ -22,6 +22,9 @@ paths:
   .github/workflows/cloudflare-workers-deploy.yml:
     ignore:
       - 'specifying action "\$/cloudflare-workers-deploy" in invalid format because ref is missing'
+  .github/workflows/moodle-host-check.yml:
+    ignore:
+      - 'specifying action "\$/moodle-host-check" in invalid format because ref is missing'
   .github/workflows/moodle-plugin-check.yml:
     ignore:
       - 'specifying action "\$/moodle-plugin-check" in invalid format because ref is missing'
