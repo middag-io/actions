@@ -29,7 +29,7 @@ Every component has its own `README.md` next to its `action.yml`. That README li
 ## Naming convention
 
 1. A component is named `{scope}-{object}-{verb}` and uses only `[a-z0-9-]`.
-   - `{scope}` is the provider or ecosystem that the component touches. Closed list: `google-cloud`, `cloudflare`, `aws`, `github`, `docker`, `node`, `php`, `wp`, `moodle`.
+   - `{scope}` is the provider or ecosystem that the component touches. Closed list: `google-cloud`, `cloudflare`, `aws`, `github`, `docker`, `go`, `node`, `php`, `wp`, `moodle`.
    - `{object}` is the product, spelled out as its provider names it.
    - `{verb}` states the expected result. Closed list:
 

@@ -252,6 +252,14 @@ bad_directory_name() {
   cp "$COMPONENT/action.yml" gcp-thing-sync/action.yml
 }
 
+# The scope go is in the closed list: a component that touches the Go
+# toolchain or Go modules.
+go_scope_directory_name() {
+  add_component
+  mkdir -p go-example-scan
+  cp "$COMPONENT/action.yml" go-example-scan/action.yml
+}
+
 bad_workflow_name() {
   add_component
   cp "$WORKFLOW" .github/workflows/foo-bar-sync.yml
@@ -367,6 +375,7 @@ run_case "runs-on other than ubuntu-24.04" fail "runs-on must be ubuntu-24.04" l
 run_case "secrets: inherit" fail "secrets: inherit is forbidden" inherited_secrets
 run_case "automatic approval in a component script" fail "automatic pull request approval" automatic_approval
 run_case "component directory outside the naming convention" fail "does not follow {scope}-{object}-{verb}" bad_directory_name
+run_case "component directory with the go scope" pass "" go_scope_directory_name
 run_case "component workflow outside the naming convention" fail "does not follow {scope}-{object}-{verb}" bad_workflow_name
 run_case "four-space indentation" fail "unsupported indentation; use two spaces" four_space_indentation
 run_case "quoted on key is still read" fail "does not state required" quoted_on_key
