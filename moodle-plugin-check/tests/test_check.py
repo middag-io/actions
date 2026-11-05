@@ -242,18 +242,6 @@ class RunTest(unittest.TestCase):
         self.assertEqual(check.command_run(self.args()), 0)
 
 
-class ComposerEnvTest(unittest.TestCase):
-    def test_token_becomes_composer_auth_and_leaves_the_environment(self):
-        env = check.composer_env({"PATH": "/bin", "COMPOSER_GITHUB_TOKEN": "ghs_example"})
-        self.assertNotIn("COMPOSER_GITHUB_TOKEN", env)
-        self.assertEqual(json.loads(env["COMPOSER_AUTH"]), {"github-oauth": {"github.com": "ghs_example"}})
-        self.assertEqual(env["PATH"], "/bin")
-
-    def test_no_token_no_composer_auth(self):
-        env = check.composer_env({"PATH": "/bin", "COMPOSER_GITHUB_TOKEN": ""})
-        self.assertNotIn("COMPOSER_AUTH", env)
-
-
 class ComparePlanTest(unittest.TestCase):
     def compare(self, **env):
         full = {**os.environ, **env}

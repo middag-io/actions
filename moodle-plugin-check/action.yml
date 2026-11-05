@@ -1,6 +1,7 @@
-# Composite action: checks a Moodle plugin in a change. See README.md next to
-# this file for the inputs, what the action deletes (nothing) and the
-# permissions it needs.
+# Composite action: checks a Moodle plugin in a change. PHP, Composer and the
+# Composer credentials come from the php-composer-setup action of this
+# repository. See README.md next to this file for the inputs, what the action
+# deletes (nothing) and the permissions it needs.
 name: Moodle plugin check
 description: >-
   Validates the metadata of a Moodle plugin (version.php and the English
@@ -126,19 +127,29 @@ runs:
         repositories: ${{ inputs.app-repositories }}
         permission-contents: read
 
-    - name: Set up PHP
-      if: ${{ inputs.dry-run != 'true' }}
-      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+    # php-composer-setup comes from the same repository and commit as this
+    # action. It validates its own inputs, sets up PHP and Composer and
+    # writes the App token (github-oauth for github.com) to the global
+    # Composer auth.json of the runner, outside the checkout. It does not
+    # install: the next step runs composer validate, composer install with
+    # composer-options and the Composer scripts, in the order of the plan. It
+    # runs only for a plugin with composer.json (a plan with commands); in a
+    # dry run it only validates and reports, like this action.
+    - name: Set up PHP and Composer
+      if: ${{ steps.plan.outputs.commands != '[]' }}
+      uses: $/php-composer-setup
       with:
         php-version: ${{ inputs.php-version }}
-        extensions: ${{ inputs.php-extensions }}
-        tools: composer:v2
+        php-extensions: ${{ inputs.php-extensions }}
         coverage: none
+        working-directory: ${{ inputs.path }}
+        github-token: ${{ steps.app-token.outputs.token }}
+        install: "false"
+        dry-run: ${{ inputs.dry-run }}
 
     - name: Run the Composer checks
       if: ${{ inputs.dry-run != 'true' }}
       shell: bash
       env:
         PLAN_FILE: ${{ steps.plan.outputs.plan-file }}
-        COMPOSER_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
       run: python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" run --plan-file="$PLAN_FILE"

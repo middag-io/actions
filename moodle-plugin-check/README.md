@@ -16,19 +16,19 @@ Two forms, one name:
    - `$plugin->maturity`, when set, is one of `MATURITY_ALPHA`, `MATURITY_BETA`, `MATURITY_RC`, `MATURITY_STABLE`;
    - the English language file exists: `lang/en/<name>.php` for an activity module (`mod_<name>`), `lang/en/<component>.php` for every other plugin type.
 2. Plans the Composer commands, when the plugin has a `composer.json`: `composer validate --no-interaction` (unless `composer-validate` is false), `composer install --no-interaction <composer-options>`, then `composer run-script <name>` for each name in `composer-scripts`, in order. Without a `composer.json`, only step 1 runs, and a non-empty `composer-scripts` fails.
-3. Outside a dry run: mints a read-only token of a GitHub App when `app-client-id` is set, sets up PHP with Composer 2 and the extensions, and runs the planned commands in the plugin directory. The first failing command fails the job.
+3. Outside a dry run: mints a read-only token of a GitHub App when `app-client-id` is set, sets up PHP with Composer 2 and the extensions through the [`php-composer-setup`](../php-composer-setup/README.md) action of the same release (only for a plugin with `composer.json`; that action does not install here), and runs the planned commands in the plugin directory. The first failing command fails the job.
 
 The commands run without a shell, as argument lists. `composer-options` takes long options only (`--name` or `--name=value`), and `composer-scripts` takes script names only, so an input cannot add a command.
 
-The App token reaches Composer through the `COMPOSER_AUTH` environment variable of the Composer commands only (`github-oauth` for `github.com`). It is never written to a file or to the git configuration.
+`php-composer-setup` writes the App token to the global Composer `auth.json` of the runner (`github-oauth` for `github.com`, mode `0600`, outside the checkout), where the planned Composer commands read it. It stays there until the end of the job, so the Composer scripts and the commands they run can read it too. It is never written to the checkout or to the git configuration.
 
 The token is a `github-oauth` credential for `github.com` only. Composer uses it for the GitHub API, for the archives of GitHub packages and for its own clones of GitHub repositories. A Composer repository on another host that needs a login (for example a private Satis or Packagist with `http-basic`) gets no credential from this component, and neither do `git` commands run by a Composer script.
 
-In a dry run (`dry-run: true`), only steps 1 and 2 run: no credentials, no PHP set-up, no Composer run. The job prints the commands it would run.
+In a dry run (`dry-run: true`), only steps 1 and 2 run, and `php-composer-setup` runs as a dry run: no credentials, no PHP set-up, no Composer run. The job prints the commands it would run.
 
 ## What it deletes
 
-Nothing. The component writes no file in the repository and publishes nothing. `composer install` writes `vendor/` in the checkout of the job, which ends with the job.
+Nothing. The component writes no file in the repository and publishes nothing. `composer install` writes `vendor/` in the checkout of the job, which ends with the job. With an App token, `php-composer-setup` writes the global Composer `auth.json` of the runner, outside the checkout.
 
 ## Inputs
 
