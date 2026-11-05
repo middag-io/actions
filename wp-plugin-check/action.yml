@@ -67,6 +67,10 @@ inputs:
     description: npm scope (for example @owner) installed from GitHub Packages with the job token. Empty installs every package from the URLs of package-lock.json, without a token.
     required: false
     default: ""
+  audit-blocking-severities:
+    description: Severities of a dependency advisory that fail the job, separated by commas (critical, high, medium, low); lower severities are only reported.
+    required: false
+    default: critical
   dry-run:
     description: Validate the inputs and the plugin files and report the commands only; no setup, no install, no credentials (true or false).
     required: false
@@ -142,6 +146,18 @@ runs:
         github-token: ${{ steps.app-token.outputs.token }}
         dry-run: ${{ inputs.dry-run }}
 
+    # php-composer-scan, same repository and commit: composer audit on the
+    # packages that the install above wrote; fails only on
+    # audit-blocking-severities, and reports lower severities. In a dry run
+    # it only validates and reports.
+    - name: Audit the Composer dependencies
+      if: ${{ inputs.target == 'php' }}
+      uses: $/php-composer-scan
+      with:
+        working-directory: ${{ inputs.path }}
+        blocking-severities: ${{ inputs.audit-blocking-severities }}
+        dry-run: ${{ inputs.dry-run }}
+
     - name: Set up Node.js
       if: ${{ inputs.dry-run != 'true' && inputs.target == 'ui' && inputs.github-packages-npm-scope == '' }}
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -157,6 +173,17 @@ runs:
         registry-url: https://npm.pkg.github.com
         scope: ${{ inputs.github-packages-npm-scope }}
         package-manager-cache: false
+
+    # node-npm-scan, same repository and commit: npm audit on
+    # package-lock.json; fails only on audit-blocking-severities, and reports
+    # lower severities. In a dry run it only validates and reports.
+    - name: Audit the npm dependencies
+      if: ${{ inputs.target == 'ui' }}
+      uses: $/node-npm-scan
+      with:
+        working-directory: ${{ inputs.path }}/${{ inputs.ui-directory }}
+        blocking-severities: ${{ inputs.audit-blocking-severities }}
+        dry-run: ${{ inputs.dry-run }}
 
     - name: Run the checks
       if: ${{ inputs.dry-run != 'true' }}
