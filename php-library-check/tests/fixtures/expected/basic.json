@@ -1,0 +1,13 @@
+{
+  "commands": [
+    "composer validate --no-interaction --no-check-publish --no-check-lock",
+    "composer dump-autoload --no-interaction --optimize --strict-psr",
+    "composer run-script --no-interaction lint",
+    "composer run-script --no-interaction check:stan",
+    "composer run-script --no-interaction check:style",
+    "composer run-script --no-interaction check:rector",
+    "composer run-script --no-interaction check:schemas",
+    "composer run-script --no-interaction test"
+  ],
+  "audit-command": "composer audit --format=json --abandoned=report --no-interaction"
+}
