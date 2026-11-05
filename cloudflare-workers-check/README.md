@@ -52,7 +52,38 @@ None. The component reads no variable and no secret: a check needs no Cloudflare
 
 ## Permissions
 
-The caller grants `contents: read` to the calling job. The component asks for nothing more.
+The caller grants `contents: read` to the calling job. The component asks for nothing more. A project with dependencies from GitHub Packages also needs `packages: read`: see "Dependencies from GitHub Packages".
+
+## Dependencies from GitHub Packages
+
+A project whose `package-lock.json` resolves a scope from GitHub Packages (`https://npm.pkg.github.com`) needs the job token with `packages: read`. The job of the reusable workflow declares `contents: read` only, and a caller cannot raise the permissions of a called workflow, so `npm ci` fails there with `403 Forbidden` on the first package of the scope. Run the composite action in a job of your own with `packages: read` instead. The project's `.npmrc` maps the scope to the registry and reads the token from the environment:
+
+```ini
+@example:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+```
+
+```yaml
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # Read-only: npm ci reads the scope from GitHub Packages with the job token.
+      packages: read
+    steps:
+      - uses: actions/checkout@<sha40> # vX.Y.Z
+        with:
+          persist-credentials: false
+      - uses: <owner>/actions/cloudflare-workers-check@<sha40> # cloudflare-workers-check-vX.Y.Z
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        with:
+          # the inputs of the component
+```
+
+The component takes no registry input: the `env:` of the step reaches every step of the action, the npm scripts included, so the job token there must hold only `contents: read` and `packages: read`. Each package of the scope must grant the calling repository Read access (package settings, "Manage Actions access"). A GitHub App installation token is refused by that registry; the job token is the identity that works there. The reusable workflow keeps `contents: read` only, the least privilege for the projects that need no GitHub Packages scope.
 
 ## Example
 
