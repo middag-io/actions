@@ -751,6 +751,51 @@ jobs:
           fi
 
   # Calls the reusable workflow by a relative path, as a caller would by SHA,
+  # on the fixture manifest: a breaking change title without a Release-As
+  # footer. A dry run: no git history read, findings only reported.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-github-release-major-check:
+    name: dry-run-github-release-major-check
+    permissions:
+      contents: read
+    uses: ./.github/workflows/github-release-major-check.yml # zizmor: ignore[self-repository]
+    with:
+      manifest-file: github-release-major-check/tests/fixtures/basic/.release-please-manifest.json
+      title: "feat(api)!: drop a thing"
+      dry-run: true
+
+  # The dry run must report exactly the outputs of
+  # github-release-major-check/tests/fixtures/expected/basic.env.
+  dry-run-check-github-release-major-check:
+    name: dry-run-check-github-release-major-check
+    needs: dry-run-github-release-major-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected values
+        env:
+          VERSION: ${{ needs.dry-run-github-release-major-check.outputs.version }}
+          RELEASE_AS_MAJOR: ${{ needs.dry-run-github-release-major-check.outputs.release-as-major }}
+          RESULT: ${{ needs.dry-run-github-release-major-check.outputs.result }}
+          FINDINGS: ${{ needs.dry-run-github-release-major-check.outputs.findings }}
+        run: |
+          expected="github-release-major-check/tests/fixtures/expected/basic.env"
+          actual="$(printf 'version=%s\nrelease-as-major=%s\nresult=%s\nfindings=%s\n' "$VERSION" "$RELEASE_AS_MAJOR" "$RESULT" "$FINDINGS")"
+          echo "$actual"
+          if ! diff -u "$expected" - <<<"$actual"; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
+  # Calls the reusable workflow by a relative path, as a caller would by SHA,
   # on the fixture plugin. A dry run: no setup, no install, no credentials.
   # zizmor self-repository: "./" is the documented form of this test job; in
   # a job of this repository it resolves to the same commit as "$/".
@@ -985,6 +1030,8 @@ jobs:
       - dry-run-check-php-library-check
       - dry-run-php-version-family-check
       - dry-run-check-php-version-family-check
+      - dry-run-github-release-major-check
+      - dry-run-check-github-release-major-check
       - dry-run-node-npm-scan
       - dry-run-check-node-npm-scan
       - dry-run-go-module-scan

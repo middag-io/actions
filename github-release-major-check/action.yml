@@ -1,0 +1,75 @@
+# Composite action: checks that a pull request asks for a MAJOR version only
+# with an explicit Release-As footer. Reads the pull request title and the
+# commits base..head of a checkout with history. See README.md next to this
+# file for the inputs, what the action deletes (nothing) and the permissions
+# it needs.
+name: GitHub release major check
+description: >-
+  Fails a pull request whose title or commits carry a breaking change ("!" or
+  a BREAKING CHANGE footer) without a "Release-As: X.0.0" footer above the
+  MAJOR of the package version in the release-please manifest of the base
+  commit, or a Release-As footer that raises the MAJOR another way or does
+  not move the version forward. Publishes nothing.
+
+inputs:
+  manifest-file:
+    description: Path of the release-please manifest, relative to the repository root, read at the base commit.
+    required: false
+    default: .release-please-manifest.json
+  package:
+    description: Key of the package in the manifest ("." for a single package, the package folder in a monorepo).
+    required: false
+    default: "."
+  title:
+    description: Title of the pull request.
+    required: true
+  base-sha:
+    description: Full SHA of the base commit of the pull request. Required unless dry-run is true.
+    required: false
+    default: ""
+  head-sha:
+    description: Full SHA of the head commit of the pull request. Required unless dry-run is true; the checkout must hold the history of both commits.
+    required: false
+    default: ""
+  dry-run:
+    description: Read the manifest from the workspace and check the title only; report findings as warnings and never fail on them (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  version:
+    description: Version of the package in the manifest of the base commit.
+    value: ${{ steps.check.outputs.version }}
+  release-as-major:
+    description: The new MAJOR version named by a Release-As footer of the pull request (X.0.0), or empty.
+    value: ${{ steps.check.outputs.release-as-major }}
+  result:
+    description: pass or fail.
+    value: ${{ steps.check.outputs.result }}
+  findings:
+    description: Number of findings.
+    value: ${{ steps.check.outputs.findings }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the pull request for an implicit MAJOR
+      id: check
+      shell: bash
+      env:
+        MANIFEST_FILE: ${{ inputs.manifest-file }}
+        PACKAGE: ${{ inputs.package }}
+        PR_TITLE: ${{ inputs.title }}
+        BASE_SHA: ${{ inputs.base-sha }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" \
+          --manifest-file="$MANIFEST_FILE" \
+          --package="$PACKAGE" \
+          --title="$PR_TITLE" \
+          --base-sha="$BASE_SHA" \
+          --head-sha="$HEAD_SHA" \
+          --dry-run="$DRY_RUN" \
+          --workspace="$GITHUB_WORKSPACE" \
+          --github-output="$GITHUB_OUTPUT"
