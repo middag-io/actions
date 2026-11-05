@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/middag-io/actions/compare/wp-plugin-check-v1.0.0...wp-plugin-check-v1.0.1) (2026-11-05)
+
+
+### Code Refactoring
+
+* **wp-plugin-check:** set up PHP and Composer with php-composer-setup ([ae7d359](https://github.com/middag-io/actions/commit/ae7d3597b405769d9626551b3d4e0167008f8a88))
+
 ## 1.0.0 (2026-11-03)
 
 

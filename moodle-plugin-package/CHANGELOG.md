@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/middag-io/actions/compare/moodle-plugin-package-v1.0.0...moodle-plugin-package-v1.0.1) (2026-11-05)
+
+
+### Code Refactoring
+
+* **moodle-plugin-package:** set up PHP and Composer with php-composer-setup ([f95dd58](https://github.com/middag-io/actions/commit/f95dd58a7bfe00aaea1470cd30aca475b8f0afa9))
+
 ## 1.0.0 (2026-11-03)
 
 
