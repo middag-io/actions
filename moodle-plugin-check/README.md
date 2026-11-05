@@ -18,13 +18,15 @@ Two forms, one name:
 2. Plans the Composer commands, when the plugin has a `composer.json`: `composer validate --no-interaction` (unless `composer-validate` is false), `composer install --no-interaction <composer-options>`, then `composer run-script <name>` for each name in `composer-scripts`, in order. Without a `composer.json`, only step 1 runs, and a non-empty `composer-scripts` fails.
 3. Outside a dry run: mints a read-only token of a GitHub App when `app-client-id` is set, sets up PHP with Composer 2 and the extensions through the [`php-composer-setup`](../php-composer-setup/README.md) action of the same release (only for a plugin with `composer.json`; that action does not install here), and runs the planned commands in the plugin directory. The first failing command fails the job.
 
+4. For a plugin with `composer.json`, audits the installed dependencies through the [`php-composer-scan`](../php-composer-scan/README.md) action of the same release: an advisory whose severity is in `audit-blocking-severities` fails the job; lower severities and abandoned packages are warnings. No input turns the audit off; an advisory the plugin does not remediate goes to `config.audit.ignore` of its `composer.json`, with the reason. In a dry run, `php-composer-scan` only validates and prints its command.
+
 The commands run without a shell, as argument lists. `composer-options` takes long options only (`--name` or `--name=value`), and `composer-scripts` takes script names only, so an input cannot add a command.
 
 `php-composer-setup` writes the App token to the global Composer `auth.json` of the runner (`github-oauth` for `github.com`, mode `0600`, outside the checkout), where the planned Composer commands read it. It stays there until the end of the job, so the Composer scripts and the commands they run can read it too. It is never written to the checkout or to the git configuration.
 
 The token is a `github-oauth` credential for `github.com` only. Composer uses it for the GitHub API, for the archives of GitHub packages and for its own clones of GitHub repositories. A Composer repository on another host that needs a login (for example a private Satis or Packagist with `http-basic`) gets no credential from this component, and neither do `git` commands run by a Composer script.
 
-In a dry run (`dry-run: true`), only steps 1 and 2 run, and `php-composer-setup` runs as a dry run: no credentials, no PHP set-up, no Composer run. The job prints the commands it would run.
+In a dry run (`dry-run: true`), only steps 1 and 2 run, and `php-composer-setup` and `php-composer-scan` run as dry runs: no credentials, no PHP set-up, no Composer run, no audit. The job prints the commands it would run.
 
 ## What it deletes
 
@@ -46,6 +48,7 @@ Nothing. The component writes no file in the repository and publishes nothing. `
 | `app-repositories` | yes | yes | variable `MOODLE_PLUGIN_CHECK_APP_REPOSITORIES` (workflow); empty (action) | Repositories of the App owner that the token reaches (the private dependencies), names without owner, separated by commas or new lines. Required with `app-client-id`, so that the token never reaches every repository of the installation. |
 | `app-owner` | yes | yes | empty | Owner whose installation of the App mints the token. Empty: the owner of the calling repository. |
 | `app-private-key` | secret | input | empty | Private key of the App. Required with `app-client-id` outside a dry run. |
+| `audit-blocking-severities` | yes | yes | variable `MOODLE_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES`, else `critical` (workflow); `critical` (action) | Severities of a dependency advisory that fail the job, separated by commas: any of `critical`, `high`, `medium`, `low`. |
 | `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and plan only. |
 | `timeout-minutes` | yes | no | `20` | Timeout of each job. |
 
@@ -69,6 +72,7 @@ Most specific first: explicit input, then a variable of the calling repository, 
 | --- | --- | --- |
 | `MOODLE_PLUGIN_CHECK_APP_CLIENT_ID` | variable | default of `app-client-id` in the reusable workflow |
 | `MOODLE_PLUGIN_CHECK_APP_REPOSITORIES` | variable | default of `app-repositories` in the reusable workflow |
+| `MOODLE_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES` | variable | default of `audit-blocking-severities` in the reusable workflow |
 | `MOODLE_PLUGIN_CHECK_APP_PRIVATE_KEY` | secret | passed by the caller to `app-private-key`, one explicit line |
 
 The App needs only read access to the contents of the repositories of the private dependencies. The token it mints here asks for `contents: read` only, on the repositories of `app-repositories` only.

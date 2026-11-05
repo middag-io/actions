@@ -5,6 +5,8 @@ Checks a WordPress plugin in a change. It publishes nothing.
 - **PHP**, one job per PHP version: sets up PHP with the chosen extensions and runs `composer install --no-interaction --prefer-dist` through the [`php-composer-setup`](../php-composer-setup/README.md) action of the same release, with its Composer download cache keyed by `composer.lock`, then each Composer script of `composer-scripts` (for example `check:style`, `check:stan`, `check:rector`, `test`). A failed install stops the job. A failed script does not: every script runs, and the job fails at the end with the list of failed scripts.
 - **UI**, one job when `ui-directory` is set: sets up Node.js, runs `npm ci`, `tsc --noEmit` (unless `typecheck` is false), then each npm script of `npm-scripts`. The reusable workflow installs from the URLs of `package-lock.json` without a token. For a scope on GitHub Packages, see "UI with GitHub Packages".
 
+- **Dependency audit**, in each job: after the install of the PHP job, `composer audit` through the [`php-composer-scan`](../php-composer-scan/README.md) action of the same release; before `npm ci` of the UI job, `npm audit` on `package-lock.json` through [`node-npm-scan`](../node-npm-scan/README.md). An advisory whose severity is in `audit-blocking-severities` fails the job; lower severities (and abandoned Composer packages) are warnings. No input turns the audit off.
+
 Before any setup, the component validates its inputs and the plugin files: each Composer script must be declared in `composer.json`, each npm script in `package.json`, and `package-lock.json` must exist.
 
 Two forms, one name:
@@ -42,6 +44,7 @@ Code that the npm install runs gets the same environment: the lifecycle scripts 
 | `node-version`     | string  | `22`                                        | Node.js version of the UI job.                                                                                                                      |
 | `npm-scripts`      | string  | `lint, build`                               | npm scripts to run after `npm ci`, separated by commas or new lines.                                                                                |
 | `typecheck`        | boolean | `true`                                      | Run `tsc --noEmit` in the UI directory, with the TypeScript installed by `npm ci`.                                                                  |
+| `audit-blocking-severities` | string | variable `WP_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES`, else `critical` | Severities of a dependency advisory that fail the job, separated by commas: any of `critical`, `high`, `medium`, `low`. |
 | `dry-run`          | boolean | `false`                                     | Validate the inputs and the plugin files and report the commands only: no PHP or Node.js setup, no install, no credentials.                         |
 | `timeout-minutes`  | number  | `20`                                        | Timeout of each job, in minutes.                                                                                                                    |
 
@@ -72,6 +75,7 @@ Example of `WP_PLUGIN_CHECK_COMPOSER_AUTH` for a private Composer repository wit
 | ---------------------------------- | ------------------ | ---------------------------------------- |
 | `WP_PLUGIN_CHECK_APP_CLIENT_ID`    | `app-client-id`    | repository or organization of the caller |
 | `WP_PLUGIN_CHECK_APP_REPOSITORIES` | `app-repositories` | repository or organization of the caller |
+| `WP_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES` | `audit-blocking-severities` | repository or organization of the caller |
 
 An explicit `with:` input wins over the variables.
 

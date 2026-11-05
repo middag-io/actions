@@ -8,6 +8,8 @@ Checks a WordPress theme in a change. The component installs the theme's Compose
 
 The tools and their configuration files come from the theme (`require-dev` in `composer.json`, `.php-cs-fixer.dist.php`, `phpstan.neon`, `rector.php`). The component publishes nothing.
 
+Before the tools, the component audits the installed dependencies through the [`php-composer-scan`](../php-composer-scan/README.md) action of the same release: an advisory whose severity is in `audit-blocking-severities` fails the job; lower severities and abandoned packages are warnings. No input turns the audit off; an advisory the theme does not remediate goes to `config.audit.ignore` of its `composer.json`, with the reason.
+
 PHP, Composer, the credentials and `composer install --no-interaction --prefer-dist` come from the [`php-composer-setup`](../php-composer-setup/README.md) action of the same release, with its download cache keyed by `composer.lock`.
 
 It has two forms:
@@ -33,6 +35,7 @@ Reusable workflow (`workflow_call`):
 | `working-directory`      | string  | `.`                                              | Theme directory that holds `composer.json`, relative to the checkout.                                          |
 | `composer-auth-host`     | string  | variable `WP_THEME_CHECK_COMPOSER_AUTH_HOST`     | Host of a private Composer repository that needs HTTP basic auth. Empty for none.                              |
 | `composer-auth-username` | string  | variable `WP_THEME_CHECK_COMPOSER_AUTH_USERNAME` | HTTP basic username for `composer-auth-host`.                                                                  |
+| `audit-blocking-severities` | string | variable `WP_THEME_CHECK_AUDIT_BLOCKING_SEVERITIES`, else `critical` | Severities of a dependency advisory that fail the job, separated by commas: any of `critical`, `high`, `medium`, `low`. |
 | `dry-run`                | boolean | `false`                                          | Validate the inputs and the theme directory and print the plan only: no PHP setup, no install, no credentials. |
 | `timeout-minutes`        | number  | `15`                                             | Timeout of each job, in minutes.                                                                               |
 
@@ -52,6 +55,7 @@ At least one of `has-cs-fixer`, `has-phpstan` and `has-rector` must be `true`. T
 | --------------------------------------- | -------- | ------------------------------------------------ | ----------------------------------------- |
 | `WP_THEME_CHECK_COMPOSER_AUTH_HOST`     | variable | default of `composer-auth-host`                  | only for a private Composer repository    |
 | `WP_THEME_CHECK_COMPOSER_AUTH_USERNAME` | variable | default of `composer-auth-username`              | when the host is set                      |
+| `WP_THEME_CHECK_AUDIT_BLOCKING_SEVERITIES` | variable | default of `audit-blocking-severities` | no (default `critical`) |
 | `WP_THEME_CHECK_COMPOSER_AUTH_PASSWORD` | secret   | passed by the caller as `composer-auth-password` | when the host is set, except in a dry run |
 
 The reusable workflow declares the secret `composer-auth-password`. The caller passes it with one explicit line; never `secrets: inherit`. In a dry run the workflow does not pass the secret on.
