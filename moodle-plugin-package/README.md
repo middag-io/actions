@@ -3,13 +3,13 @@
 Packages a Moodle plugin tree as an installable ZIP. Each run:
 
 1. validates every input and `version.php` at the root of the plugin tree: `$plugin->version` must be a `YYYYMMDDXX` number, `$plugin->release` a non-empty string, and `$plugin->component`, when set, must equal `zip-name`. The file is read, never executed;
-2. installs the Composer dependencies when `composer.json` exists (`composer install` with `composer-options`);
+2. installs the Composer dependencies when `composer.json` exists: PHP, Composer and `composer-auth` come from the [`php-composer-setup`](../php-composer-setup/README.md) action of the same release, then `composer install` with `composer-options` runs in the plugin tree;
 3. when `npm-build-command` is set: sets up Node, checks that the token reads every dependency that `package-lock.json` resolves from the GitHub Packages npm registry (all refusals reported at once), runs `npm ci` (or `npm install`, with a warning, without a lockfile) and `npm run <npm-build-command>`;
 4. copies the tree with `rsync`, minus the default excludes and the exclude file, and writes `<zip-name>-<tag-name>.zip` (or `<zip-name>-<short sha>.zip` without a tag) with every file under `<zip-name>/`;
 5. uploads the ZIP as a workflow artifact named after the file;
 6. with `upload-release-asset: true`, uploads the ZIP to the existing GitHub release of `tag-name`.
 
-A dry run runs steps 1 and 4 only: no dependency install, no credentials, no artifact, no release upload. Its outputs describe the ZIP that a real run of the same tree would build, before any dependency install.
+A dry run runs steps 1 and 4 only, and `php-composer-setup` as a dry run when `composer.json` exists: no dependency install, no credentials, no artifact, no release upload. Its outputs describe the ZIP that a real run of the same tree would build, before any dependency install.
 
 The ZIP is deterministic: entries sorted by path, a fixed entry date, mode `0755` for executable files and `0644` for the others. It holds file entries only, no directory entries, so an empty directory does not ship. Symbolic links are replaced by the files they point to; a dangling link fails the run.
 
@@ -39,6 +39,7 @@ rsync semantics apply: a pattern without an inner `/` matches at any depth (`tes
 - **Deletes** one thing only: with `upload-release-asset: true`, the asset of the release of `tag-name` that has the same file name as the new ZIP. `gh release upload --clobber` deletes it, then uploads the new ZIP. If the upload then fails, the release has no ZIP until a re-run. The release must exist: the component does not create it.
 - Deletes nothing else in the repository, in the releases or in the registries.
 - Builds in a new directory under `$RUNNER_TEMP`; the workspace changes only through the Composer and npm installs and the npm build.
+- With `composer-auth`, `php-composer-setup` writes the credentials to the global Composer `auth.json` of the runner (mode `0600`, outside the plugin tree), where they stay until the end of the job; the npm install and build that follow can read that file.
 
 ## Inputs
 
@@ -59,7 +60,7 @@ rsync semantics apply: a pattern without an inner `/` matches at any depth (`tes
 | `retention-days` | both | no | `30` | retention of the workflow artifact |
 | `dry-run` | both | no | `false` | validate and build the ZIP only |
 | `timeout-minutes` | reusable | no | `20` | job timeout |
-| `composer-auth` | composite | no | empty | `COMPOSER_AUTH` JSON, passed from a secret. Empty keeps a `COMPOSER_AUTH` that the job environment already sets |
+| `composer-auth` | composite | no | empty | `COMPOSER_AUTH` JSON, passed from a secret; `php-composer-setup` writes it to the global Composer `auth.json`. A `COMPOSER_AUTH` that the job environment already sets still applies |
 | `github-token` | composite | no | the job token | token for the GitHub Packages npm registry and for the release upload |
 | `upload-release-asset` | composite | no | `false` | upload to the release of `tag-name`; needs `tag-name` |
 

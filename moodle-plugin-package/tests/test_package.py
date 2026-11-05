@@ -142,7 +142,7 @@ class CheckCommandTest(unittest.TestCase):
         self.assertIn("version=2026110300\n", out)
         self.assertIn("release=1.2.0\n", out)
         self.assertIn("archive-name=local_example-v1.2.0.zip\n", out)
-        self.assertIn("has-composer=false\n", out)
+        self.assertIn("has-composer=true\n", out)
         self.assertIn("has-npm=false\n", out)
 
     def test_writes_github_output(self):
