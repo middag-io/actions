@@ -51,6 +51,7 @@ All files, comments, commit messages and pull requests are in English.
 `_ci.yml` must be green before a change is delivered: `actionlint`, `zizmor` (online, `known-vulnerable-actions` included), `gitleaks`, `check-genericity`, `unit-tests` and the aggregated `ci-gate`, plus the dry-run jobs of each component.
 
 - A new CI job is added to the `needs:` list of `ci-gate`. Nothing else in `ci-gate` changes.
+- The `changes` job plans the run with `.github/scripts/ci-changes.sh`. A pull request runs `check-genericity`, `unit-tests` and the dry-run jobs of each component whose folder or reusable workflow it changes; a change to any other file under `.github/` runs the dry-run of every component. The release pull request (branch `release-please--*`) that changes only `CHANGELOG.md` files and `.release-please-manifest.json`, and a push to `main`, run only `actionlint`, `zizmor` and `gitleaks`. `ci-gate` (`.github/scripts/ci-gate.sh`) accepts a skipped job only when the plan skips it. A new dry-run job that has no other `needs:` gets `needs: changes` and the `if:` on its component, as the existing ones do.
 - CI tools (actionlint, zizmor, gitleaks) run at an exact version, with a SHA-256 checksum, both set in `_ci.yml`. Dependabot does not update them. Whenever `_ci.yml` changes, check the latest release of each tool and its security advisories, and update the version and the checksum together. shellcheck comes from the `ubuntu-24.04` runner image.
 - A new rule in `check-genericity.sh` gets a failing case in `test-check-genericity.sh`.
 - A reusable component workflow calls its composite action with `uses: $/<component>`. actionlint 1.7.12 rejects that form, so the component adds to `.github/actionlint.yaml` an entry that ignores exactly that message for exactly its workflow file; nothing else is ignored there. `check-genericity` checks the `with:` of that step against the inputs of the action and of the workflow in place of actionlint; an input that only the workflow uses is listed in `WORKFLOW_ONLY_INPUTS` there.
@@ -67,6 +68,7 @@ bash .github/scripts/test-check-genericity.sh
 bash .github/scripts/check-genericity.sh
 bash .github/scripts/test-check-component-paths.sh
 bash .github/scripts/test-move-major-tags.sh
+bash .github/scripts/test-ci-changes.sh
 bash .github/scripts/check-component-paths.sh origin/main HEAD
 for tests in */tests; do python3 -I -B -m unittest discover -s "$tests"; done
 ```

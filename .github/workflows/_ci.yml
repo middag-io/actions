@@ -1,6 +1,14 @@
 # Internal CI of this repository. Every job feeds ci-gate, the aggregated
 # required check. To add a job, list it in the `needs:` of ci-gate.
 #
+# The changes job plans the run (.github/scripts/ci-changes.sh): a pull
+# request runs the dry-run jobs only of the components it changes, the
+# release pull request that changes only changelogs and the manifest runs
+# only the lint and secret scans, and a push to main runs only the lint and
+# secret scans (the pull request already ran the rest on the same merge).
+# ci-gate accepts a skipped job only when the plan skips it
+# (.github/scripts/ci-gate.sh).
+#
 # CI tool versions: actionlint, zizmor and gitleaks are pinned below by
 # version and SHA-256. Dependabot does not read these `env:` values, so a
 # maintainer checks the tool releases whenever this file changes (AGENTS.md,
@@ -20,6 +28,32 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Plans which jobs run. Depth 2: in a pull request the checked-out commit
+  # is the merge ref, and its first parent is the base branch.
+  changes:
+    name: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      components: ${{ steps.plan.outputs.components }}
+      full: ${{ steps.plan.outputs.full }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Plan the jobs from the changed files
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          bash .github/scripts/ci-changes.sh "$EVENT_NAME" "$HEAD_BRANCH" | tee -a "$GITHUB_OUTPUT"
+
   actionlint:
     name: actionlint
     runs-on: ubuntu-24.04
@@ -114,6 +148,8 @@ jobs:
 
   check-genericity:
     name: check-genericity
+    needs: changes
+    if: ${{ needs.changes.outputs.full == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -142,10 +178,11 @@ jobs:
       - name: Check the genericity rules
         run: bash .github/scripts/check-genericity.sh
 
-      - name: Test the component path check and the major tag script
+      - name: Test the component path check, the major tag script and the CI plan
         run: |
           bash .github/scripts/test-check-component-paths.sh
           bash .github/scripts/test-move-major-tags.sh
+          bash .github/scripts/test-ci-changes.sh
 
       # release-please releases a component only from its folder: a change
       # to .github/workflows/<component>.yml needs a change under
@@ -159,6 +196,8 @@ jobs:
 
   unit-tests:
     name: unit-tests
+    needs: changes
+    if: ${{ needs.changes.outputs.full == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -196,6 +235,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-release-please:
     name: dry-run-release-please
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'release-please') }}
     permissions:
       contents: read
     uses: ./.github/workflows/release-please.yml # zizmor: ignore[self-repository]
@@ -232,6 +273,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-moodle-plugin-package:
     name: dry-run-moodle-plugin-package
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'moodle-plugin-package') }}
     permissions:
       contents: read
     uses: ./.github/workflows/moodle-plugin-package.yml # zizmor: ignore[self-repository]
@@ -278,6 +321,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-moodle-host-check:
     name: dry-run-moodle-host-check
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'moodle-host-check') }}
     permissions:
       contents: read
     uses: ./.github/workflows/moodle-host-check.yml # zizmor: ignore[self-repository]
@@ -320,6 +365,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-moodle-plugin-check:
     name: dry-run-moodle-plugin-check
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'moodle-plugin-check') }}
     permissions:
       contents: read
     uses: ./.github/workflows/moodle-plugin-check.yml # zizmor: ignore[self-repository]
@@ -361,6 +408,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-cloudflare-workers-check:
     name: dry-run-cloudflare-workers-check
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'cloudflare-workers-check') }}
     permissions:
       contents: read
     uses: ./.github/workflows/cloudflare-workers-check.yml # zizmor: ignore[self-repository]
@@ -402,6 +451,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-cloudflare-pages-deploy:
     name: dry-run-cloudflare-pages-deploy
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'cloudflare-pages-deploy') }}
     permissions:
       contents: read
     uses: ./.github/workflows/cloudflare-pages-deploy.yml # zizmor: ignore[self-repository]
@@ -449,6 +500,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-cloudflare-workers-deploy:
     name: dry-run-cloudflare-workers-deploy
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'cloudflare-workers-deploy') }}
     permissions:
       contents: read
     uses: ./.github/workflows/cloudflare-workers-deploy.yml # zizmor: ignore[self-repository]
@@ -484,6 +537,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-php-composer-setup:
     name: dry-run-php-composer-setup
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'php-composer-setup') }}
     permissions:
       contents: read
     uses: ./.github/workflows/php-composer-setup.yml # zizmor: ignore[self-repository]
@@ -532,6 +587,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-php-composer-scan:
     name: dry-run-php-composer-scan
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'php-composer-scan') }}
     permissions:
       contents: read
     uses: ./.github/workflows/php-composer-scan.yml # zizmor: ignore[self-repository]
@@ -575,6 +632,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-node-npm-scan:
     name: dry-run-node-npm-scan
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'node-npm-scan') }}
     permissions:
       contents: read
     uses: ./.github/workflows/node-npm-scan.yml # zizmor: ignore[self-repository]
@@ -618,6 +677,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-go-module-scan:
     name: dry-run-go-module-scan
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'go-module-scan') }}
     permissions:
       contents: read
     uses: ./.github/workflows/go-module-scan.yml # zizmor: ignore[self-repository]
@@ -663,6 +724,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-php-library-check:
     name: dry-run-php-library-check
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'php-library-check') }}
     permissions:
       contents: read
     uses: ./.github/workflows/php-library-check.yml # zizmor: ignore[self-repository]
@@ -710,6 +773,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-php-version-family-check:
     name: dry-run-php-version-family-check
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'php-version-family-check') }}
     permissions:
       contents: read
     uses: ./.github/workflows/php-version-family-check.yml # zizmor: ignore[self-repository]
@@ -757,6 +822,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-github-release-major-check:
     name: dry-run-github-release-major-check
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'github-release-major-check') }}
     permissions:
       contents: read
     uses: ./.github/workflows/github-release-major-check.yml # zizmor: ignore[self-repository]
@@ -803,6 +870,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-github-release-major-check-monorepo-api:
     name: dry-run-github-release-major-check-monorepo-api
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'github-release-major-check') }}
     permissions:
       contents: read
     uses: ./.github/workflows/github-release-major-check.yml # zizmor: ignore[self-repository]
@@ -814,6 +883,8 @@ jobs:
 
   dry-run-github-release-major-check-monorepo-web:
     name: dry-run-github-release-major-check-monorepo-web
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'github-release-major-check') }}
     permissions:
       contents: read
     uses: ./.github/workflows/github-release-major-check.yml # zizmor: ignore[self-repository]
@@ -825,6 +896,8 @@ jobs:
 
   dry-run-github-release-major-check-monorepo-cli:
     name: dry-run-github-release-major-check-monorepo-cli
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'github-release-major-check') }}
     permissions:
       contents: read
     uses: ./.github/workflows/github-release-major-check.yml # zizmor: ignore[self-repository]
@@ -873,6 +946,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-wp-plugin-check:
     name: dry-run-wp-plugin-check
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'wp-plugin-check') }}
     permissions:
       contents: read
     uses: ./.github/workflows/wp-plugin-check.yml # zizmor: ignore[self-repository]
@@ -927,6 +1002,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-wp-theme-check:
     name: dry-run-wp-theme-check
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'wp-theme-check') }}
     permissions:
       contents: read
     uses: ./.github/workflows/wp-theme-check.yml # zizmor: ignore[self-repository]
@@ -963,6 +1040,8 @@ jobs:
   # a job of this repository it resolves to the same commit as "$/".
   dry-run-wp-plugin-release:
     name: dry-run-wp-plugin-release
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'wp-plugin-release') }}
     permissions:
       contents: read
     uses: ./.github/workflows/wp-plugin-release.yml # zizmor: ignore[self-repository]
@@ -1007,6 +1086,8 @@ jobs:
   # artifact, as a caller would: this job uploads the fixture package.
   dry-run-cloudflare-r2-docs-publish-package:
     name: dry-run-cloudflare-r2-docs-publish-package
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'cloudflare-r2-docs-publish') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -1076,6 +1157,7 @@ jobs:
     name: ci-gate
     needs:
       - actionlint
+      - changes
       - zizmor
       - gitleaks
       - check-genericity
@@ -1124,15 +1206,17 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    permissions: {}
+    permissions:
+      contents: read
     steps:
-      - name: Fail unless every required job succeeded
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Fail unless every planned job succeeded
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
-        run: |
-          failed="$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key): \(.value.result)"' <<<"$NEEDS_JSON")"
-          if [ -n "$failed" ]; then
-            printf '::error::Required jobs did not succeed:\n%s\n' "$failed"
-            exit 1
-          fi
-          jq -r 'keys[] | "\(.): success"' <<<"$NEEDS_JSON"
+          COMPONENTS: ${{ needs.changes.outputs.components || '[]' }}
+          FULL: ${{ needs.changes.outputs.full || 'false' }}
+        run: bash .github/scripts/ci-gate.sh
