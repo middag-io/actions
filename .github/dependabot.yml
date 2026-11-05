@@ -17,6 +17,7 @@ updates:
       - /php-composer-scan
       - /php-composer-setup
       - /php-library-check
+      - /php-version-family-check
       - /release-please
       - /wp-plugin-check
       - /wp-plugin-release

@@ -81,6 +81,12 @@
       "versioning": "default",
       "prerelease": false
     },
+    "php-version-family-check": {
+      "component": "php-version-family-check",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
     "release-please": {
       "component": "release-please",
       "changelog-path": "CHANGELOG.md",

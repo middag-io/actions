@@ -1,0 +1,105 @@
+# Reusable workflow of the php-version-family-check component. It checks out
+# the pull request with its history and gives the composite action a job,
+# minimum permissions, a timeout and a concurrency group. The composite
+# action does the work: see php-version-family-check/README.md.
+#
+# Only window reads a variable of the caller
+# (PHP_VERSION_FAMILY_CHECK_WINDOW); in a called workflow, the vars context
+# resolves against the caller. A caller whose window lives in a variable of
+# another name passes it explicitly in with:.
+# Reference it by full commit SHA with a version comment (see the README).
+name: PHP version family check
+
+on:
+  workflow_call:
+    inputs:
+      window:
+        description: Version family window. Empty is closed; X.Y with Y > 0 is a family MINOR window; X.0 is a family MAJOR window. Default from the variable PHP_VERSION_FAMILY_CHECK_WINDOW.
+        type: string
+        required: false
+        default: ${{ vars.PHP_VERSION_FAMILY_CHECK_WINDOW }}
+      family-from:
+        description: Package version from which a feat needs an open window (SemVer); below it, feat passes. Empty gates feat at every version.
+        type: string
+        required: false
+        default: ""
+      manifest-file:
+        description: Path of the release-please manifest, relative to the repository root, read at the base commit.
+        type: string
+        required: false
+        default: .release-please-manifest.json
+      package:
+        description: Key of the package in the manifest.
+        type: string
+        required: false
+        default: "."
+      title:
+        description: Title to check. Empty uses the title of the pull request of the event.
+        type: string
+        required: false
+        default: ""
+      dry-run:
+        description: Read the manifest from the checkout and check the title only; report findings as warnings and never fail on them.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 5
+    outputs:
+      version:
+        description: Version of the package in the manifest.
+        value: ${{ jobs.check.outputs.version }}
+      window-kind:
+        description: closed, minor or major.
+        value: ${{ jobs.check.outputs.window-kind }}
+      result:
+        description: pass or fail.
+        value: ${{ jobs.check.outputs.result }}
+      findings:
+        description: Number of findings.
+        value: ${{ jobs.check.outputs.findings }}
+
+permissions: {}
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    # Nothing outside the job is written: one group per run attempt.
+    concurrency:
+      group: php-version-family-check-${{ github.run_id }}-${{ github.run_attempt }}
+      cancel-in-progress: false
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      window-kind: ${{ steps.check.outputs.window-kind }}
+      result: ${{ steps.check.outputs.result }}
+      findings: ${{ steps.check.outputs.findings }}
+    steps:
+      # The head commit with the full history, so that git can list the
+      # commits base..head and read the manifest at the base commit. A dry
+      # run reads only the checkout of the run's ref.
+      - name: Check out the pull request with its history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ !inputs.dry-run && github.event.pull_request.head.sha || '' }}
+          fetch-depth: ${{ inputs.dry-run && 1 || 0 }}
+          persist-credentials: false
+
+      - name: Check the pull request
+        id: check
+        uses: $/php-version-family-check
+        with:
+          window: ${{ inputs.window }}
+          family-from: ${{ inputs.family-from }}
+          manifest-file: ${{ inputs.manifest-file }}
+          package: ${{ inputs.package }}
+          title: ${{ inputs.title || github.event.pull_request.title }}
+          base-sha: ${{ !inputs.dry-run && github.event.pull_request.base.sha || '' }}
+          head-sha: ${{ !inputs.dry-run && github.event.pull_request.head.sha || '' }}
+          dry-run: ${{ inputs.dry-run }}

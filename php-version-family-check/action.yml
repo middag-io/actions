@@ -1,0 +1,86 @@
+# Composite action: checks a pull request against the window of a version
+# family (packages that share MAJOR.MINOR). Reads the pull request title and
+# the commits base..head of a checkout with history. See README.md next to
+# this file for the inputs, what the action deletes (nothing) and the
+# permissions it needs.
+name: PHP version family check
+description: >-
+  Fails a pull request whose title or commits carry a feature while the
+  version family window is closed, or a breaking change outside a family
+  MAJOR window. Reads the package version from the release-please manifest
+  of the base commit. Publishes nothing.
+
+inputs:
+  window:
+    description: Version family window. Empty is closed; X.Y with Y > 0 is a family MINOR window; X.0 is a family MAJOR window.
+    required: false
+    default: ""
+  family-from:
+    description: Package version from which a feat needs an open window (SemVer); below it, feat passes. Empty gates feat at every version.
+    required: false
+    default: ""
+  manifest-file:
+    description: Path of the release-please manifest, relative to the repository root, read at the base commit.
+    required: false
+    default: .release-please-manifest.json
+  package:
+    description: Key of the package in the manifest.
+    required: false
+    default: "."
+  title:
+    description: Title of the pull request.
+    required: true
+  base-sha:
+    description: Full SHA of the base commit of the pull request. Required unless dry-run is true.
+    required: false
+    default: ""
+  head-sha:
+    description: Full SHA of the head commit of the pull request. Required unless dry-run is true; the checkout must hold the history of both commits.
+    required: false
+    default: ""
+  dry-run:
+    description: Read the manifest from the workspace and check the title only; report findings as warnings and never fail on them (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  version:
+    description: Version of the package in the manifest.
+    value: ${{ steps.check.outputs.version }}
+  window-kind:
+    description: closed, minor or major.
+    value: ${{ steps.check.outputs.window-kind }}
+  result:
+    description: pass or fail.
+    value: ${{ steps.check.outputs.result }}
+  findings:
+    description: Number of findings.
+    value: ${{ steps.check.outputs.findings }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the pull request against the version family window
+      id: check
+      shell: bash
+      env:
+        WINDOW: ${{ inputs.window }}
+        FAMILY_FROM: ${{ inputs.family-from }}
+        MANIFEST_FILE: ${{ inputs.manifest-file }}
+        PACKAGE: ${{ inputs.package }}
+        PR_TITLE: ${{ inputs.title }}
+        BASE_SHA: ${{ inputs.base-sha }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" \
+          --window="$WINDOW" \
+          --family-from="$FAMILY_FROM" \
+          --manifest-file="$MANIFEST_FILE" \
+          --package="$PACKAGE" \
+          --title="$PR_TITLE" \
+          --base-sha="$BASE_SHA" \
+          --head-sha="$HEAD_SHA" \
+          --dry-run="$DRY_RUN" \
+          --workspace="$GITHUB_WORKSPACE" \
+          --github-output="$GITHUB_OUTPUT"
