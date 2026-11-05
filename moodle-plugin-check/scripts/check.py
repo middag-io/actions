@@ -268,18 +268,11 @@ def command_plan(args: argparse.Namespace) -> int:
     return 0
 
 
-def composer_env(environ: Mapping[str, str]) -> dict[str, str]:
-    """Copies the environment; adds COMPOSER_AUTH when a token is present."""
-    env = {key: value for key, value in environ.items() if key != "COMPOSER_GITHUB_TOKEN"}
-    token = environ.get("COMPOSER_GITHUB_TOKEN", "")
-    if token:
-        env["COMPOSER_AUTH"] = json.dumps({"github-oauth": {"github.com": token}})
-    return env
-
-
 def command_run(args: argparse.Namespace, runner=subprocess.run) -> int:
     plan = json.loads(Path(args.plan_file).read_text(encoding="utf-8"))
-    env = composer_env(os.environ)
+    # The Composer credentials are in the global Composer auth.json, written by
+    # php-composer-setup before this step.
+    env = dict(os.environ)
     for command in plan["commands"]:
         print(f"::group::{' '.join(command)}", flush=True)
         result = runner(command, cwd=plan["directory"], env=env, check=False)
