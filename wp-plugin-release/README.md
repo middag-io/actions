@@ -65,7 +65,7 @@ The secrets are stored as `WP_PLUGIN_RELEASE_APP_PRIVATE_KEY` and `WP_PLUGIN_REL
 | `zip-name` | both | yes | | `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`, no `..` |
 | `path` | both | no | `.` | plugin root, relative to the workspace; never absolute, never `..` |
 | `has-ui` | both | no | `false` | needs `<path>/ui/package.json` |
-| `npm-github-packages-scope` | both | no | empty | npm scope such as `@example`, resolved from `https://npm.pkg.github.com` with the job token; needs `has-ui` |
+| `npm-github-packages-scope` | both | no | empty | npm scope such as `@example`, resolved from `https://npm.pkg.github.com` with the job token; needs `has-ui` and a job with `packages: read`, so use the composite action (see "UI with GitHub Packages") |
 | `ui-check-file` | both | no | `assets/dist/app.js` | relative to `path`; checked only with `has-ui` |
 | `has-strauss` | both | no | `false` | full install, `composer strauss`, reinstall without dev dependencies and without scripts, `dump-autoload --optimize` |
 | `node-version` | both | no | `22` | |
@@ -100,7 +100,7 @@ The component never prints either value. An invalid `composer-auth` fails the ru
 
 ## Permissions
 
-- The job needs `contents: read` only, for the checkout. With `npm-github-packages-scope`, the job token must also be able to read the scope's packages (grant the calling repository access to them in the package settings).
+- The job needs `contents: read` only, for the checkout. With `npm-github-packages-scope`, the job also needs `packages: read`, which the reusable workflow does not grant: see "UI with GitHub Packages".
 - The GitHub App needs the repository permission **Contents: read and write** on the calling repository, and must be installed on it. The token is created with `repositories: <calling repository>` and `permission-contents: write` only.
 
 ## Calling the reusable workflow
@@ -175,6 +175,39 @@ jobs:
 ```
 
 Find `<sha40>` with `gh api repos/<owner>/actions/git/ref/tags/wp-plugin-release-vX.Y.Z`; dereference an annotated tag with `gh api repos/<owner>/actions/git/tags/<object-sha>`. Never `@main` or a branch.
+
+## UI with GitHub Packages
+
+A UI whose `package-lock.json` resolves a scope from GitHub Packages (`https://npm.pkg.github.com`) needs the job token with `packages: read`. The `release` job of the reusable workflow declares `contents: read` only, and a caller cannot raise the permissions of a called workflow, so `npm ci` fails there with `403 Forbidden` on the first package of the scope. Run the composite action in a job of your own with `packages: read` instead:
+
+```yaml
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # Read-only: npm ci reads the scope from GitHub Packages with the job token.
+      packages: read
+    concurrency:
+      group: wp-plugin-release-${{ github.repository }}-${{ inputs.tag }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@<sha40> # vX.Y.Z
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - uses: <owner>/actions/wp-plugin-release@<sha40> # wp-plugin-release-vX.Y.Z
+        with:
+          tag-name: ${{ inputs.tag }}
+          zip-name: example-plugin
+          has-ui: "true"
+          npm-github-packages-scope: "@example"
+          app-client-id: ${{ vars.WP_PLUGIN_RELEASE_APP_CLIENT_ID }}
+          app-private-key: ${{ secrets.WP_PLUGIN_RELEASE_APP_PRIVATE_KEY }}
+```
+
+The job token reaches only the UI build step (`npm ci` and `npm run build`), as `NODE_AUTH_TOKEN`. Each package of the scope must grant the calling repository Read access (package settings, "Manage Actions access"). A GitHub App installation token is refused by that registry; the job token is the identity that works there. The reusable workflow keeps `contents: read` only, the least privilege for the plugins that need no GitHub Packages scope.
 
 ## Implementation notes
 

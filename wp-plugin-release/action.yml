@@ -25,7 +25,7 @@ inputs:
     required: false
     default: "false"
   npm-github-packages-scope:
-    description: npm scope (for example @example) resolved from the GitHub Packages registry with the job token. Empty uses the public npm registry only. Requires has-ui.
+    description: npm scope (for example @example) resolved from the GitHub Packages registry with the job token. Empty uses the public npm registry only. Requires has-ui and a job with packages read.
     required: false
     default: ""
   ui-check-file:
