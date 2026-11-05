@@ -272,6 +272,48 @@ jobs:
           fi
 
   # Calls the reusable workflow by a relative path, as a caller would by
+  # SHA, on a fixture library and probe. A dry run: no database, no PHP
+  # set-up, no Moodle clone, no install and no probe.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-moodle-host-check:
+    name: dry-run-moodle-host-check
+    permissions:
+      contents: read
+    uses: ./.github/workflows/moodle-host-check.yml # zizmor: ignore[self-repository]
+    with:
+      hosts: '[{"moodle-branch": "MOODLE_405_STABLE", "php-version": "8.3"}]'
+      path: moodle-host-check/tests/fixtures/basic
+      probe-script: moodle-host-check/tests/fixtures/basic/probe.php
+      dry-run: true
+
+  # The dry run must plan exactly the commands of the reference plan
+  # (tests/fixtures/expected/basic.json).
+  dry-run-check-moodle-host-check:
+    name: dry-run-check-moodle-host-check
+    needs: dry-run-moodle-host-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected plan
+        env:
+          COMMANDS: ${{ needs.dry-run-moodle-host-check.outputs.commands }}
+        run: |
+          expected="moodle-host-check/tests/fixtures/expected/basic.json"
+          echo "$COMMANDS"
+          if ! jq -e --argjson actual "$COMMANDS" '. == $actual' "$expected" >/dev/null; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
+  # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture plugin. A dry run: no credentials, no PHP set-up, no
   # Composer run.
   # zizmor self-repository: "./" is the documented form of this test job; in
@@ -700,6 +742,8 @@ jobs:
       - dry-run-check-release-please
       - dry-run-moodle-plugin-package
       - dry-run-check-moodle-plugin-package
+      - dry-run-moodle-host-check
+      - dry-run-check-moodle-host-check
       - dry-run-moodle-plugin-check
       - dry-run-check-moodle-plugin-check
       - dry-run-cloudflare-workers-check
