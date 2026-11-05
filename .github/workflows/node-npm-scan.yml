@@ -1,0 +1,87 @@
+# Reusable workflow of the node-npm-scan component. It checks out the calling
+# repository, sets up Node.js and runs the composite action on
+# package-lock.json, with minimum permissions, a timeout and a concurrency
+# group. No install and no secret. See node-npm-scan/README.md.
+#
+# Only blocking-severities reads a variable of the caller
+# (NODE_NPM_SCAN_BLOCKING_SEVERITIES); in a called workflow, the vars context
+# resolves against the caller.
+# Reference it by full commit SHA with a version comment (see the README).
+name: Node npm scan
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version to set up (for example 22 or 22.11.0).
+        type: string
+        required: false
+        default: "22"
+      working-directory:
+        description: Directory that holds package-lock.json, relative to the checkout.
+        type: string
+        required: false
+        default: "."
+      blocking-severities:
+        description: Severities that fail the audit, separated by commas (critical, high, medium, low). Default from the variable NODE_NPM_SCAN_BLOCKING_SEVERITIES, else critical.
+        type: string
+        required: false
+        default: ${{ vars.NODE_NPM_SCAN_BLOCKING_SEVERITIES || 'critical' }}
+      dry-run:
+        description: Validate the inputs and print the audit command only; no Node.js set-up, no audit.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 10
+    outputs:
+      command:
+        description: The audit command, run or planned.
+        value: ${{ jobs.scan.outputs.command }}
+      blocking-severities:
+        description: The blocking severities, comma-separated, from the highest.
+        value: ${{ jobs.scan.outputs.blocking-severities }}
+      advisories:
+        description: Number of advisories found (empty in a dry run).
+        value: ${{ jobs.scan.outputs.advisories }}
+      blocking:
+        description: Number of advisories with a blocking severity (empty in a dry run).
+        value: ${{ jobs.scan.outputs.blocking }}
+
+permissions: {}
+
+jobs:
+  scan:
+    name: scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    outputs:
+      command: ${{ steps.scan.outputs.command }}
+      blocking-severities: ${{ steps.scan.outputs.blocking-severities }}
+      advisories: ${{ steps.scan.outputs.advisories }}
+      blocking: ${{ steps.scan.outputs.blocking }}
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        if: ${{ !inputs.dry-run }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          package-manager-cache: false
+
+      - name: Audit the npm dependencies
+        id: scan
+        uses: $/node-npm-scan
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          blocking-severities: ${{ inputs.blocking-severities }}
+          dry-run: ${{ inputs.dry-run }}

@@ -1,0 +1,6 @@
+{
+  "name": "example-project",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Fixture of the node-npm-scan component: a project without dependencies."
+}

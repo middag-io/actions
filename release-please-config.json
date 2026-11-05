@@ -51,6 +51,18 @@
       "versioning": "default",
       "prerelease": false
     },
+    "node-npm-scan": {
+      "component": "node-npm-scan",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
+    "php-composer-scan": {
+      "component": "php-composer-scan",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
     "php-composer-setup": {
       "component": "php-composer-setup",
       "changelog-path": "CHANGELOG.md",

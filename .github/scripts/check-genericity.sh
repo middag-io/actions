@@ -398,7 +398,7 @@ END {
 
 # Inputs of the reusable workflow that only the workflow uses: a bare name
 # applies to every component, <component>:<input> to that component only.
-readonly WORKFLOW_ONLY_INPUTS=" timeout-minutes cloudflare-r2-docs-publish:artifact-name cloudflare-workers-deploy:github-environment moodle-host-check:hosts moodle-plugin-check:php-versions wp-plugin-check:php-versions wp-theme-check:php-versions "
+readonly WORKFLOW_ONLY_INPUTS=" timeout-minutes cloudflare-r2-docs-publish:artifact-name cloudflare-workers-deploy:github-environment moodle-host-check:hosts moodle-plugin-check:php-versions node-npm-scan:node-version php-composer-scan:php-version php-composer-scan:php-extensions wp-plugin-check:php-versions wp-theme-check:php-versions "
 
 check_component_wiring() {
   local file component action file_name line message

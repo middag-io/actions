@@ -1,0 +1,105 @@
+# Reusable workflow of the php-composer-scan component. It checks out the
+# calling repository, installs its Composer dependencies with
+# php-composer-setup and runs the composite action, with minimum
+# permissions, a timeout and a concurrency group. See
+# php-composer-scan/README.md.
+#
+# Only blocking-severities reads a variable of the caller
+# (PHP_COMPOSER_SCAN_BLOCKING_SEVERITIES); in a called workflow, the vars
+# context resolves against the caller. The secret comes from one explicit
+# line in the caller; it is never inherited.
+# Reference it by full commit SHA with a version comment (see the README).
+name: PHP Composer scan
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: PHP version that resolves the dependencies (for example 8.3).
+        type: string
+        required: false
+        default: "8.4"
+      php-extensions:
+        description: PHP extensions, comma-separated, in the shivammathur/setup-php syntax.
+        type: string
+        required: false
+        default: mbstring, xml
+      working-directory:
+        description: Directory that holds composer.json, relative to the checkout.
+        type: string
+        required: false
+        default: "."
+      blocking-severities:
+        description: Severities that fail the audit, separated by commas (critical, high, medium, low). Default from the variable PHP_COMPOSER_SCAN_BLOCKING_SEVERITIES, else critical.
+        type: string
+        required: false
+        default: ${{ vars.PHP_COMPOSER_SCAN_BLOCKING_SEVERITIES || 'critical' }}
+      dry-run:
+        description: Validate the inputs and print the audit command only; no credentials, no PHP set-up, no install, no audit.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 15
+    secrets:
+      composer-auth:
+        description: Composer credentials as a JSON object in the COMPOSER_AUTH format, for private dependencies.
+        required: false
+    outputs:
+      command:
+        description: The audit command, run or planned.
+        value: ${{ jobs.scan.outputs.command }}
+      blocking-severities:
+        description: The blocking severities, comma-separated, from the highest.
+        value: ${{ jobs.scan.outputs.blocking-severities }}
+      advisories:
+        description: Number of advisories found (empty in a dry run).
+        value: ${{ jobs.scan.outputs.advisories }}
+      blocking:
+        description: Number of advisories with a blocking severity (empty in a dry run).
+        value: ${{ jobs.scan.outputs.blocking }}
+
+permissions: {}
+
+jobs:
+  scan:
+    name: scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    # Nothing outside the job is written: one group per run attempt and
+    # directory.
+    concurrency:
+      group: php-composer-scan-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.working-directory }}
+      cancel-in-progress: false
+    outputs:
+      command: ${{ steps.scan.outputs.command }}
+      blocking-severities: ${{ steps.scan.outputs.blocking-severities }}
+      advisories: ${{ steps.scan.outputs.advisories }}
+      blocking: ${{ steps.scan.outputs.blocking }}
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP and install the Composer dependencies
+        uses: $/php-composer-setup
+        with:
+          php-version: ${{ inputs.php-version }}
+          php-extensions: ${{ inputs.php-extensions }}
+          working-directory: ${{ inputs.working-directory }}
+          composer-auth: ${{ !inputs.dry-run && secrets.composer-auth || '' }}
+          dry-run: ${{ inputs.dry-run }}
+
+      - name: Audit the Composer dependencies
+        id: scan
+        uses: $/php-composer-scan
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          blocking-severities: ${{ inputs.blocking-severities }}
+          dry-run: ${{ inputs.dry-run }}
