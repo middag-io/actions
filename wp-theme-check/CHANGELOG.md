@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/middag-io/actions/compare/wp-theme-check-v1.0.1...wp-theme-check-v1.1.0) (2026-11-05)
+
+
+### Features
+
+* **wp-theme-check:** audit the dependencies and fail on blocking severities ([c41c951](https://github.com/middag-io/actions/commit/c41c9510c4cc2b88a0fb88d585da17d190f81a8f))
+
 ## [1.0.1](https://github.com/middag-io/actions/compare/wp-theme-check-v1.0.0...wp-theme-check-v1.0.1) (2026-11-03)
 
 
