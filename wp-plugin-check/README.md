@@ -2,7 +2,7 @@
 
 Checks a WordPress plugin in a change. It publishes nothing.
 
-- **PHP**, one job per PHP version: sets up PHP with the chosen extensions, runs `composer install`, then each Composer script of `composer-scripts` (for example `check:style`, `check:stan`, `check:rector`, `test`). A failed install stops the job. A failed script does not: every script runs, and the job fails at the end with the list of failed scripts.
+- **PHP**, one job per PHP version: sets up PHP with the chosen extensions and runs `composer install --no-interaction --prefer-dist` through the [`php-composer-setup`](../php-composer-setup/README.md) action of the same release, with its Composer download cache keyed by `composer.lock`, then each Composer script of `composer-scripts` (for example `check:style`, `check:stan`, `check:rector`, `test`). A failed install stops the job. A failed script does not: every script runs, and the job fails at the end with the list of failed scripts.
 - **UI**, one job when `ui-directory` is set: sets up Node.js, runs `npm ci`, `tsc --noEmit` (unless `typecheck` is false), then each npm script of `npm-scripts`. The reusable workflow installs from the URLs of `package-lock.json` without a token. For a scope on GitHub Packages, see "UI with GitHub Packages".
 
 Before any setup, the component validates its inputs and the plugin files: each Composer script must be declared in `composer.json`, each npm script in `package.json`, and `package-lock.json` must exist.
@@ -14,18 +14,18 @@ Two forms, one name:
 
 ## What it deletes or overwrites
 
-Nothing outside the runner. On the runner, `composer install` and `npm ci` write `vendor/` and `node_modules/` in the checkout, as they do locally, and the Composer and npm scripts do what the plugin declares.
+Nothing outside the runner. On the runner, `composer install` and `npm ci` write `vendor/` and `node_modules/` in the checkout, as they do locally, and the Composer and npm scripts do what the plugin declares. With Composer credentials, `php-composer-setup` writes them to the global Composer `auth.json` of the runner (mode `0600`, outside the checkout); no `auth.json` is written to the checkout. The Composer cache step saves a download cache entry in the calling repository at the end of the job when its key had no exact hit.
 
 ## Credentials
 
-Each credential reaches only the command that installs dependencies. The other commands, the Composer scripts and the npm scripts among them, run without it.
+The Composer credentials go to the global Composer `auth.json` of the runner, outside the checkout, before `composer install`, and stay there until the end of the job: Composer plugins, the Composer scripts of `composer.json` and the commands they run can read them, as they can read any file of the runner. The npm token reaches only the registry access check and `npm ci`; the TypeScript check and the npm scripts run without it.
 
-Code that the install command itself runs gets the same environment: Composer plugins and the `post-install-cmd` scripts of `composer.json` see `COMPOSER_AUTH`, and the lifecycle scripts of the npm packages (`preinstall`, `install`, `postinstall`) see `NODE_AUTH_TOKEN`. Install only dependencies you trust with these credentials.
+Code that the npm install runs gets the same environment: the lifecycle scripts of the npm packages (`preinstall`, `install`, `postinstall`) see `NODE_AUTH_TOKEN`. Install only dependencies you trust with these credentials.
 
 | Credential                                                        | Reaches                                                                       | Used for                                                                                                                                                                                                                |
 | ----------------------------------------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| secret `composer-auth`                                            | `composer install`, as `COMPOSER_AUTH`                                        | private Composer repositories (`http-basic`, `bearer` and the other keys of the [COMPOSER_AUTH](https://getcomposer.org/doc/03-cli.md#composer-auth) format)                                                            |
-| `app-client-id` and secret `app-private-key`                      | `composer install`, as `github-oauth` for `github.com` inside `COMPOSER_AUTH` | private Composer packages hosted on GitHub. The token reads, with `contents: read` only, the repositories of `app-repositories` (same owner as the calling repository), or only the calling repository when it is empty |
+| secret `composer-auth`                                            | the global Composer `auth.json`, written by `php-composer-setup`              | private Composer repositories (`http-basic`, `bearer` and the other keys of the [COMPOSER_AUTH](https://getcomposer.org/doc/03-cli.md#composer-auth) format)                                                            |
+| `app-client-id` and secret `app-private-key`                      | the global Composer `auth.json`, as `github-oauth` for `github.com`           | private Composer packages hosted on GitHub. The token reads, with `contents: read` only, the repositories of `app-repositories` (same owner as the calling repository), or only the calling repository when it is empty |
 | job token, composite action with `github-packages-npm-scope` only | the registry access check and `npm ci`, as `NODE_AUTH_TOKEN`                  | npm packages of that scope on GitHub Packages. Without the scope, `npm ci` follows the URLs of `package-lock.json` with no token at all                                                                                 |
 
 ## Inputs of the reusable workflow

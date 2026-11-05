@@ -1,4 +1,4 @@
-wp-plugin-check/tests/fixtures/basic	composer install --no-interaction --no-progress --prefer-dist
+wp-plugin-check/tests/fixtures/basic	composer install --no-interaction --prefer-dist
 wp-plugin-check/tests/fixtures/basic	composer run-script --no-interaction check:style
 wp-plugin-check/tests/fixtures/basic	composer run-script --no-interaction check:stan
 wp-plugin-check/tests/fixtures/basic	composer run-script --no-interaction check:rector

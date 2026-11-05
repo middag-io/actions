@@ -1,8 +1,9 @@
 # Composite action: checks a WordPress plugin in a change. One call checks one
 # target: "php" (Composer install and Composer scripts on one PHP version) or
 # "ui" (npm install, TypeScript check and npm scripts of the UI directory).
-# See README.md next to this file for the inputs, the credentials and what the
-# action writes.
+# PHP, Composer, the Composer credentials and composer install come from the
+# php-composer-setup action of this repository. See README.md next to this
+# file for the inputs, the credentials and what the action writes.
 name: WordPress plugin check
 description: >-
   Checks a WordPress plugin: installs its Composer dependencies and runs the
@@ -31,7 +32,7 @@ inputs:
     required: false
     default: ""
   composer-auth:
-    description: Composer credentials in the COMPOSER_AUTH JSON format, passed from a secret. Reaches only composer install.
+    description: Composer credentials in the COMPOSER_AUTH JSON format, passed from a secret. php-composer-setup writes them to the global Composer auth.json of the runner.
     required: false
     default: ""
   app-client-id:
@@ -123,14 +124,23 @@ runs:
         repositories: ${{ inputs.app-repositories }}
         permission-contents: read
 
-    - name: Set up PHP
-      if: ${{ inputs.dry-run != 'true' && inputs.target == 'php' }}
-      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+    # php-composer-setup comes from the same repository and commit as this
+    # action. It validates its own inputs, sets up PHP, writes composer-auth
+    # and the App token (github-oauth for github.com) to the global Composer
+    # auth.json of the runner, outside the checkout, restores the Composer
+    # download cache and runs composer install. In a dry run it only
+    # validates and reports, like this action.
+    - name: Set up PHP and install the Composer dependencies
+      if: ${{ inputs.target == 'php' }}
+      uses: $/php-composer-setup
       with:
         php-version: ${{ inputs.php-version }}
-        extensions: ${{ inputs.php-extensions }}
+        php-extensions: ${{ inputs.php-extensions }}
         coverage: none
-        tools: composer
+        working-directory: ${{ inputs.path }}
+        composer-auth: ${{ inputs.composer-auth }}
+        github-token: ${{ steps.app-token.outputs.token }}
+        dry-run: ${{ inputs.dry-run }}
 
     - name: Set up Node.js
       if: ${{ inputs.dry-run != 'true' && inputs.target == 'ui' && inputs.github-packages-npm-scope == '' }}
@@ -162,9 +172,7 @@ runs:
         NPM_SCOPE: ${{ inputs.github-packages-npm-scope }}
         HAS_APP_CLIENT_ID: ${{ inputs.app-client-id != '' }}
         HAS_APP_PRIVATE_KEY: ${{ inputs.app-private-key != '' }}
-        # check.py hands each credential to its install command only.
-        WP_PLUGIN_CHECK_COMPOSER_AUTH: ${{ inputs.composer-auth }}
-        WP_PLUGIN_CHECK_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        # check.py hands the npm token to the npm install commands only.
         WP_PLUGIN_CHECK_NPM_TOKEN: ${{ inputs.github-packages-npm-scope != '' && github.token || '' }}
       run: |
         python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" run \

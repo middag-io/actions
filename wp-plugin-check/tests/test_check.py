@@ -162,31 +162,9 @@ class ValidationTest(unittest.TestCase):
             shutil.rmtree(tree)
 
 
-class ComposerAuthTest(unittest.TestCase):
-    def test_empty_gives_no_value(self):
-        self.assertEqual(check.composer_auth("", ""), "")
-
-    def test_app_token_is_added_for_github(self):
-        auth = {"http-basic": {"repo.example.com": {"username": "u", "password": "p"}}}
-        merged = json.loads(check.composer_auth(json.dumps(auth), "token"))
-        self.assertEqual(merged["http-basic"], auth["http-basic"])
-        self.assertEqual(merged["github-oauth"], {"github.com": "token"})
-
-    def test_invalid_json_fails_without_echoing_it(self):
-        with self.assertRaises(check.InputError) as caught:
-            check.composer_auth("{secret-value", "")
-        self.assertNotIn("secret-value", str(caught.exception))
-
-    def test_non_object_fails(self):
-        with self.assertRaises(check.InputError):
-            check.composer_auth("[]", "")
-
-
 class RunTest(unittest.TestCase):
     BASE_ENV = {
         "PATH": "/usr/bin",
-        "WP_PLUGIN_CHECK_COMPOSER_AUTH": json.dumps({"bearer": {"repo.example.com": "b"}}),
-        "WP_PLUGIN_CHECK_APP_TOKEN": "app-token",
         "WP_PLUGIN_CHECK_NPM_TOKEN": "npm-token",
     }
 
@@ -197,16 +175,18 @@ class RunTest(unittest.TestCase):
         args = args_for("ui", "--npm-scripts", "lint,build", "--github-packages-npm-scope", "@example")
         return check.build_plan(args, WORKSPACE)
 
-    def test_composer_auth_reaches_only_the_install(self):
+    def test_install_is_left_to_php_composer_setup(self):
         runner = FakeRunner()
         self.assertEqual(check.run_commands(self.php_commands(), self.BASE_ENV, runner), [])
-        install, *checks = runner.calls
-        self.assertIn("COMPOSER_AUTH", install["env"])
-        self.assertEqual(json.loads(install["env"]["COMPOSER_AUTH"])["github-oauth"], {"github.com": "app-token"})
+        self.assertEqual([c["argv"][:2] for c in runner.calls], [["composer", "run-script"]] * 2)
+
+    def test_php_commands_get_no_credential(self):
+        runner = FakeRunner()
+        check.run_commands(self.php_commands(), self.BASE_ENV, runner)
         for call in runner.calls:
             self.assertFalse(any(k.startswith("WP_PLUGIN_CHECK_") for k in call["env"]))
-        for call in checks:
             self.assertNotIn("COMPOSER_AUTH", call["env"])
+            self.assertNotIn("NODE_AUTH_TOKEN", call["env"])
 
     def test_npm_token_reaches_only_the_probe_and_the_install(self):
         runner = FakeRunner()
@@ -218,26 +198,19 @@ class RunTest(unittest.TestCase):
         runner = FakeRunner(fail={"composer run-script --no-interaction check:style"})
         failed = check.run_commands(self.php_commands(), self.BASE_ENV, runner)
         self.assertEqual(failed, ["composer run-script --no-interaction check:style"])
-        self.assertEqual(len(runner.calls), 3)
+        self.assertEqual(len(runner.calls), 2)
 
-    def test_failed_install_stops(self):
-        runner = FakeRunner(fail={"composer install --no-interaction --no-progress --prefer-dist"})
-        failed = check.run_commands(self.php_commands(), self.BASE_ENV, runner)
-        self.assertEqual(len(failed), 1)
-        self.assertEqual(len(runner.calls), 1)
+    def test_failed_npm_install_stops(self):
+        runner = FakeRunner(fail={"npm ci"})
+        failed = check.run_commands(self.ui_commands(), self.BASE_ENV, runner)
+        self.assertEqual(failed, ["npm ci"])
+        self.assertEqual(" ".join(runner.calls[-1]["argv"]), "npm ci")
 
     def test_failed_probe_stops_before_the_install(self):
         probe = "npm view @example/widgets version --registry=https://npm.pkg.github.com"
         runner = FakeRunner(fail={probe})
         self.assertEqual(check.run_commands(self.ui_commands(), self.BASE_ENV, runner), [probe])
         self.assertEqual(len(runner.calls), 1)
-
-    def test_invalid_composer_auth_fails_before_composer(self):
-        env = {**self.BASE_ENV, "WP_PLUGIN_CHECK_COMPOSER_AUTH": "not json"}
-        runner = FakeRunner()
-        with self.assertRaises(check.InputError):
-            check.run_commands(self.php_commands(), env, runner)
-        self.assertEqual(runner.calls, [])
 
 
 class MainTest(unittest.TestCase):
