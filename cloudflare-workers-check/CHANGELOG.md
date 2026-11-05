@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/middag-io/actions/compare/cloudflare-workers-check-v1.0.1...cloudflare-workers-check-v1.1.0) (2026-11-05)
+
+
+### Features
+
+* **cloudflare-workers-check:** audit the dependencies and fail on blocking severities ([42b7cf5](https://github.com/middag-io/actions/commit/42b7cf5b8bf9fa78d6da3788aaf40dc7aaa8f7bf))
+
 ## [1.0.1](https://github.com/middag-io/actions/compare/cloudflare-workers-check-v1.0.0...cloudflare-workers-check-v1.0.1) (2026-11-05)
 
 

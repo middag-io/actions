@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/middag-io/actions/compare/wp-plugin-check-v1.0.1...wp-plugin-check-v1.1.0) (2026-11-05)
+
+
+### Features
+
+* **wp-plugin-check:** audit the dependencies and fail on blocking severities ([0491412](https://github.com/middag-io/actions/commit/0491412accea2cc30a730e3d90f6e7b8081a558f))
+
 ## [1.0.1](https://github.com/middag-io/actions/compare/wp-plugin-check-v1.0.0...wp-plugin-check-v1.0.1) (2026-11-05)
 
 

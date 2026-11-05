@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/middag-io/actions/compare/moodle-plugin-check-v1.0.1...moodle-plugin-check-v1.1.0) (2026-11-05)
+
+
+### Features
+
+* **moodle-plugin-check:** audit the dependencies and fail on blocking severities ([0766b01](https://github.com/middag-io/actions/commit/0766b01783b076ab60e4e70f5420e92377c10c8d))
+
 ## [1.0.1](https://github.com/middag-io/actions/compare/moodle-plugin-check-v1.0.0...moodle-plugin-check-v1.0.1) (2026-11-05)
 
 
