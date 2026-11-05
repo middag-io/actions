@@ -80,6 +80,20 @@ def audit_command(directory: Path) -> list[str]:
     raise ScanError("nothing to audit: no vendor/composer/installed.json and no composer.lock; run composer install first")
 
 
+def count_packages(directory: Path, command: Sequence[str]) -> int:
+    """Counts the packages that the audit reads: Composer prints no report when there is none."""
+    source = directory / ("composer.lock" if "--locked" in command else INSTALLED)
+    try:
+        data = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ScanError(f"cannot read {source.name}: {error}") from error
+    if isinstance(data, list):
+        return len(data)
+    if not isinstance(data, dict):
+        raise ScanError(f"{source.name} is not a JSON object")
+    return sum(len(data.get(key) or []) for key in ("packages", "packages-dev"))
+
+
 def read_advisories(report: Mapping[str, object]) -> list[Advisory]:
     """Reads the advisories of the report: a mapping of package to a list (or a mapping) of advisories."""
     found = report.get("advisories") or {}
@@ -157,6 +171,10 @@ def run_scan(args: argparse.Namespace) -> int:
     blocking = parse_severities(args.blocking_severities)
     directory = resolve_directory(Path(args.workspace), args.working_directory)
     command = audit_command(directory)
+    if count_packages(directory, command) == 0:
+        print("no third-party package is resolved; nothing to audit")
+        write_outputs(args.github_output, {"advisories": "0", "blocking": "0"})
+        return 0
     print("+ " + " ".join(command), flush=True)
     result = subprocess.run(command, cwd=directory, capture_output=True, text=True, check=False)
     if result.stderr:
