@@ -56,6 +56,10 @@ inputs:
     description: Private key of the GitHub App, passed from a secret. Required with app-client-id outside a dry run.
     required: false
     default: ""
+  audit-blocking-severities:
+    description: Severities of a dependency advisory that fail the job, separated by commas (critical, high, medium, low); lower severities are only reported.
+    required: false
+    default: critical
   dry-run:
     description: Validate the inputs and the plugin metadata and print the Composer commands only; no credentials, no PHP set-up, no Composer run (true or false).
     required: false
@@ -153,3 +157,15 @@ runs:
       env:
         PLAN_FILE: ${{ steps.plan.outputs.plan-file }}
       run: python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" run --plan-file="$PLAN_FILE"
+
+    # php-composer-scan, same repository and commit: composer audit on the
+    # packages that the install above wrote; fails only on
+    # audit-blocking-severities, and reports lower severities. In a dry run
+    # it only validates and reports.
+    - name: Audit the Composer dependencies
+      if: ${{ steps.plan.outputs.commands != '[]' }}
+      uses: $/php-composer-scan
+      with:
+        working-directory: ${{ inputs.path }}
+        blocking-severities: ${{ inputs.audit-blocking-severities }}
+        dry-run: ${{ inputs.dry-run }}

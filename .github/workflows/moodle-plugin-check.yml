@@ -5,10 +5,11 @@
 # moodle-plugin-check/README.md.
 #
 # Values, most specific first: explicit input > variable of the calling
-# repository > variable of the calling organization. Only app-client-id and
-# app-repositories read a variable (MOODLE_PLUGIN_CHECK_APP_CLIENT_ID and
-# MOODLE_PLUGIN_CHECK_APP_REPOSITORIES); in a called workflow, the vars
-# context resolves against the caller. The secret comes from one
+# repository > variable of the calling organization. Only app-client-id,
+# app-repositories and audit-blocking-severities read a variable
+# (MOODLE_PLUGIN_CHECK_APP_CLIENT_ID, MOODLE_PLUGIN_CHECK_APP_REPOSITORIES and
+# MOODLE_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES); in a called workflow, the
+# vars context resolves against the caller. The secret comes from one
 # explicit line in the caller; it is never inherited.
 # Reference it by full commit SHA with a version comment (see the README).
 name: Moodle plugin check
@@ -66,6 +67,11 @@ on:
         type: string
         required: false
         default: ""
+      audit-blocking-severities:
+        description: Severities of a dependency advisory that fail the job, separated by commas (critical, high, medium, low). Default from the variable MOODLE_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES, else critical.
+        type: string
+        required: false
+        default: ${{ vars.MOODLE_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES || 'critical' }}
       dry-run:
         description: Validate the inputs and the plugin metadata and print the Composer commands only; no credentials, no PHP set-up, no Composer run.
         type: boolean
@@ -137,4 +143,5 @@ jobs:
           app-owner: ${{ inputs.app-owner }}
           app-repositories: ${{ inputs.app-repositories }}
           app-private-key: ${{ !inputs.dry-run && secrets.app-private-key || '' }}
+          audit-blocking-severities: ${{ inputs.audit-blocking-severities }}
           dry-run: ${{ inputs.dry-run }}
