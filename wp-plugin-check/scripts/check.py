@@ -2,15 +2,18 @@
 
 Two targets:
 
-- php: composer install, then each Composer script of --composer-scripts.
+- php: composer install, then each Composer script of --composer-scripts. The
+  install runs before this script, in php-composer-setup; the plan lists it
+  and "run" skips it.
 - ui: npm ci in the UI directory, then an optional TypeScript check and each
   npm script of --npm-scripts.
 
 "plan" validates the inputs and the plugin files, prints the commands and
 writes the outputs "commands" and "plan-sha256" to $GITHUB_OUTPUT. "run" does
-the same, then runs the commands. A credential reaches only the install
-command: COMPOSER_AUTH for composer install, NODE_AUTH_TOKEN for npm ci and
-the registry access check before it.
+the same, then runs the commands. The npm token reaches only npm ci and the
+registry access check before it, as NODE_AUTH_TOKEN. The Composer credentials
+never reach this script: php-composer-setup writes them to the global
+Composer auth.json of the runner.
 
 Standard library only. Run as python3 -I.
 """
@@ -26,6 +29,7 @@ import sys
 GITHUB_PACKAGES_REGISTRY = "https://npm.pkg.github.com"
 SCRIPT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]*$")
 PHP_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+$")
+COMPOSER_INSTALL_ARGV = ("composer", "install", "--no-interaction", "--prefer-dist")
 NPM_SCOPE_RE = re.compile(r"^@[a-z0-9][a-z0-9._-]*$")
 # Two forms of "resolved" for GitHub Packages in package-lock.json:
 # https://npm.pkg.github.com/@scope/name/-/name-1.0.0.tgz and
@@ -100,7 +104,8 @@ def plan_php(args, root):
     composer = read_json(os.path.join(root, "composer.json"), "composer.json")
     declared = composer.get("scripts") or {}
     scripts = script_names("composer-scripts", args.composer_scripts, declared, "composer.json")
-    commands = [{"argv": ["composer", "install", "--no-interaction", "--no-progress", "--prefer-dist"], "cwd": root, "credential": "composer"}]
+    # php-composer-setup runs this install, with its defaults, before "run".
+    commands = [{"argv": list(COMPOSER_INSTALL_ARGV), "cwd": root, "setup": True}]
     commands += [{"argv": ["composer", "run-script", "--no-interaction", name], "cwd": root} for name in scripts]
     return commands
 
@@ -147,30 +152,10 @@ def write_outputs(commands, text):
     print(f"commands={len(commands)} plan-sha256={digest}")
 
 
-def composer_auth(auth_json, app_token):
-    """The COMPOSER_AUTH value: the caller's JSON, plus the App token for github.com."""
-    auth = {}
-    if auth_json:
-        try:
-            auth = json.loads(auth_json)
-        except ValueError:
-            raise InputError("secret composer-auth is not valid JSON (expected the COMPOSER_AUTH format)") from None
-        if not isinstance(auth, dict):
-            raise InputError("secret composer-auth must be a JSON object (the COMPOSER_AUTH format)")
-    if app_token:
-        auth = {**auth, "github-oauth": {**(auth.get("github-oauth") or {}), "github.com": app_token}}
-    return json.dumps(auth) if auth else ""
-
-
 def command_env(command, base_env):
-    """The environment of one command: credentials only for the install commands."""
-    env = {k: v for k, v in base_env.items() if k not in ("WP_PLUGIN_CHECK_COMPOSER_AUTH", "WP_PLUGIN_CHECK_APP_TOKEN", "WP_PLUGIN_CHECK_NPM_TOKEN")}
-    credential = command.get("credential")
-    if credential == "composer":
-        value = composer_auth(base_env.get("WP_PLUGIN_CHECK_COMPOSER_AUTH", ""), base_env.get("WP_PLUGIN_CHECK_APP_TOKEN", ""))
-        if value:
-            env["COMPOSER_AUTH"] = value
-    elif credential == "npm" and base_env.get("WP_PLUGIN_CHECK_NPM_TOKEN"):
+    """The environment of one command: the npm token only for the npm install commands."""
+    env = {k: v for k, v in base_env.items() if k != "WP_PLUGIN_CHECK_NPM_TOKEN"}
+    if command.get("credential") == "npm" and base_env.get("WP_PLUGIN_CHECK_NPM_TOKEN"):
         env["NODE_AUTH_TOKEN"] = base_env["WP_PLUGIN_CHECK_NPM_TOKEN"]
     return env
 
@@ -188,10 +173,11 @@ def run_commands(commands, base_env, runner=subprocess.run):
 
     Every registry probe runs, so one run reports every package without
     access; any failed probe stops before the install. A failed install stops
-    at once. Every check runs, so one run reports every failed check.
+    at once. Every check runs, so one run reports every failed check. The
+    commands that php-composer-setup already ran are skipped.
     """
     probes = [c for c in commands if c.get("probe")]
-    steps = [c for c in commands if not c.get("probe")]
+    steps = [c for c in commands if not c.get("probe") and not c.get("setup")]
     failed = []
     for command in probes:
         line, code = run_one(command, base_env, runner)
@@ -244,11 +230,7 @@ def main(argv=None):
     write_outputs(commands, text)
     if args.mode == "plan":
         return 0
-    try:
-        failed = run_commands(commands, dict(os.environ))
-    except InputError as error:
-        print(f"::error::{error}")
-        return 1
+    failed = run_commands(commands, dict(os.environ))
     if failed:
         print("::error::failed: " + "; ".join(failed))
         return 1
