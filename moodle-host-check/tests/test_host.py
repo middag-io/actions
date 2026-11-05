@@ -185,13 +185,12 @@ class RunTest(unittest.TestCase):
         self.assertTrue(calls[2][2]["MOODLE_HOST_CHECK_CONFIG"].endswith("moodle/config.php"))
         self.assertIn("$CFG->dbtype = 'pgsql';", config)
 
-    def test_admin_password_is_masked_and_never_printed_in_clear(self):
+    def test_admin_password_is_random_and_never_printed(self):
         _, calls, log, _ = self.run_host([])
         password = next(part for part in calls[1][0] if part.startswith("--adminpass="))
         secret = password.split("=", 1)[1]
         self.assertNotEqual(secret, "<generated>")
-        self.assertIn(f"::add-mask::{secret}", log)
-        self.assertNotIn(f"+ php -d max_input_vars=5000 {secret}", log)
+        self.assertNotIn(secret, log)
         self.assertIn("--adminpass=<generated>", log)
 
     def test_first_failure_stops_the_run(self):

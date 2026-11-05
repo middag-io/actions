@@ -244,8 +244,9 @@ def run_host(args: argparse.Namespace) -> int:
     work = Path(args.work_dir)
     moodle_dir, dataroot = work / "moodle", work / "moodledata"
     dataroot.mkdir(parents=True, exist_ok=True)
+    # Throwaway host: the password is never printed; the log shows the
+    # <generated> placeholder of the plan in its place.
     password = "Aa1!" + token_urlsafe(18)
-    print(f"::add-mask::{password}", flush=True)
     clone, composer, install, run_probe = build_plan(options, str(probe))
     values = {MOODLE: str(moodle_dir)}
     env = {**os.environ, "MOODLE_HOST_CHECK_CONFIG": str(moodle_dir / "config.php"),

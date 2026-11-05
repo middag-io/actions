@@ -13,7 +13,7 @@ Two forms, one name:
 2. Plans the commands and prints them. A dry run stops here.
 3. Sets up PHP and Composer through the [`php-composer-setup`](../php-composer-setup/README.md) action of the same release, and runs `composer install` in `path`. Without a `composer.lock`, Composer resolves the dependencies for the PHP version of the host, so each host gets the versions its PHP line accepts.
 4. Clones `moodle-branch` of `moodle-repository` (depth 1) into the temporary directory of the runner, outside the checkout. When the `composer.json` of Moodle requires Composer packages (Moodle 5.2 and later), runs `composer install --no-dev` there.
-5. Writes `config.php` for PostgreSQL (`db-host`, `db-port`, `db-name`, `db-user`, no password) and runs `admin/cli/install_database.php` with a random administrator password, masked in the log.
+5. Writes `config.php` for PostgreSQL (`db-host`, `db-port`, `db-name`, `db-user`, no password) and runs `admin/cli/install_database.php` with a random administrator password, which the log never shows (it prints `<generated>` in its place).
 6. Runs the probe with `php -d max_input_vars=5000`, from `path`. The probe gets two environment variables:
    - `MOODLE_HOST_CHECK_CONFIG`: the `config.php` of the host; the probe defines `CLI_SCRIPT` and requires it;
    - `MOODLE_HOST_CHECK_CODE_DIR`: the absolute path of `path`, whose `vendor/autoload.php` loads the code under test.
