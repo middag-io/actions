@@ -1,0 +1,88 @@
+# Reusable workflow of the github-release-major-check component. It checks
+# out the pull request with its history and gives the composite action a
+# job, minimum permissions, a timeout and a concurrency group. The composite
+# action does the work: see github-release-major-check/README.md.
+# Reference it by full commit SHA with a version comment (see the README).
+name: GitHub release major check
+
+on:
+  workflow_call:
+    inputs:
+      manifest-file:
+        description: Path of the release-please manifest, relative to the repository root, read at the base commit.
+        type: string
+        required: false
+        default: .release-please-manifest.json
+      package:
+        description: Key of the package in the manifest ("." for a single package, the package folder in a monorepo).
+        type: string
+        required: false
+        default: "."
+      title:
+        description: Title to check. Empty uses the title of the pull request of the event.
+        type: string
+        required: false
+        default: ""
+      dry-run:
+        description: Read the manifest from the checkout and check the title only; report findings as warnings and never fail on them.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 5
+    outputs:
+      version:
+        description: Version of the package in the manifest of the base commit.
+        value: ${{ jobs.check.outputs.version }}
+      release-as-major:
+        description: The new MAJOR version named by a Release-As footer of the pull request (X.0.0), or empty.
+        value: ${{ jobs.check.outputs.release-as-major }}
+      result:
+        description: pass or fail.
+        value: ${{ jobs.check.outputs.result }}
+      findings:
+        description: Number of findings.
+        value: ${{ jobs.check.outputs.findings }}
+
+permissions: {}
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    # Nothing outside the job is written: one group per run attempt.
+    concurrency:
+      group: github-release-major-check-${{ github.run_id }}-${{ github.run_attempt }}
+      cancel-in-progress: false
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      release-as-major: ${{ steps.check.outputs.release-as-major }}
+      result: ${{ steps.check.outputs.result }}
+      findings: ${{ steps.check.outputs.findings }}
+    steps:
+      # The head commit with the full history, so that git can list the
+      # commits base..head and read the manifest at the base commit. A dry
+      # run reads only the checkout of the run's ref.
+      - name: Check out the pull request with its history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ !inputs.dry-run && github.event.pull_request.head.sha || '' }}
+          fetch-depth: ${{ inputs.dry-run && 1 || 0 }}
+          persist-credentials: false
+
+      - name: Check the pull request
+        id: check
+        uses: $/github-release-major-check
+        with:
+          manifest-file: ${{ inputs.manifest-file }}
+          package: ${{ inputs.package }}
+          title: ${{ inputs.title || github.event.pull_request.title }}
+          base-sha: ${{ !inputs.dry-run && github.event.pull_request.base.sha || '' }}
+          head-sha: ${{ !inputs.dry-run && github.event.pull_request.head.sha || '' }}
+          dry-run: ${{ inputs.dry-run }}

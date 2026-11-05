@@ -33,6 +33,12 @@
       "versioning": "default",
       "prerelease": false
     },
+    "github-release-major-check": {
+      "component": "github-release-major-check",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
     "go-module-scan": {
       "component": "go-module-scan",
       "changelog-path": "CHANGELOG.md",
