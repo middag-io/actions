@@ -1,0 +1,7 @@
+{
+    "name": "example/moodle-local_example",
+    "description": "Example Moodle plugin for the moodle-plugin-package tests.",
+    "type": "moodle-local",
+    "license": "Apache-2.0",
+    "require": {}
+}

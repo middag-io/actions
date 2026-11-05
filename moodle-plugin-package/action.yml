@@ -1,6 +1,7 @@
-# Composite action: packages a Moodle plugin tree as an installable ZIP. See
-# README.md next to this file for the inputs, the exclude rules and what the
-# action overwrites.
+# Composite action: packages a Moodle plugin tree as an installable ZIP. PHP,
+# Composer and the Composer credentials come from the php-composer-setup
+# action of this repository. See README.md next to this file for the inputs,
+# the exclude rules and what the action overwrites.
 name: Moodle plugin package
 description: >-
   Validates version.php, installs the Composer dependencies and, optionally,
@@ -33,7 +34,7 @@ inputs:
     required: false
     default: --no-dev --prefer-dist --optimize-autoloader --no-interaction
   composer-auth:
-    description: COMPOSER_AUTH JSON for private Composer repositories, passed from a secret. Empty keeps a COMPOSER_AUTH already set in the job environment, if any.
+    description: COMPOSER_AUTH JSON for private Composer repositories, passed from a secret; php-composer-setup writes it to the global Composer auth.json of the runner. A COMPOSER_AUTH already set in the job environment still applies.
     required: false
     default: ""
   dist-excludes-file:
@@ -117,29 +118,34 @@ runs:
           --upload-release-asset="$UPLOAD_RELEASE_ASSET" \
           --dry-run="$DRY_RUN"
 
-    - name: Set up PHP
-      if: ${{ steps.check.outputs.dry-run != 'true' && steps.check.outputs.has-composer == 'true' }}
-      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+    # php-composer-setup comes from the same repository and commit as this
+    # action. It validates its own inputs, sets up PHP and Composer and
+    # writes composer-auth to the global Composer auth.json of the runner,
+    # outside the plugin tree. It does not install: the next step runs
+    # composer install with composer-options, which takes any option. In a
+    # dry run it only validates and reports, like this action.
+    - name: Set up PHP and Composer
+      if: ${{ steps.check.outputs.has-composer == 'true' }}
+      uses: $/php-composer-setup
       with:
         php-version: ${{ inputs.php-version }}
-        extensions: ${{ inputs.php-extensions }}
-        tools: composer:v2
+        php-extensions: ${{ inputs.php-extensions }}
         coverage: none
+        working-directory: ${{ inputs.path }}
+        composer-auth: ${{ inputs.composer-auth }}
+        install: "false"
+        dry-run: ${{ steps.check.outputs.dry-run }}
 
+    # Composer reads the credentials from the global auth.json, and a
+    # COMPOSER_AUTH that the caller sets in its job env still applies: this
+    # step sets none.
     - name: Install the Composer dependencies
       if: ${{ steps.check.outputs.dry-run != 'true' && steps.check.outputs.has-composer == 'true' }}
       shell: bash
       working-directory: ${{ inputs.path }}
-      # The input reaches Composer only when set: a step-level COMPOSER_AUTH,
-      # even empty, would hide one that the caller sets in its job env.
       env:
-        PACKAGE_COMPOSER_AUTH: ${{ inputs.composer-auth }}
         COMPOSER_OPTIONS: ${{ inputs.composer-options }}
       run: |
-        if [ -n "$PACKAGE_COMPOSER_AUTH" ]; then
-          export COMPOSER_AUTH="$PACKAGE_COMPOSER_AUTH"
-        fi
-        unset PACKAGE_COMPOSER_AUTH
         read -r -a options <<<"$COMPOSER_OPTIONS"
         composer install "${options[@]}"
 
