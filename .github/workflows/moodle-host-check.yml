@@ -1,0 +1,114 @@
+# Reusable workflow of the moodle-host-check component. It gives the
+# composite action one job per Moodle host (a Moodle branch and a PHP
+# version), an empty PostgreSQL service, minimum permissions, a timeout and a
+# concurrency group. The composite action does the work: see
+# moodle-host-check/README.md.
+#
+# No input reads a variable of the caller. The secret comes from one explicit
+# line in the caller; it is never inherited.
+# Reference it by full commit SHA with a version comment (see the README).
+name: Moodle host check
+
+on:
+  workflow_call:
+    inputs:
+      hosts:
+        description: >-
+          JSON array of the Moodle hosts to check, one job each, as objects
+          with moodle-branch and php-version (for example
+          [{"moodle-branch": "MOODLE_405_STABLE", "php-version": "8.3"}]).
+        type: string
+        required: true
+      moodle-repository:
+        description: GitHub repository (owner/name) to clone Moodle from.
+        type: string
+        required: false
+        default: moodle/moodle
+      php-extensions:
+        description: PHP extensions to install, separated by commas.
+        type: string
+        required: false
+        default: "pgsql, intl, zip, gd, soap, xml, mbstring, curl, sodium, exif"
+      path:
+        description: Directory of the code under test (the one that holds composer.json), relative to the checkout.
+        type: string
+        required: false
+        default: "."
+      probe-script:
+        description: PHP script of the checkout to run against each host, relative to the checkout. Empty runs the built-in probe.
+        type: string
+        required: false
+        default: ""
+      dry-run:
+        description: Validate the inputs and print the planned commands only; no database, no PHP set-up, no clone, no install, no probe.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of each job, in minutes.
+        type: number
+        required: false
+        default: 30
+    secrets:
+      composer-auth:
+        description: Composer credentials as a JSON object in the COMPOSER_AUTH format, for private dependencies of the code under test.
+        required: false
+    outputs:
+      commands:
+        description: JSON array of the planned commands of the last host job that ended; pass one host for a stable value.
+        value: ${{ jobs.check.outputs.commands }}
+
+permissions: {}
+
+jobs:
+  check:
+    name: check (${{ matrix.moodle-branch }}, PHP ${{ matrix.php-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    # Nothing outside the job is written: one group per run attempt and
+    # host keeps the jobs of a caller's matrix apart.
+    concurrency:
+      group: moodle-host-check-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.path }}-${{ matrix.moodle-branch }}-${{ matrix.php-version }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.hosts) }}
+    # A throwaway database for the host. Trust authentication: the service
+    # is reachable only from this job. An empty image skips the service in a
+    # dry run.
+    services:
+      postgres:
+        image: ${{ !inputs.dry-run && 'postgres:17.11@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1' || '' }}
+        env:
+          POSTGRES_DB: moodle
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    outputs:
+      commands: ${{ steps.check.outputs.commands }}
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the code on the Moodle host
+        id: check
+        uses: $/moodle-host-check
+        with:
+          moodle-branch: ${{ matrix.moodle-branch }}
+          moodle-repository: ${{ inputs.moodle-repository }}
+          php-version: ${{ matrix.php-version }}
+          php-extensions: ${{ inputs.php-extensions }}
+          path: ${{ inputs.path }}
+          probe-script: ${{ inputs.probe-script }}
+          composer-auth: ${{ !inputs.dry-run && secrets.composer-auth || '' }}
+          dry-run: ${{ inputs.dry-run }}

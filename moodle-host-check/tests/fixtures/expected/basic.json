@@ -1,0 +1,6 @@
+[
+  "git clone --quiet --depth 1 --branch MOODLE_405_STABLE https://github.com/moodle/moodle.git <moodle>",
+  "composer install --no-dev --no-interaction --prefer-dist --working-dir=<moodle>",
+  "php -d max_input_vars=5000 <moodle>/admin/cli/install_database.php --agree-license --lang=en --adminuser=admin --adminpass=<generated> --adminemail=admin@example.com --supportemail=admin@example.com --fullname=Moodle host check --shortname=host-check",
+  "php -d max_input_vars=5000 moodle-host-check/tests/fixtures/basic/probe.php"
+]
