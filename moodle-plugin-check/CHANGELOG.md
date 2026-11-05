@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/middag-io/actions/compare/moodle-plugin-check-v1.0.0...moodle-plugin-check-v1.0.1) (2026-11-05)
+
+
+### Code Refactoring
+
+* **moodle-plugin-check:** set up PHP and Composer with php-composer-setup ([c0fae30](https://github.com/middag-io/actions/commit/c0fae3033c6f73173a6f6beec582083635d50acf))
+
 ## 1.0.0 (2026-11-03)
 
 
