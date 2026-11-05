@@ -41,6 +41,9 @@ paths:
   .github/workflows/php-composer-setup.yml:
     ignore:
       - 'specifying action "\$/php-composer-setup" in invalid format because ref is missing'
+  .github/workflows/php-library-check.yml:
+    ignore:
+      - 'specifying action "\$/php-library-check" in invalid format because ref is missing'
   .github/workflows/release-please.yml:
     ignore:
       - 'specifying action "\$/release-please" in invalid format because ref is missing'

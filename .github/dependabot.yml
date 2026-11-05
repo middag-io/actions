@@ -15,6 +15,7 @@ updates:
       - /node-npm-scan
       - /php-composer-scan
       - /php-composer-setup
+      - /php-library-check
       - /release-please
       - /wp-plugin-check
       - /wp-plugin-release
