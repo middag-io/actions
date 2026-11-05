@@ -12,12 +12,13 @@ We confirm receipt within 5 business days, and within 10 business days we tell y
 
 ## Supported versions
 
-| Version                                                       | Supported                         |
-| ------------------------------------------------------------- | --------------------------------- |
-| Latest release of each component, release candidates included | yes                               |
-| Older releases                                                | no; upgrade to the latest release |
+| Version                                                                                                       | Supported                         |
+| ------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Latest release of each component                                                                              | yes                               |
+| Previous major of a component, for 6 months after the next major, when a fork under a client contract uses it | security fixes only               |
+| Other older releases                                                                                          | no; upgrade to the latest release |
 
-No component has been released yet. Fixes ship as new releases. Release tags `<component>-vX.Y.Z` never move; only the major tag `<component>-vN` follows the latest release of its major version.
+Fixes ship as new releases. Release tags `<component>-vX.Y.Z` never move; only the major tag `<component>-vN` follows the latest stable release of its major version. The deprecation and support rules are in the section "Deprecation and support of older majors" of the [README](README.md).
 
 ## Scope
 
