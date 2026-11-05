@@ -171,8 +171,7 @@ jobs:
 
       # Every component (a top-level folder with an action.yml or
       # action.yaml) must have a tests/ folder. The tests run without
-      # network access to any cloud: HTTP calls are simulated. Before the
-      # first component, the job has nothing to run and passes.
+      # network access to any cloud: HTTP calls are simulated.
       - name: Run the component tests
         run: |
           python3 --version

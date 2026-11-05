@@ -87,33 +87,47 @@ A component reads configuration through inputs. A reusable workflow can also fil
 
 ## Referencing a component
 
-Pin every reference to the full 40-character commit SHA of a release tag and add the release version as a comment:
+Each component has its own version and its own release tags (see "Versioning and releases"). A reference names a release of the component you call, in one of three forms:
+
+- the full 40-character commit SHA of a release tag, with the tag as a comment (examples below). This form never changes under the caller;
+- the release tag `<component>-vX.Y.Z`, which never moves: releases are immutable and only the release automation creates tags;
+- the major tag `<component>-vN`, which follows the latest stable release of major `N`. It exists only once the component has a stable release; a pre-release (`-rc.N`) is referenced by SHA or by its full tag.
+
+Which forms a caller accepts is the caller organization's policy. A fork and a caller outside the maintainer organization pin the SHA:
 
 ```yaml
 jobs:
   deploy:
-    uses: <owner>/actions/.github/workflows/<component>.yml@<sha40> # <release version>
+    uses: <owner>/actions/.github/workflows/<component>.yml@<sha40> # <component>-vX.Y.Z
 ```
 
 ```yaml
 steps:
-  - uses: <owner>/actions/<component>@<sha40> # <release version>
+  - uses: <owner>/actions/<component>@<sha40> # <component>-vX.Y.Z
 ```
 
-- Never `@main`, a branch or a moving tag.
-- Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/<tag>`. When the object type is `tag` (annotated tag), dereference it with `gh api repos/<owner>/actions/git/tags/<object-sha>` and use the commit SHA it points to.
-- Third-party actions used inside this repository follow the same rule. Dependabot updates the SHA and the version comment together.
+- Use the tag of the component you call. A tag of another component does not tell which version of this component you get.
+- Never `@main` or a branch.
+- Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/<component>-vX.Y.Z`. When the object type is `tag` (annotated tag), dereference it with `gh api repos/<owner>/actions/git/tags/<object-sha>` and use the commit SHA it points to.
+- Only the release automation moves the major tag `<component>-vN`. A repository ruleset lets only the release App create, move or delete the tags `<component>-v*`.
+- Third-party actions used inside this repository follow the SHA rule. Dependabot updates the SHA and the version comment together.
 - Inside this repository, a component refers to another one only through the self-repository form (`$/<component>`) or a relative path (`./<component>`). It never refers to `<owner>/actions@...`.
 - A component in this public repository never calls a component of a private repository.
 
 ## Versioning and releases
 
-- Each component has its own SemVer version, managed by release-please from Conventional Commits. `release-please-config.json` has one package per component folder, and `.release-please-manifest.json` holds the current version of each component. A major version of one component never changes the version of another. Until the first component, both list no package and the release workflow does nothing.
+- Each component has its own SemVer version, managed by release-please from Conventional Commits. `release-please-config.json` has one package per component folder, and `.release-please-manifest.json` holds the current version of each component. A major version of one component never changes the version of another.
 - Tags: `<component>-vX.Y.Z` for each release (immutable) and `<component>-vN` for the major tag, which the release automation moves to each release that is not a pre-release. Pre-releases (`-rc.N`) are never marked as latest. Only the release automation creates, moves or deletes a tag.
 - release-please assigns a change to a component only through the files under the component folder (`<component>/`). A pull request that changes `.github/workflows/<component>.yml` must also change a file under `<component>/`; the `check-genericity` job enforces it on pull requests, except those of Dependabot, whose `chore` commits never release. The commit scope is the component name, and a pull request that changes one component has the scope of that component in its title.
 - One release pull request groups the pending releases of every component. Each component has its own `<component>/CHANGELOG.md`.
 - A breaking change of an input, output or secret is a major version of that component.
 - Only release-please writes the changelogs and `.release-please-manifest.json`.
+
+## Deprecation and support of older majors
+
+- A new major of a component never removes the previous one. The previous major stays usable through its immutable release tags `<component>-vX.Y.Z` and through the SHAs of those tags.
+- At least 30 days before a new major is released, the current major prints a deprecation warning in the workflow log that names the change and the release that will carry it.
+- After a new major is released, the previous major gets only security fixes, for 6 months, and only when the component is used by a fork kept under a client contract. Other fixes and new features go only to the latest major.
 
 ## Forks
 
