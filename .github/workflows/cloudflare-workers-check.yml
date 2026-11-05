@@ -3,8 +3,9 @@
 # concurrency group, and checks out the calling repository. The composite
 # action does the work: see cloudflare-workers-check/README.md.
 #
-# The component reads no variable and no secret: it needs no Cloudflare
-# credentials. Reference it by full commit SHA with a version comment (see
+# The component reads no secret: it needs no Cloudflare credentials. Only
+# audit-blocking-severities reads a variable of the caller
+# (CLOUDFLARE_WORKERS_CHECK_AUDIT_BLOCKING_SEVERITIES). Reference it by full commit SHA with a version comment (see
 # the README).
 name: Cloudflare Workers check
 
@@ -41,6 +42,11 @@ on:
         type: boolean
         required: false
         default: false
+      audit-blocking-severities:
+        description: Severities of a dependency advisory that fail the job, separated by commas (critical, high, medium, low). Default from the variable CLOUDFLARE_WORKERS_CHECK_AUDIT_BLOCKING_SEVERITIES, else critical.
+        type: string
+        required: false
+        default: ${{ vars.CLOUDFLARE_WORKERS_CHECK_AUDIT_BLOCKING_SEVERITIES || 'critical' }}
       dry-run:
         description: Validate the inputs and the project and print the commands only; no Node.js set-up, no npm run.
         type: boolean
@@ -97,4 +103,5 @@ jobs:
           npm-scripts-if-present: ${{ inputs.npm-scripts-if-present }}
           wrangler-config: ${{ inputs.wrangler-config }}
           wrangler-dry-run: ${{ inputs.wrangler-dry-run }}
+          audit-blocking-severities: ${{ inputs.audit-blocking-severities }}
           dry-run: ${{ inputs.dry-run }}

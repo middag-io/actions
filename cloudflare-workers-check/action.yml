@@ -33,6 +33,10 @@ inputs:
     description: Run wrangler deploy --dry-run with the Wrangler of the lock file, to bundle the Worker without deploying it (true or false).
     required: false
     default: "false"
+  audit-blocking-severities:
+    description: Severities of a dependency advisory that fail the job, separated by commas (critical, high, medium, low); lower severities are only reported.
+    required: false
+    default: critical
   dry-run:
     description: Validate the inputs and the project and print the commands only; no Node.js set-up, no npm run (true or false).
     required: false
@@ -84,6 +88,16 @@ runs:
         node-version: ${{ inputs.node-version }}
         cache: npm
         cache-dependency-path: ${{ inputs.path }}/package-lock.json
+
+    # node-npm-scan, same repository and commit: npm audit on
+    # package-lock.json; fails only on audit-blocking-severities, and reports
+    # lower severities. In a dry run it only validates and reports.
+    - name: Audit the npm dependencies
+      uses: $/node-npm-scan
+      with:
+        working-directory: ${{ inputs.path }}
+        blocking-severities: ${{ inputs.audit-blocking-severities }}
+        dry-run: ${{ inputs.dry-run }}
 
     - name: Run the checks
       if: ${{ inputs.dry-run != 'true' }}

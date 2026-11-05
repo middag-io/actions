@@ -15,11 +15,12 @@ Two forms, one name:
    - every script of `npm-scripts` exists in `package.json`; a script cannot be in both `npm-scripts` and `npm-scripts-if-present`;
    - with `wrangler-dry-run`, `wrangler` is in the `dependencies` or `devDependencies` of `package.json`.
 2. Plans the commands: `npm ci`, then `npm run <name>` for each script of `npm-scripts-if-present` that `package.json` defines (the others are skipped with a message), then `npm run <name>` for each script of `npm-scripts`, in order. With `wrangler-dry-run`, the plan ends with `npx --no-install wrangler deploy --dry-run --config <wrangler-config>`: Wrangler bundles the Worker and checks its configuration without uploading it.
-3. Outside a dry run: sets up Node.js (with the npm cache keyed on `package-lock.json`) and runs the planned commands in the project directory. The first failing command fails the job.
+3. Audits `package-lock.json` with `npm audit` through the [`node-npm-scan`](../node-npm-scan/README.md) action of the same release: an advisory whose severity is in `audit-blocking-severities` fails the job; lower severities are warnings. No input turns the audit off. In a dry run, `node-npm-scan` only validates and prints its command.
+4. Outside a dry run: sets up Node.js (with the npm cache keyed on `package-lock.json`) and runs the planned commands in the project directory. The first failing command fails the job.
 
 The commands run without a shell, as argument lists. `npm-scripts` and `npm-scripts-if-present` take script names only, so an input cannot add a command. `npx --no-install` runs the Wrangler version of the lock file and never downloads one.
 
-In a dry run (`dry-run: true`), only steps 1 and 2 run: no Node.js set-up, no npm run. The job prints the commands it would run.
+In a dry run (`dry-run: true`), only steps 1 and 2 run, and `node-npm-scan` runs as a dry run: no Node.js set-up, no npm run, no audit. The job prints the commands it would run.
 
 ## What it deletes
 
@@ -35,6 +36,7 @@ Nothing. The component publishes nothing and deploys nothing. `npm ci` deletes `
 | `npm-scripts-if-present` | yes           | yes                  | `typecheck, lint` | npm scripts run in order after `npm ci` when `package.json` defines them, separated by commas or new lines.                   |
 | `wrangler-config`        | yes           | yes                  | empty             | Wrangler configuration file, relative to `path`. Empty: `wrangler.json`, `wrangler.jsonc` or `wrangler.toml` at `path`.       |
 | `wrangler-dry-run`       | yes (boolean) | yes (`true`/`false`) | `false`           | Run `wrangler deploy --dry-run` with the Wrangler of the lock file.                                                           |
+| `audit-blocking-severities` | yes | yes | variable `CLOUDFLARE_WORKERS_CHECK_AUDIT_BLOCKING_SEVERITIES`, else `critical` (workflow); `critical` (action) | Severities of a dependency advisory that fail the job, separated by commas: any of `critical`, `high`, `medium`, `low`. |
 | `dry-run`                | yes (boolean) | yes (`true`/`false`) | `false`           | Validate and plan only.                                                                                                       |
 | `timeout-minutes`        | yes           | no                   | `20`              | Timeout of the job.                                                                                                           |
 
@@ -48,7 +50,7 @@ Nothing. The component publishes nothing and deploys nothing. `npm ci` deletes `
 
 ## Variables and secrets
 
-None. The component reads no variable and no secret: a check needs no Cloudflare credentials. A project whose npm scripts need a secret is out of scope for this component.
+No secret: a check needs no Cloudflare credentials. One variable: `CLOUDFLARE_WORKERS_CHECK_AUDIT_BLOCKING_SEVERITIES`, the default of `audit-blocking-severities` in the reusable workflow. A project whose npm scripts need a secret is out of scope for this component.
 
 ## Permissions
 
