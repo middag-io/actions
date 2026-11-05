@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/middag-io/actions/compare/cloudflare-workers-check-v1.0.0...cloudflare-workers-check-v1.0.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* document the job permission that a GitHub Packages npm scope needs ([b2c1a2b](https://github.com/middag-io/actions/commit/b2c1a2bb0ac6fe5e037dce774453c6877ec4c74e))
+
 ## 1.0.0 (2026-11-03)
 
 
