@@ -80,7 +80,9 @@ class ActionWiringTest(unittest.TestCase):
 
     def test_dry_run_skips_every_tool_step(self):
         for name, step in self.steps.items():
-            if name in ("Check the inputs", SETUP_STEP):
+            # The audit step runs php-composer-scan, which only validates
+            # and reports in a dry run (tests/test_audit.py).
+            if name in ("Check the inputs", SETUP_STEP, "Audit the Composer dependencies"):
                 continue
             with self.subTest(step=name):
                 self.assertIn("inputs.dry-run != 'true'", step.get("if", ""))

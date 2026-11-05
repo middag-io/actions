@@ -45,6 +45,10 @@ inputs:
     description: HTTP basic password for composer-auth-host, passed from a secret.
     required: false
     default: ""
+  audit-blocking-severities:
+    description: Severities of a dependency advisory that fail the job, separated by commas (critical, high, medium, low); lower severities are only reported.
+    required: false
+    default: critical
   dry-run:
     description: Validate the inputs and the theme directory and print the plan only; no PHP setup, no install, no credentials (true or false).
     required: false
@@ -100,6 +104,17 @@ runs:
         http-basic-host: ${{ inputs.composer-auth-host }}
         http-basic-username: ${{ inputs.composer-auth-username }}
         http-basic-password: ${{ inputs.composer-auth-password }}
+        dry-run: ${{ inputs.dry-run }}
+
+    # php-composer-scan, same repository and commit: composer audit on the
+    # packages that the install above wrote; fails only on
+    # audit-blocking-severities, and reports lower severities. In a dry run
+    # it only validates and reports.
+    - name: Audit the Composer dependencies
+      uses: $/php-composer-scan
+      with:
+        working-directory: ${{ inputs.working-directory }}
+        blocking-severities: ${{ inputs.audit-blocking-severities }}
         dry-run: ${{ inputs.dry-run }}
 
     - name: Run PHP CS Fixer

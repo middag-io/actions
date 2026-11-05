@@ -5,7 +5,8 @@
 #
 # Values, most specific first: explicit input > variable of the calling
 # repository > variable of the calling organization. The Composer auth inputs
-# default to the variables WP_THEME_CHECK_COMPOSER_AUTH_<INPUT>; in a called
+# default to the variables WP_THEME_CHECK_COMPOSER_AUTH_<INPUT>, and
+# audit-blocking-severities to WP_THEME_CHECK_AUDIT_BLOCKING_SEVERITIES; in a called
 # workflow, the vars context resolves against the caller. The secret comes
 # from one explicit line in the caller; it is never inherited.
 # Reference it by full commit SHA with a version comment (see the README).
@@ -54,6 +55,11 @@ on:
         type: string
         required: false
         default: ${{ vars.WP_THEME_CHECK_COMPOSER_AUTH_USERNAME }}
+      audit-blocking-severities:
+        description: Severities of a dependency advisory that fail the job, separated by commas (critical, high, medium, low). Default from the variable WP_THEME_CHECK_AUDIT_BLOCKING_SEVERITIES, else critical.
+        type: string
+        required: false
+        default: ${{ vars.WP_THEME_CHECK_AUDIT_BLOCKING_SEVERITIES || 'critical' }}
       dry-run:
         description: Validate the inputs and the theme directory and print the plan only; no PHP setup, no install, no credentials.
         type: boolean
@@ -112,4 +118,5 @@ jobs:
           composer-auth-host: ${{ inputs.composer-auth-host }}
           composer-auth-username: ${{ inputs.composer-auth-username }}
           composer-auth-password: ${{ !inputs.dry-run && secrets.composer-auth-password || '' }}
+          audit-blocking-severities: ${{ inputs.audit-blocking-severities }}
           dry-run: ${{ inputs.dry-run }}
