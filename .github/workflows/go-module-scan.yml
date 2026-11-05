@@ -1,0 +1,85 @@
+# Reusable workflow of the go-module-scan component. It checks out the calling
+# repository, sets up the Go of its go.mod and runs the composite action, with
+# minimum permissions and a timeout. No secret. See go-module-scan/README.md.
+#
+# Only blocking-severities reads a variable of the caller
+# (GO_MODULE_SCAN_BLOCKING_SEVERITIES); in a called workflow, the vars context
+# resolves against the caller.
+# Reference it by full commit SHA with a version comment (see the README).
+name: Go module scan
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory that holds go.mod, relative to the checkout. Go is set up from its go.mod (toolchain line, else go line).
+        type: string
+        required: false
+        default: "."
+      blocking-severities:
+        description: Severities that fail the scan, separated by commas (critical, high, medium, low); a called vulnerable symbol is critical, the rest is low. Default from the variable GO_MODULE_SCAN_BLOCKING_SEVERITIES, else critical.
+        type: string
+        required: false
+        default: ${{ vars.GO_MODULE_SCAN_BLOCKING_SEVERITIES || 'critical' }}
+      dry-run:
+        description: Validate the inputs and print the scan command only; no Go set-up, no install, no scan.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 15
+    outputs:
+      command:
+        description: The scan command, run or planned.
+        value: ${{ jobs.scan.outputs.command }}
+      tool:
+        description: The Go package and version of govulncheck that the scan installs.
+        value: ${{ jobs.scan.outputs.tool }}
+      blocking-severities:
+        description: The blocking severities, comma-separated, from the highest.
+        value: ${{ jobs.scan.outputs.blocking-severities }}
+      advisories:
+        description: Number of vulnerabilities found (empty in a dry run).
+        value: ${{ jobs.scan.outputs.advisories }}
+      blocking:
+        description: Number of vulnerabilities with a blocking severity (empty in a dry run).
+        value: ${{ jobs.scan.outputs.blocking }}
+
+permissions: {}
+
+jobs:
+  scan:
+    name: scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    outputs:
+      command: ${{ steps.scan.outputs.command }}
+      tool: ${{ steps.scan.outputs.tool }}
+      blocking-severities: ${{ steps.scan.outputs.blocking-severities }}
+      advisories: ${{ steps.scan.outputs.advisories }}
+      blocking: ${{ steps.scan.outputs.blocking }}
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        if: ${{ !inputs.dry-run }}
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ inputs.working-directory }}/go.mod
+          cache: false
+
+      - name: Scan the Go module
+        id: scan
+        uses: $/go-module-scan
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          blocking-severities: ${{ inputs.blocking-severities }}
+          dry-run: ${{ inputs.dry-run }}

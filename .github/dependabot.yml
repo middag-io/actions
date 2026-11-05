@@ -9,6 +9,7 @@ updates:
       - /cloudflare-r2-docs-publish
       - /cloudflare-workers-check
       - /cloudflare-workers-deploy
+      - /go-module-scan
       - /moodle-host-check
       - /moodle-plugin-check
       - /moodle-plugin-package
