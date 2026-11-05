@@ -13,7 +13,7 @@ The `*-check` components of this repository run the composite action after their
 
 1. Validates the inputs before anything else: `working-directory` stays inside the checkout and holds a `composer.json`; `blocking-severities` lists one or more of `critical`, `high`, `medium`, `low`.
 2. Prints the audit command. A dry run stops here.
-3. Runs `composer audit --format=json --abandoned=report --no-interaction` on the installed packages (`vendor/composer/installed.json`), or with `--locked` on `composer.lock` when nothing is installed. Neither: the audit fails and asks for `composer install` first.
+3. Runs `composer audit --format=json --abandoned=report --no-interaction` on the installed packages (`vendor/composer/installed.json`), or with `--locked` on `composer.lock` when nothing is installed. Neither: the audit fails and asks for `composer install` first. When that list holds no package, there is nothing to audit (Composer prints no report then) and the step passes with zero advisories.
 4. Prints every advisory as an annotation: an error when its severity is in `blocking-severities`, a warning otherwise. An advisory without a severity is a warning. Abandoned packages are warnings.
 5. Fails when at least one advisory has a blocking severity, or when Composer prints no JSON report (for example, the advisory database is unreachable).
 

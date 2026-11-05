@@ -104,12 +104,38 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(scan.read_abandoned(REPORT), ["vendor/gone (no replacement)", "vendor/old (use vendor/new)"])
 
 
+class EmptyTest(unittest.TestCase):
+    def test_no_resolved_package_passes_without_running_composer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "composer.json").write_text("{}")
+            (directory / "vendor" / "composer").mkdir(parents=True)
+            (directory / "vendor" / "composer" / "installed.json").write_text('{"packages": [], "dev": true}')
+            output = directory / "out"
+            fake = mock.Mock()
+            with mock.patch.object(scan.subprocess, "run", fake):
+                status, log = run(["run", "--workspace", tmp, "--github-output", str(output)])
+            self.assertEqual(status, 0)
+            fake.assert_not_called()
+            self.assertIn("nothing to audit", log)
+            self.assertEqual(output.read_text(), "advisories=0\nblocking=0\n")
+
+    def test_counts_packages_of_the_lock_file_and_of_the_old_installed_list(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "composer.lock").write_text('{"packages": [{}], "packages-dev": [{}, {}]}')
+            self.assertEqual(scan.count_packages(directory, ["composer", "audit", "--locked"]), 3)
+            (directory / "vendor" / "composer").mkdir(parents=True)
+            (directory / "vendor" / "composer" / "installed.json").write_text("[{}]")
+            self.assertEqual(scan.count_packages(directory, ["composer", "audit"]), 1)
+
+
 class RunTest(unittest.TestCase):
     def scan_with(self, report, severities, stdout=None):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             (directory / "composer.json").write_text("{}")
-            (directory / "composer.lock").write_text("{}")
+            (directory / "composer.lock").write_text(json.dumps({"packages": [{"name": "vendor/a"}], "packages-dev": []}))
             output = directory / "out"
             text = json.dumps(report) if stdout is None else stdout
             fake = mock.Mock(return_value=subprocess.CompletedProcess([], 1, stdout=text, stderr=""))
