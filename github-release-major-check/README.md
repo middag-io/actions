@@ -45,7 +45,7 @@ Nothing. The component writes no file in the repository and publishes nothing.
 | `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Check the title against the manifest of the workspace; report only. |
 | `timeout-minutes` | yes | no | `5` | Timeout of the job. |
 
-A monorepo with several packages calls the component once per package, each with its own `package`.
+A monorepo with several packages calls the component once per package, each with its own `package`. The calling jobs run in parallel (see "Concurrency").
 
 ## Outputs
 
@@ -63,6 +63,12 @@ None.
 ## Permissions
 
 The caller grants `contents: read` to the calling job. The component asks for nothing more: the title and the SHAs come from the event, the commits and the manifest from the checkout.
+
+## Concurrency
+
+The job of the reusable workflow has one concurrency group per run attempt and package: `github-release-major-check-<run id>-<run attempt>-<package>`, with `root` for the package `.`. The component writes nothing outside the job, so the group only keeps two calls for the same package in one run from running together; it never cancels a job in progress.
+
+A monorepo caller that runs one job per package in the same run gets one group per job: every job runs in parallel, and none waits for or cancels another. Give each call a distinct `package`.
 
 ## Triggers
 

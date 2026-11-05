@@ -60,6 +60,12 @@ class WorkflowWiringTest(unittest.TestCase):
         self.assertIn("head-sha: ${{ !inputs.dry-run && github.event.pull_request.head.sha || '' }}", self.text)
         self.assertIn("persist-credentials: false", self.text)
 
+    def test_concurrency_group_holds_the_run_attempt_and_the_package(self):
+        self.assertIn(
+            "group: github-release-major-check-${{ github.run_id }}-${{ github.run_attempt }}"
+            "-${{ inputs.package == '.' && 'root' || inputs.package }}", self.text)
+        self.assertIn("cancel-in-progress: false", self.text)
+
     def test_reads_no_variable(self):
         self.assertNotIn("vars.", self.text)
 

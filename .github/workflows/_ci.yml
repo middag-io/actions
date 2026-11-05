@@ -795,6 +795,78 @@ jobs:
             exit 1
           fi
 
+  # A monorepo caller: three calls in parallel in the same run, one per
+  # package of the fixture manifest. Each call has its own concurrency group,
+  # so none is queued or cancelled by another; a group shared by the calls
+  # would cancel at least one of them and fail this run.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-github-release-major-check-monorepo-api:
+    name: dry-run-github-release-major-check-monorepo-api
+    permissions:
+      contents: read
+    uses: ./.github/workflows/github-release-major-check.yml # zizmor: ignore[self-repository]
+    with:
+      manifest-file: github-release-major-check/tests/fixtures/monorepo/.release-please-manifest.json
+      package: packages/api
+      title: "fix(api): handle a thing"
+      dry-run: true
+
+  dry-run-github-release-major-check-monorepo-web:
+    name: dry-run-github-release-major-check-monorepo-web
+    permissions:
+      contents: read
+    uses: ./.github/workflows/github-release-major-check.yml # zizmor: ignore[self-repository]
+    with:
+      manifest-file: github-release-major-check/tests/fixtures/monorepo/.release-please-manifest.json
+      package: packages/web
+      title: "fix(web): handle a thing"
+      dry-run: true
+
+  dry-run-github-release-major-check-monorepo-cli:
+    name: dry-run-github-release-major-check-monorepo-cli
+    permissions:
+      contents: read
+    uses: ./.github/workflows/github-release-major-check.yml # zizmor: ignore[self-repository]
+    with:
+      manifest-file: github-release-major-check/tests/fixtures/monorepo/.release-please-manifest.json
+      package: packages/cli
+      title: "fix(cli): handle a thing"
+      dry-run: true
+
+  # The three calls must report exactly the outputs of
+  # github-release-major-check/tests/fixtures/expected/monorepo.env.
+  dry-run-check-github-release-major-check-monorepo:
+    name: dry-run-check-github-release-major-check-monorepo
+    needs:
+      - dry-run-github-release-major-check-monorepo-api
+      - dry-run-github-release-major-check-monorepo-web
+      - dry-run-github-release-major-check-monorepo-cli
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the outputs of the three calls with the expected values
+        env:
+          API: ${{ toJSON(needs.dry-run-github-release-major-check-monorepo-api.outputs) }}
+          WEB: ${{ toJSON(needs.dry-run-github-release-major-check-monorepo-web.outputs) }}
+          CLI: ${{ toJSON(needs.dry-run-github-release-major-check-monorepo-cli.outputs) }}
+        run: |
+          expected="github-release-major-check/tests/fixtures/expected/monorepo.env"
+          line() { jq -r --arg p "$1" '"\($p) version=\(.version) release-as-major=\(."release-as-major") result=\(.result) findings=\(.findings)"' <<<"$2"; }
+          actual="$(line packages/api "$API"; line packages/web "$WEB"; line packages/cli "$CLI")"
+          echo "$actual"
+          if ! diff -u "$expected" - <<<"$actual"; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
   # Calls the reusable workflow by a relative path, as a caller would by SHA,
   # on the fixture plugin. A dry run: no setup, no install, no credentials.
   # zizmor self-repository: "./" is the documented form of this test job; in
@@ -1032,6 +1104,10 @@ jobs:
       - dry-run-check-php-version-family-check
       - dry-run-github-release-major-check
       - dry-run-check-github-release-major-check
+      - dry-run-github-release-major-check-monorepo-api
+      - dry-run-github-release-major-check-monorepo-web
+      - dry-run-github-release-major-check-monorepo-cli
+      - dry-run-check-github-release-major-check-monorepo
       - dry-run-node-npm-scan
       - dry-run-check-node-npm-scan
       - dry-run-go-module-scan
