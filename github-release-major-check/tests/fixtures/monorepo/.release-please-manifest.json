@@ -1,0 +1,5 @@
+{
+  "packages/api": "1.4.2",
+  "packages/web": "2.0.0",
+  "packages/cli": "3.1.0"
+}

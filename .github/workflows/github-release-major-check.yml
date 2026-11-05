@@ -56,9 +56,11 @@ jobs:
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
-    # Nothing outside the job is written: one group per run attempt.
+    # Nothing outside the job is written: one group per run attempt and
+    # package, so that a monorepo caller that runs one job per package in
+    # the same run never queues or cancels its own jobs ("." is "root").
     concurrency:
-      group: github-release-major-check-${{ github.run_id }}-${{ github.run_attempt }}
+      group: github-release-major-check-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.package == '.' && 'root' || inputs.package }}
       cancel-in-progress: false
     outputs:
       version: ${{ steps.check.outputs.version }}
