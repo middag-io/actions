@@ -1,0 +1,73 @@
+# Composite action: audits the dependencies of a Composer project for known
+# vulnerabilities and fails only on a blocking severity. PHP and
+# Composer come from the job: run php-composer-setup (or any Composer set-up
+# and install) before this action.
+# See README.md next to this file for the inputs, what the action deletes
+# (nothing) and the permissions it needs.
+name: PHP Composer scan
+description: >-
+  Runs composer audit on the installed packages (or on composer.lock when nothing is installed) and fails when an advisory has a severity listed in
+  blocking-severities. Lower severities are reported as warnings.
+  Publishes nothing.
+
+inputs:
+  working-directory:
+    description: Directory of the project, relative to the checkout.
+    required: false
+    default: "."
+  blocking-severities:
+    description: >-
+      Severities that fail the audit, separated by commas: any of critical,
+      high, medium and low. Lower severities are only reported.
+    required: false
+    default: critical
+  dry-run:
+    description: Validate the inputs and print the audit command only; no audit (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  command:
+    description: The audit command, run or planned.
+    value: ${{ steps.plan.outputs.command }}
+  blocking-severities:
+    description: The blocking severities read from the input, comma-separated, from the highest.
+    value: ${{ steps.plan.outputs.blocking-severities }}
+  advisories:
+    description: Number of advisories found (empty in a dry run).
+    value: ${{ steps.scan.outputs.advisories }}
+  blocking:
+    description: Number of advisories with a blocking severity (empty in a dry run).
+    value: ${{ steps.scan.outputs.blocking }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs
+      id: plan
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        BLOCKING_SEVERITIES: ${{ inputs.blocking-severities }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/scan.py" plan \
+          --workspace="$GITHUB_WORKSPACE" \
+          --working-directory="$WORKING_DIRECTORY" \
+          --blocking-severities="$BLOCKING_SEVERITIES" \
+          --dry-run="$DRY_RUN" \
+          --github-output="$GITHUB_OUTPUT"
+
+    - name: Audit the dependencies
+      id: scan
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        BLOCKING_SEVERITIES: ${{ inputs.blocking-severities }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/scan.py" run \
+          --workspace="$GITHUB_WORKSPACE" \
+          --working-directory="$WORKING_DIRECTORY" \
+          --blocking-severities="$BLOCKING_SEVERITIES" \
+          --github-output="$GITHUB_OUTPUT"
