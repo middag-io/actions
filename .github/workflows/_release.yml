@@ -31,9 +31,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      # release-please-config.json lists one package per component. Before
-      # the first component it lists none, and the job stops here. The
-      # checkout also holds the major tag script.
+      # The checkout holds release-please-config.json, which lists one
+      # package per component, and the major tag script.
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
