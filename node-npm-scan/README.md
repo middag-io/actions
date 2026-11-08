@@ -54,21 +54,21 @@ The caller grants `contents: read` to the calling job. The component asks for no
 
 ## Example
 
-Reference the component by the full commit SHA of a release tag of this component, with the tag as a comment. Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/node-npm-scan-vX.Y.Z` (dereference an annotated tag).
+Reference the component by its major tag `node-npm-scan-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # node-npm-scan-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/node-npm-scan-vX.Y.Z` (dereference an annotated tag).
 
 ```yaml
 jobs:
   node-npm-scan:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/node-npm-scan.yml@<sha40> # node-npm-scan-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/node-npm-scan.yml@node-npm-scan-v1
     with:
       blocking-severities: critical, high
 ```
 
 ```yaml
 steps:
-  - uses: <owner>/actions/node-npm-scan@<sha40> # node-npm-scan-vX.Y.Z
+  - uses: <owner>/actions/node-npm-scan@node-npm-scan-v1
     with:
       working-directory: ui
 ```

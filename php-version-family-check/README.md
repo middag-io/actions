@@ -92,7 +92,7 @@ When the window opens, re-run the failed check, or push a merge of the base bran
 
 ## Example
 
-Reference the component by the full commit SHA of a release tag of this component, with the tag as a comment. Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/php-version-family-check-vX.Y.Z` (dereference an annotated tag).
+Reference the component by its major tag `php-version-family-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # php-version-family-check-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/php-version-family-check-vX.Y.Z` (dereference an annotated tag).
 
 ```yaml
 name: Version family
@@ -107,7 +107,7 @@ jobs:
   php-version-family-check:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/php-version-family-check.yml@<sha40> # php-version-family-check-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/php-version-family-check.yml@php-version-family-check-v1
     with:
       # Name the window variable explicitly; without this line the window
       # comes from PHP_VERSION_FAMILY_CHECK_WINDOW.
@@ -124,7 +124,7 @@ steps:
       ref: ${{ github.event.pull_request.head.sha }}
       fetch-depth: 0
       persist-credentials: false
-  - uses: <owner>/actions/php-version-family-check@<sha40> # php-version-family-check-vX.Y.Z
+  - uses: <owner>/actions/php-version-family-check@php-version-family-check-v1
     with:
       window: ${{ vars.PHP_VERSION_FAMILY_CHECK_WINDOW }}
       family-from: 2.0.0

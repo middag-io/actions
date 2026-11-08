@@ -57,14 +57,14 @@ The caller grants `contents: read` to the calling job. The component asks for no
 
 ## Example
 
-Reference the component by the full commit SHA of a release tag of this component, with the tag as a comment. Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/php-composer-scan-vX.Y.Z` (dereference an annotated tag).
+Reference the component by its major tag `php-composer-scan-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # php-composer-scan-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/php-composer-scan-vX.Y.Z` (dereference an annotated tag).
 
 ```yaml
 jobs:
   php-composer-scan:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/php-composer-scan.yml@<sha40> # php-composer-scan-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/php-composer-scan.yml@php-composer-scan-v1
     with:
       blocking-severities: critical, high
     secrets:
@@ -75,10 +75,10 @@ The composite action after an install in a job of the caller:
 
 ```yaml
 steps:
-  - uses: <owner>/actions/php-composer-setup@<sha40> # php-composer-setup-vX.Y.Z
+  - uses: <owner>/actions/php-composer-setup@php-composer-setup-v1
     with:
       php-version: "8.4"
-  - uses: <owner>/actions/php-composer-scan@<sha40> # php-composer-scan-vX.Y.Z
+  - uses: <owner>/actions/php-composer-scan@php-composer-scan-v1
     with:
       blocking-severities: critical, high
 ```

@@ -90,7 +90,7 @@ jobs:
   release-please:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/release-please.yml@<sha40> # release-please-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/release-please.yml@release-please-v1
     secrets:
       app-private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
 
@@ -117,10 +117,10 @@ As a step, after a checkout of the two files:
     persist-credentials: false
 - name: Run release-please
   id: release
-  uses: <owner>/actions/release-please@<sha40> # release-please-vX.Y.Z
+  uses: <owner>/actions/release-please@release-please-v1
   with:
     app-client-id: ${{ vars.RELEASE_PLEASE_APP_CLIENT_ID }}
     app-private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
 ```
 
-Find the SHA of a release tag as described in the README of this repository, "Referencing a component".
+Reference the component by its major tag `release-please-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # release-please-vX.Y.Z`). Find the SHA of a release tag as described in the README of this repository, "Referencing a component".

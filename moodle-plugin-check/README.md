@@ -83,7 +83,7 @@ The caller grants `contents: read` to the calling job. The component asks for no
 
 ## Example
 
-Reference the component by the full commit SHA of a release tag of this component, with the tag as a comment. Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/moodle-plugin-check-vX.Y.Z` (dereference an annotated tag).
+Reference the component by its major tag `moodle-plugin-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # moodle-plugin-check-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/moodle-plugin-check-vX.Y.Z` (dereference an annotated tag).
 
 ```yaml
 name: CI
@@ -99,7 +99,7 @@ jobs:
   moodle-plugin-check:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/moodle-plugin-check.yml@<sha40> # moodle-plugin-check-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/moodle-plugin-check.yml@moodle-plugin-check-v1
     with:
       component: local_example
       php-versions: '["8.2", "8.3"]'
@@ -118,7 +118,7 @@ steps:
   - uses: actions/checkout@<sha40> # vX.Y.Z
     with:
       persist-credentials: false
-  - uses: <owner>/actions/moodle-plugin-check@<sha40> # moodle-plugin-check-vX.Y.Z
+  - uses: <owner>/actions/moodle-plugin-check@moodle-plugin-check-v1
     with:
       php-version: "8.3"
       composer-scripts: test

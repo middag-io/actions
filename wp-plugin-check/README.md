@@ -110,7 +110,7 @@ check-ui:
     - uses: actions/checkout@<sha40> # vX.Y.Z
       with:
         persist-credentials: false
-    - uses: <owner>/actions/wp-plugin-check@<sha40> # wp-plugin-check-v1.0.0
+    - uses: <owner>/actions/wp-plugin-check@wp-plugin-check-v1
       with:
         target: ui
         ui-directory: ui
@@ -136,7 +136,7 @@ jobs:
   check:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/wp-plugin-check.yml@<sha40> # wp-plugin-check-v1.0.0
+    uses: <owner>/actions/.github/workflows/wp-plugin-check.yml@wp-plugin-check-v1
     with:
       php-versions: '["8.4"]'
       php-extensions: mbstring, xml, intl
@@ -154,11 +154,11 @@ steps:
   - uses: actions/checkout@<sha40> # vX.Y.Z
     with:
       persist-credentials: false
-  - uses: <owner>/actions/wp-plugin-check@<sha40> # wp-plugin-check-v1.0.0
+  - uses: <owner>/actions/wp-plugin-check@wp-plugin-check-v1
     with:
       target: php
       php-version: "8.4"
       composer-scripts: check:style, check:stan
 ```
 
-Find the SHA of a release tag with `gh api repos/<owner>/actions/git/ref/tags/wp-plugin-check-vX.Y.Z`; when the object type is `tag`, dereference it with `gh api repos/<owner>/actions/git/tags/<object-sha>`.
+Reference the component by its major tag `wp-plugin-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # wp-plugin-check-vX.Y.Z`). Find the SHA of a release tag with `gh api repos/<owner>/actions/git/ref/tags/wp-plugin-check-vX.Y.Z`; when the object type is `tag`, dereference it with `gh api repos/<owner>/actions/git/tags/<object-sha>`.

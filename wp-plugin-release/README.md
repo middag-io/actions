@@ -117,7 +117,7 @@ jobs:
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/wp-plugin-release.yml@<sha40> # wp-plugin-release-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/wp-plugin-release.yml@wp-plugin-release-v1
     with:
       tag-name: ${{ needs.release-please.outputs.tag_name }}
       zip-name: example-plugin
@@ -139,7 +139,7 @@ A dry run in a pull request of the plugin builds the archive from the pull reque
   release-dry-run:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/wp-plugin-release.yml@<sha40> # wp-plugin-release-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/wp-plugin-release.yml@wp-plugin-release-v1
     with:
       tag-name: 0.0.0-dry-run
       zip-name: example-plugin
@@ -165,7 +165,7 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
           persist-credentials: false
-      - uses: <owner>/actions/wp-plugin-release@<sha40> # wp-plugin-release-vX.Y.Z
+      - uses: <owner>/actions/wp-plugin-release@wp-plugin-release-v1
         with:
           tag-name: ${{ inputs.tag }}
           zip-name: example-plugin
@@ -174,7 +174,7 @@ jobs:
           app-private-key: ${{ secrets.WP_PLUGIN_RELEASE_APP_PRIVATE_KEY }}
 ```
 
-Find `<sha40>` with `gh api repos/<owner>/actions/git/ref/tags/wp-plugin-release-vX.Y.Z`; dereference an annotated tag with `gh api repos/<owner>/actions/git/tags/<object-sha>`. Never `@main` or a branch.
+Reference the component by its major tag `wp-plugin-release-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # wp-plugin-release-vX.Y.Z`). Find `<sha40>` with `gh api repos/<owner>/actions/git/ref/tags/wp-plugin-release-vX.Y.Z`; dereference an annotated tag with `gh api repos/<owner>/actions/git/tags/<object-sha>`. Never `@main` or a branch.
 
 ## UI with GitHub Packages
 
@@ -197,7 +197,7 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
           persist-credentials: false
-      - uses: <owner>/actions/wp-plugin-release@<sha40> # wp-plugin-release-vX.Y.Z
+      - uses: <owner>/actions/wp-plugin-release@wp-plugin-release-v1
         with:
           tag-name: ${{ inputs.tag }}
           zip-name: example-plugin

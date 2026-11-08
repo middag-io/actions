@@ -69,14 +69,14 @@ The caller grants `contents: read` to the calling job. The component asks for no
 
 ## Example
 
-Reference the component by the full commit SHA of a release tag of this component, with the tag as a comment. Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/go-module-scan-vX.Y.Z` (dereference an annotated tag).
+Reference the component by its major tag `go-module-scan-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # go-module-scan-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/go-module-scan-vX.Y.Z` (dereference an annotated tag).
 
 ```yaml
 jobs:
   go-module-scan:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/go-module-scan.yml@<sha40> # go-module-scan-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/go-module-scan.yml@go-module-scan-v1
     with:
       blocking-severities: critical, low
 ```
@@ -86,5 +86,5 @@ steps:
   - uses: actions/setup-go@<sha40> # vX.Y.Z
     with:
       go-version-file: go.mod
-  - uses: <owner>/actions/go-module-scan@<sha40> # go-module-scan-vX.Y.Z
+  - uses: <owner>/actions/go-module-scan@go-module-scan-v1
 ```

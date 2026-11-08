@@ -69,7 +69,7 @@ The caller grants `contents: read` to the calling job. The component asks for no
 
 ## Example
 
-Reference the component by the full commit SHA of a release tag of this component, with the tag as a comment. Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/moodle-host-check-vX.Y.Z` (dereference an annotated tag).
+Reference the component by its major tag `moodle-host-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # moodle-host-check-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/moodle-host-check-vX.Y.Z` (dereference an annotated tag).
 
 ```yaml
 name: Moodle support matrix
@@ -85,7 +85,7 @@ jobs:
   moodle-host-check:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/moodle-host-check.yml@<sha40> # moodle-host-check-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/moodle-host-check.yml@moodle-host-check-v1
     with:
       hosts: >-
         [
@@ -131,7 +131,7 @@ jobs:
       - uses: actions/checkout@<sha40> # vX.Y.Z
         with:
           persist-credentials: false
-      - uses: <owner>/actions/moodle-host-check@<sha40> # moodle-host-check-vX.Y.Z
+      - uses: <owner>/actions/moodle-host-check@moodle-host-check-v1
         with:
           moodle-branch: MOODLE_405_STABLE
           php-version: "8.3"

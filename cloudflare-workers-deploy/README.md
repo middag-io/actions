@@ -113,7 +113,7 @@ jobs:
       - uses: actions/checkout@<sha40> # vX.Y.Z
         with:
           persist-credentials: false
-      - uses: <owner>/actions/cloudflare-workers-deploy@<sha40> # cloudflare-workers-deploy-vX.Y.Z
+      - uses: <owner>/actions/cloudflare-workers-deploy@cloudflare-workers-deploy-v1
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
         with:
@@ -123,6 +123,8 @@ jobs:
 The component takes no registry input: the `env:` of the step reaches every step of the action, the npm scripts included, so the job token there must hold only `contents: read` and `packages: read`. Each package of the scope must grant the calling repository Read access (package settings, "Manage Actions access"). A GitHub App installation token is refused by that registry; the job token is the identity that works there. The reusable workflow keeps `contents: read` only, the least privilege for the projects that need no GitHub Packages scope.
 
 ## Calling the reusable workflow
+
+Reference the component by its major tag `cloudflare-workers-deploy-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # cloudflare-workers-deploy-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/cloudflare-workers-deploy-vX.Y.Z` (dereference an annotated tag).
 
 ```yaml
 on:
@@ -136,7 +138,7 @@ jobs:
   deploy:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/cloudflare-workers-deploy.yml@<sha40> # cloudflare-workers-deploy-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/cloudflare-workers-deploy.yml@cloudflare-workers-deploy-v1
     with:
       build-script: build:worker
       wrangler-environment: production
@@ -163,7 +165,7 @@ jobs:
       - uses: actions/checkout@<sha40> # vX.Y.Z
         with:
           persist-credentials: false
-      - uses: <owner>/actions/cloudflare-workers-deploy@<sha40> # cloudflare-workers-deploy-vX.Y.Z
+      - uses: <owner>/actions/cloudflare-workers-deploy@cloudflare-workers-deploy-v1
         with:
           build-script: build:worker
           wrangler-environment: production

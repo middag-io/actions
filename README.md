@@ -27,7 +27,7 @@ Public repository, maintained by MIDDAG. Licensed under the [Apache License 2.0]
 | [`wp-plugin-release`](wp-plugin-release/README.md) | composite action and reusable workflow | builds the distribution ZIP of a WordPress plugin (optional UI build, production Composer install) and uploads it to the existing GitHub release of a tag with a GitHub App token; creates no tag or release; deletes only the release asset of the same name, which it replaces | `wp-plugin-release-v1.0.0` |
 | [`wp-theme-check`](wp-theme-check/README.md) | composite action and reusable workflow | checks a WordPress theme with its own PHP CS Fixer, PHPStan and Rector, one job per PHP version; publishes nothing; deletes nothing | `wp-theme-check-v1.0.0` |
 
-Every component has its own `README.md` next to its `action.yml`. That README lists what the component does, what it **deletes**, its inputs, outputs and secrets, the permissions the caller must grant, and a call example pinned by SHA.
+Every component has its own `README.md` next to its `action.yml`. That README lists what the component does, what it **deletes**, its inputs, outputs and secrets, the permissions the caller must grant, and a call example by the major tag `<component>-v1`, with the SHA form for a fork and a caller outside the maintainer organization.
 
 ## Naming convention
 
