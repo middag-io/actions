@@ -90,12 +90,14 @@ Store it as `MOODLE_PLUGIN_PACKAGE_COMPOSER_AUTH` and pass it with one explicit 
 
 ## Calling the reusable workflow
 
+Reference the component by its major tag `moodle-plugin-package-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # moodle-plugin-package-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/moodle-plugin-package-vX.Y.Z` (dereference an annotated tag).
+
 ```yaml
 jobs:
   package:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/moodle-plugin-package.yml@<sha40> # moodle-plugin-package-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/moodle-plugin-package.yml@moodle-plugin-package-v1
     with:
       zip-name: local_example
       tag-name: ${{ needs.release.outputs.tag_name }}
@@ -124,7 +126,7 @@ jobs:
         with:
           ref: ${{ needs.release.outputs.tag_name }}
           persist-credentials: false
-      - uses: <owner>/actions/moodle-plugin-package@<sha40> # moodle-plugin-package-vX.Y.Z
+      - uses: <owner>/actions/moodle-plugin-package@moodle-plugin-package-v1
         with:
           zip-name: local_example
           tag-name: ${{ needs.release.outputs.tag_name }}

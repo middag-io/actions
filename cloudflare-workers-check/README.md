@@ -78,7 +78,7 @@ jobs:
       - uses: actions/checkout@<sha40> # vX.Y.Z
         with:
           persist-credentials: false
-      - uses: <owner>/actions/cloudflare-workers-check@<sha40> # cloudflare-workers-check-vX.Y.Z
+      - uses: <owner>/actions/cloudflare-workers-check@cloudflare-workers-check-v1
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
         with:
@@ -89,7 +89,7 @@ The component takes no registry input: the `env:` of the step reaches every step
 
 ## Example
 
-Reference the component by the full commit SHA of a release tag of this component, with the tag as a comment. Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/cloudflare-workers-check-vX.Y.Z` (dereference an annotated tag).
+Reference the component by its major tag `cloudflare-workers-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # cloudflare-workers-check-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/cloudflare-workers-check-vX.Y.Z` (dereference an annotated tag).
 
 ```yaml
 name: CI
@@ -105,7 +105,7 @@ jobs:
   cloudflare-workers-check:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/cloudflare-workers-check.yml@<sha40> # cloudflare-workers-check-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/cloudflare-workers-check.yml@cloudflare-workers-check-v1
     with:
       npm-scripts-if-present: type-check, lint
       npm-scripts: build
@@ -119,7 +119,7 @@ steps:
   - uses: actions/checkout@<sha40> # vX.Y.Z
     with:
       persist-credentials: false
-  - uses: <owner>/actions/cloudflare-workers-check@<sha40> # cloudflare-workers-check-vX.Y.Z
+  - uses: <owner>/actions/cloudflare-workers-check@cloudflare-workers-check-v1
     with:
       path: worker
       npm-scripts: build

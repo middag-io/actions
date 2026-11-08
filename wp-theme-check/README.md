@@ -66,7 +66,7 @@ The caller grants `contents: read` to the job that calls the reusable workflow. 
 
 ## Example
 
-Reusable workflow, pinned by the full commit SHA of a release tag of this component:
+Reusable workflow:
 
 ```yaml
 name: CI
@@ -82,7 +82,7 @@ jobs:
   check:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/wp-theme-check.yml@<sha40> # wp-theme-check-v1.0.0
+    uses: <owner>/actions/.github/workflows/wp-theme-check.yml@wp-theme-check-v1
     with:
       php-versions: '["8.4"]'
       has-rector: true
@@ -97,7 +97,7 @@ steps:
   - uses: actions/checkout@<sha40> # vX.Y.Z
     with:
       persist-credentials: false
-  - uses: <owner>/actions/wp-theme-check@<sha40> # wp-theme-check-v1.0.0
+  - uses: <owner>/actions/wp-theme-check@wp-theme-check-v1
     with:
       php-version: "8.4"
       has-rector: "true"
@@ -106,7 +106,7 @@ steps:
       composer-auth-password: ${{ secrets.WP_THEME_CHECK_COMPOSER_AUTH_PASSWORD }}
 ```
 
-Find the SHA of a tag with `gh api repos/<owner>/actions/git/ref/tags/wp-theme-check-vX.Y.Z`; dereference an annotated tag with `gh api repos/<owner>/actions/git/tags/<object-sha>`.
+Reference the component by its major tag `wp-theme-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # wp-theme-check-vX.Y.Z`). Find the SHA of a tag with `gh api repos/<owner>/actions/git/ref/tags/wp-theme-check-vX.Y.Z`; dereference an annotated tag with `gh api repos/<owner>/actions/git/tags/<object-sha>`.
 
 ## Tests
 

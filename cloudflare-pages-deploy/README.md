@@ -75,7 +75,9 @@ The job needs `contents: read` only, to check out the site sources. The deploy u
 
 ## Example
 
-Reusable workflow, after a release (pin the SHA of the release tag `cloudflare-pages-deploy-vX.Y.Z`):
+Reference the component by its major tag `cloudflare-pages-deploy-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # cloudflare-pages-deploy-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/cloudflare-pages-deploy-vX.Y.Z` (dereference an annotated tag).
+
+Reusable workflow, after a release:
 
 ```yaml
 jobs:
@@ -84,7 +86,7 @@ jobs:
     if: needs.release-please.outputs.release_created == 'true'
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/cloudflare-pages-deploy.yml@<sha40> # cloudflare-pages-deploy-v1.0.0
+    uses: <owner>/actions/.github/workflows/cloudflare-pages-deploy.yml@cloudflare-pages-deploy-v1
     with:
       docs-path: docs-site
       project-name: example-docs
@@ -100,7 +102,7 @@ steps:
   - uses: actions/checkout@<sha40> # vX.Y.Z
     with:
       persist-credentials: false
-  - uses: <owner>/actions/cloudflare-pages-deploy@<sha40> # cloudflare-pages-deploy-v1.0.0
+  - uses: <owner>/actions/cloudflare-pages-deploy@cloudflare-pages-deploy-v1
     with:
       docs-path: docs
       project-name: example-docs

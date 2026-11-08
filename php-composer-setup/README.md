@@ -101,7 +101,7 @@ jobs:
       - uses: actions/checkout@<sha40> # vX.Y.Z
         with:
           persist-credentials: false
-      - uses: <owner>/actions/php-composer-setup@<sha40> # php-composer-setup-vX.Y.Z
+      - uses: <owner>/actions/php-composer-setup@php-composer-setup-v1
         with:
           php-version: ${{ matrix.php-version }}
           http-basic-host: ${{ vars.PHP_COMPOSER_SETUP_HTTP_BASIC_HOST }}
@@ -117,11 +117,11 @@ jobs:
   setup:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/php-composer-setup.yml@<sha40> # php-composer-setup-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/php-composer-setup.yml@php-composer-setup-v1
     with:
       php-version: "8.4"
     secrets:
       http-basic-password: ${{ secrets.PHP_COMPOSER_SETUP_HTTP_BASIC_PASSWORD }}
 ```
 
-Pin the full 40-character commit SHA of a `php-composer-setup-vX.Y.Z` release tag, with the tag as a comment. Never `@main`.
+Reference the component by its major tag `php-composer-setup-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # php-composer-setup-vX.Y.Z`). Never `@main`.

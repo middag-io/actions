@@ -78,7 +78,7 @@ The release pull request of release-please passes: its title and its one commit 
 
 ## Example
 
-Reference the component by the full commit SHA of a release tag of this component, with the tag as a comment. Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/github-release-major-check-vX.Y.Z` (dereference an annotated tag).
+Reference the component by its major tag `github-release-major-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # github-release-major-check-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/github-release-major-check-vX.Y.Z` (dereference an annotated tag).
 
 ```yaml
 name: Release major
@@ -93,7 +93,7 @@ jobs:
   github-release-major-check:
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/github-release-major-check.yml@<sha40> # github-release-major-check-vX.Y.Z
+    uses: <owner>/actions/.github/workflows/github-release-major-check.yml@github-release-major-check-v1
 ```
 
 The composite action in a job of the caller:
@@ -105,7 +105,7 @@ steps:
       ref: ${{ github.event.pull_request.head.sha }}
       fetch-depth: 0
       persist-credentials: false
-  - uses: <owner>/actions/github-release-major-check@<sha40> # github-release-major-check-vX.Y.Z
+  - uses: <owner>/actions/github-release-major-check@github-release-major-check-v1
     with:
       title: ${{ github.event.pull_request.title }}
       base-sha: ${{ github.event.pull_request.base.sha }}

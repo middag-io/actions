@@ -115,6 +115,8 @@ The reusable workflow runs one publication at a time per package (`cloudflare-r2
 
 ## Calling the reusable workflow
 
+Reference the component by its major tag `cloudflare-r2-docs-publish-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # cloudflare-r2-docs-publish-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/cloudflare-r2-docs-publish-vX.Y.Z` (dereference an annotated tag).
+
 ```yaml
 jobs:
   build-docs:
@@ -136,7 +138,7 @@ jobs:
     needs: build-docs
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/cloudflare-r2-docs-publish.yml@<sha40> # vX.Y.Z
+    uses: <owner>/actions/.github/workflows/cloudflare-r2-docs-publish.yml@cloudflare-r2-docs-publish-v1
     with:
       artifact-name: docs-package
     secrets:
@@ -169,7 +171,7 @@ jobs:
       - id: credentials
         # Any step that outputs the two values; its own token stays in this step.
         uses: <secret-manager-action>@<sha40> # vX.Y.Z
-      - uses: <owner>/actions/cloudflare-r2-docs-publish@<sha40> # vX.Y.Z
+      - uses: <owner>/actions/cloudflare-r2-docs-publish@cloudflare-r2-docs-publish-v1
         with:
           path: .docs-dist
           bucket: ${{ vars.CLOUDFLARE_R2_DOCS_PUBLISH_BUCKET }}
