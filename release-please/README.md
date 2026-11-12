@@ -53,8 +53,9 @@ The composite action takes the private key as the input `app-private-key`; the r
 | `tag-name` | Tag of the release of the root package created by this run; empty when none. |
 | `version` | Version of the release of the root package created by this run; empty when none. |
 | `packages` | Package paths of the configuration, as a sorted JSON array (for example `["."]`). |
+| `paths-released` | Paths of the packages released by this run, as a JSON array; `[]` when none. Use it to publish a package of a monorepo. |
 
-The release outputs describe the root package only. A configuration without a root package gets `release-created: false` from every run.
+The `release-created`, `tag-name` and `version` outputs describe the root package only. A configuration without a root package gets `release-created: false` from every run.
 
 ## Variables and secrets
 

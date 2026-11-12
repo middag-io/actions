@@ -48,6 +48,9 @@ outputs:
   packages:
     description: Package paths of the configuration, as a sorted JSON array (for example ["."]).
     value: ${{ steps.check.outputs.packages }}
+  paths-released:
+    description: Paths of the packages released by this run, as a JSON array (for example ["packages/cli"]); [] when none (always [] in a dry run).
+    value: ${{ steps.release.outputs.paths_released || '[]' }}
 
 runs:
   using: composite
