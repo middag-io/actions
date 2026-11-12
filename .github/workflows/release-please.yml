@@ -62,6 +62,9 @@ on:
       packages:
         description: Package paths of the configuration, as a sorted JSON array.
         value: ${{ jobs.release.outputs.packages }}
+  paths-released:
+    description: Paths of the packages released by this run, as a JSON array (for example ["packages/cli"]); [] when none (always [] in a dry run).
+    value: ${{ jobs.release.outputs.paths-released }}
 
 permissions: {}
 
@@ -86,6 +89,7 @@ jobs:
       tag-name: ${{ steps.release.outputs.tag-name }}
       version: ${{ steps.release.outputs.version }}
       packages: ${{ steps.release.outputs.packages }}
+      paths-released: ${{ steps.release.outputs.paths-released }}
     steps:
       # release-please reads the configuration and the manifest from the
       # target branch through the GitHub API, not from this checkout. Outside
