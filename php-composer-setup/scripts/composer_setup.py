@@ -4,11 +4,14 @@ Called by action.yml of the php-composer-setup component. Standard library
 only; run as ``python3 -I``. Subcommands:
 
 - ``check``: validates every input before any write and writes the plan
-  (``auth-entries``, ``install-command``) to ``$GITHUB_OUTPUT``.
+  (``auth-entries``, ``install-command``, ``platform-command``) to
+  ``$GITHUB_OUTPUT``.
 - ``auth``: merges the ``composer-auth`` entries, then the HTTP Basic and
   GitHub credentials, into the global Composer ``auth.json``. Values come from
   the environment, never from the command line.
-- ``install``: runs ``composer install`` in the working directory.
+- ``install``: removes ``config.platform.php`` from ``composer.json`` when
+  asked, then runs ``composer install`` (or ``composer update`` for the
+  highest dependency versions) in the working directory.
 
 Secrets are never printed. ``action.yml`` masks them before the ``auth``
 subcommand runs, including each credential inside ``composer-auth``.
@@ -32,6 +35,8 @@ GITHUB_HOST = "github.com"
 AUTH_FILE_MODE = 0o600
 MERGED_AUTH_KEYS = ("http-basic", "github-oauth")
 COMPOSER_AUTH_ENTRY = "composer-auth"
+DEPENDENCY_VERSIONS = ("locked", "highest")
+PLATFORM_COMMAND = ("composer", "config", "--no-interaction", "--unset", "platform.php")
 
 
 class InputError(ValueError):
@@ -75,8 +80,17 @@ def check_http_basic(host, username, has_password, dry_run):
     return host
 
 
-def install_command(no_dev, optimize_autoloader):
-    command = ["composer", "install", "--no-interaction", "--prefer-dist"]
+def parse_dependency_versions(value):
+    if value not in DEPENDENCY_VERSIONS:
+        raise InputError(f"dependency-versions must be one of {', '.join(DEPENDENCY_VERSIONS)}, got {value!r}")
+    return value
+
+
+def install_command(no_dev, optimize_autoloader, dependency_versions="locked"):
+    """composer install (the lock file, when there is one), or composer
+    update for the highest versions that the constraints and PHP allow."""
+    verb = "update" if dependency_versions == "highest" else "install"
+    command = ["composer", verb, "--no-interaction", "--prefer-dist"]
     if no_dev:
         command.append("--no-dev")
     if optimize_autoloader:
@@ -111,12 +125,17 @@ def build_plan(args, root):
     has_github_token = parse_boolean("has-github-token", args.has_github_token)
     has_composer_auth = parse_boolean("has-composer-auth", args.has_composer_auth)
     parse_boolean("cache", args.cache)
+    dependency_versions = parse_dependency_versions(args.dependency_versions)
+    unset_platform_php = parse_boolean("unset-platform-php", args.unset_platform_php)
+    if not install and (dependency_versions != "locked" or unset_platform_php):
+        raise InputError("dependency-versions: highest and unset-platform-php: true need install: true")
     check_working_directory(args.working_directory, root)
     host = check_http_basic(args.http_basic_host, args.http_basic_username, has_password, dry_run)
-    command = install_command(no_dev, optimize) if install else []
+    command = install_command(no_dev, optimize, dependency_versions) if install else []
     return {
         "auth-entries": ",".join(auth_entries(host, has_github_token, has_composer_auth)),
         "install-command": " ".join(command),
+        "platform-command": " ".join(PLATFORM_COMMAND) if unset_platform_php else "",
     }
 
 
@@ -230,7 +249,16 @@ def run_install(args):
     command = install_command(
         parse_boolean("no-dev", args.no_dev),
         parse_boolean("optimize-autoloader", args.optimize_autoloader),
+        parse_dependency_versions(args.dependency_versions),
     )
+    if parse_boolean("unset-platform-php", args.unset_platform_php):
+        # Composer then resolves for the PHP of the job, not for the
+        # config.platform.php of composer.json. The change stays in the
+        # checkout of the job.
+        print(f"Running: {' '.join(PLATFORM_COMMAND)}", flush=True)
+        result = subprocess.run(list(PLATFORM_COMMAND), cwd=args.working_directory, check=False)
+        if result.returncode != 0:
+            return result.returncode
     print(f"Running: {' '.join(command)}", flush=True)
     return subprocess.run(command, cwd=args.working_directory, check=False).returncode
 
@@ -242,6 +270,8 @@ def run_check(args):
     command = outputs["install-command"] or "no install"
     print(f"{mode} set up PHP {args.php_version} ({args.php_extensions or 'no extra extensions'}, coverage {args.coverage}).")
     print(f"{mode} configure Composer credentials: {entries}.")
+    if outputs["platform-command"]:
+        print(f"{mode} run in {args.working_directory}: {outputs['platform-command']}.")
     print(f"{mode} run in {args.working_directory}: {command}.")
     if outputs["install-command"] and args.cache == "true":
         print(f"{mode} restore and save the Composer download cache, keyed by {args.working_directory}/composer.lock.")
@@ -265,6 +295,8 @@ def parser():
     check.add_argument("--install", default="true")
     check.add_argument("--no-dev", default="false")
     check.add_argument("--optimize-autoloader", default="false")
+    check.add_argument("--dependency-versions", default="locked")
+    check.add_argument("--unset-platform-php", default="false")
     check.add_argument("--dry-run", default="false")
     auth = commands.add_parser("auth")
     auth.add_argument("--composer-home", default="")
@@ -272,6 +304,8 @@ def parser():
     install.add_argument("--working-directory", default=".")
     install.add_argument("--no-dev", default="false")
     install.add_argument("--optimize-autoloader", default="false")
+    install.add_argument("--dependency-versions", default="locked")
+    install.add_argument("--unset-platform-php", default="false")
     return root
 
 

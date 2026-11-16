@@ -1,0 +1,12 @@
+{
+  "commands": [
+    "composer run-script --no-interaction test"
+  ],
+  "audit-command": "composer audit --format=json --abandoned=report --no-interaction",
+  "install-command": "composer update --no-interaction --prefer-dist",
+  "platform-command": "composer config --no-interaction --unset platform.php",
+  "expect-majors": {
+    "symfony/console": 8,
+    "symfony/process": 8
+  }
+}

@@ -6,7 +6,8 @@ name: PHP Composer setup
 description: >-
   Sets up PHP with shivammathur/setup-php, writes HTTP Basic and GitHub
   credentials to the global Composer auth.json, and runs composer install in
-  the working directory.
+  the working directory (composer update for the highest versions, when
+  asked).
 
 inputs:
   php-version:
@@ -73,6 +74,20 @@ inputs:
     description: Pass --optimize-autoloader to composer install (true or false).
     required: false
     default: "false"
+  dependency-versions:
+    description: >-
+      locked runs composer install (from composer.lock when there is one);
+      highest runs composer update, for the highest versions that the
+      constraints and the PHP of the job allow. Needs install true.
+    required: false
+    default: locked
+  unset-platform-php:
+    description: >-
+      Remove config.platform.php from composer.json in the checkout before
+      the install (true or false), so that Composer resolves for the PHP of
+      the job. Needs install true.
+    required: false
+    default: "false"
   dry-run:
     description: Validate the inputs and report the plan only; no PHP setup, no credentials written, no install (true or false).
     required: false
@@ -88,6 +103,9 @@ outputs:
   install-command:
     description: The composer install command, run or planned (empty when install is false).
     value: ${{ steps.check.outputs.install-command }}
+  platform-command:
+    description: The command that removes config.platform.php, run or planned (empty unless unset-platform-php is true).
+    value: ${{ steps.check.outputs.platform-command }}
 
 runs:
   using: composite
@@ -109,6 +127,8 @@ runs:
         INSTALL: ${{ inputs.install }}
         NO_DEV: ${{ inputs.no-dev }}
         OPTIMIZE_AUTOLOADER: ${{ inputs.optimize-autoloader }}
+        DEPENDENCY_VERSIONS: ${{ inputs.dependency-versions }}
+        UNSET_PLATFORM_PHP: ${{ inputs.unset-platform-php }}
         DRY_RUN: ${{ inputs.dry-run }}
       run: |
         python3 -I "$GITHUB_ACTION_PATH/scripts/composer_setup.py" check \
@@ -125,6 +145,8 @@ runs:
           --install="$INSTALL" \
           --no-dev="$NO_DEV" \
           --optimize-autoloader="$OPTIMIZE_AUTOLOADER" \
+          --dependency-versions="$DEPENDENCY_VERSIONS" \
+          --unset-platform-php="$UNSET_PLATFORM_PHP" \
           --dry-run="$DRY_RUN"
 
     - name: Set up PHP
@@ -194,8 +216,12 @@ runs:
         WORKING_DIRECTORY: ${{ inputs.working-directory }}
         NO_DEV: ${{ inputs.no-dev }}
         OPTIMIZE_AUTOLOADER: ${{ inputs.optimize-autoloader }}
+        DEPENDENCY_VERSIONS: ${{ inputs.dependency-versions }}
+        UNSET_PLATFORM_PHP: ${{ inputs.unset-platform-php }}
       run: |
         python3 -I "$GITHUB_ACTION_PATH/scripts/composer_setup.py" install \
           --working-directory="$WORKING_DIRECTORY" \
           --no-dev="$NO_DEV" \
-          --optimize-autoloader="$OPTIMIZE_AUTOLOADER"
+          --optimize-autoloader="$OPTIMIZE_AUTOLOADER" \
+          --dependency-versions="$DEPENDENCY_VERSIONS" \
+          --unset-platform-php="$UNSET_PLATFORM_PHP"
