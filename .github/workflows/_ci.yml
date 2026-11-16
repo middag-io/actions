@@ -259,10 +259,11 @@ jobs:
           PACKAGES: ${{ needs.dry-run-release-please.outputs.packages }}
           RELEASE_CREATED: ${{ needs.dry-run-release-please.outputs.release-created }}
           TAG_NAME: ${{ needs.dry-run-release-please.outputs.tag-name }}
+          PATHS_RELEASED: ${{ needs.dry-run-release-please.outputs.paths-released }}
         run: |
-          echo "packages=$PACKAGES release-created=$RELEASE_CREATED tag-name=$TAG_NAME"
-          if [ "$PACKAGES" != '["."]' ] || [ "$RELEASE_CREATED" != "false" ] || [ -n "$TAG_NAME" ]; then
-            echo '::error::dry-run outputs differ: expected packages=["."] release-created=false tag-name='
+          echo "packages=$PACKAGES release-created=$RELEASE_CREATED tag-name=$TAG_NAME paths-released=$PATHS_RELEASED"
+          if [ "$PACKAGES" != '["."]' ] || [ "$RELEASE_CREATED" != "false" ] || [ -n "$TAG_NAME" ] || [ "$PATHS_RELEASED" != '[]' ]; then
+            echo '::error::dry-run outputs differ: expected packages=["."] release-created=false tag-name= paths-released=[]'
             exit 1
           fi
 
