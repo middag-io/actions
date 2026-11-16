@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/middag-io/actions/compare/release-please-v1.0.0...release-please-v1.1.0) (2026-11-16)
+
+
+### Features
+
+* **release-please:** expose paths-released output ([1a9042a](https://github.com/middag-io/actions/commit/1a9042a98accec0e8abe83fd1fc7d9e511530494))
+* **release-please:** expose paths-released output for monorepo packages ([08dbf84](https://github.com/middag-io/actions/commit/08dbf84809b3a48875effbed85fb875ece7e5432))
+
 ## 1.0.0 (2026-11-03)
 
 
