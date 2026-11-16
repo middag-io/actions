@@ -24,6 +24,13 @@ import check  # noqa: E402
 
 FIXTURE = HERE / "fixtures" / "basic"
 EXPECTED = json.loads((HERE / "fixtures" / "expected" / "basic.json").read_text())
+EXPECTED_HIGHEST = json.loads((HERE / "fixtures" / "expected" / "highest.json").read_text())
+# Inputs of the highest dry-run job of _ci.yml that reach check.py.
+HIGHEST_INPUTS = {
+    "php_version": "8.4", "composer_validate": "false", "strict_psr": "false", "lint_script": "",
+    "phpstan_script": "", "cs_fixer_script": "", "rector_script": "", "composer_scripts": "",
+    "expect_majors": "symfony/console:8\nsymfony/process:8",
+}
 
 
 def plan_args(**overrides):
@@ -32,7 +39,7 @@ def plan_args(**overrides):
         "composer_validate": "true", "composer_validate_strict": "false", "strict_psr": "true",
         "lint_script": "lint", "phpstan_script": "check:stan", "cs_fixer_script": "check:style",
         "rector_script": "check:rector", "composer_scripts": "check:schemas", "test_script": "test",
-        "dry_run": "true", "plan_file": "", "github_output": "",
+        "expect_majors": "", "dry_run": "true", "plan_file": "", "github_output": "",
     }
     values.update(overrides)
     return argparse.Namespace(**values)
@@ -44,7 +51,9 @@ def plan(**overrides):
         with redirect_stdout(io.StringIO()):
             status = check.command_plan(plan_args(plan_file=plan_file, github_output=output, **overrides))
         outputs = dict(line.split("=", 1) for line in Path(output).read_text().splitlines())
-        return status, json.loads(outputs["commands"]), json.loads(Path(plan_file).read_text())
+        record = json.loads(Path(plan_file).read_text())
+        record["outputs"] = outputs
+        return status, json.loads(outputs["commands"]), record
 
 
 class InputTest(unittest.TestCase):
@@ -56,10 +65,28 @@ class InputTest(unittest.TestCase):
             "phpstan-script": {"phpstan_script": "check:stan; rm -rf /"},
             "composer-scripts": {"composer_scripts": "ok, --bad"},
             "test-script": {"test_script": "test\n"},
+            "expect-majors": {"expect_majors": "symfony/console"},
         }
         for name, override in cases.items():
             with self.subTest(input=name), self.assertRaisesRegex(check.CheckError, name):
                 check.parse_options(plan_args(**override))
+
+    def test_expect_majors_takes_package_and_major_items(self):
+        self.assertEqual(
+            check.parse_expect_majors("symfony/console:8, symfony/http-kernel:8\npsr/log:3\n"),
+            (("symfony/console", 8), ("symfony/http-kernel", 8), ("psr/log", 3)),
+        )
+        self.assertEqual(check.parse_expect_majors(""), ())
+
+    def test_expect_majors_rejects_bad_items(self):
+        for value in ("symfony/*:8", "Symfony/Console:8", "symfony/console:v8", "symfony/console:08",
+                      "symfony/console:8.1", "symfony/console 8", "console:8", "symfony/console:8; rm -rf /"):
+            with self.subTest(value=value), self.assertRaisesRegex(check.CheckError, "expect-majors"):
+                check.parse_expect_majors(value)
+
+    def test_expect_majors_rejects_a_package_named_twice(self):
+        with self.assertRaisesRegex(check.CheckError, "symfony/console twice"):
+            check.parse_expect_majors("symfony/console:8, symfony/console:7")
 
     def test_path_stays_in_the_checkout_and_holds_composer_json(self):
         with self.assertRaisesRegex(check.CheckError, "leaves the checkout"):
@@ -83,6 +110,16 @@ class PlanTest(unittest.TestCase):
         _, commands, _ = plan(composer_validate="false", strict_psr="false", lint_script="", phpstan_script="",
                               cs_fixer_script="", rector_script="", composer_scripts="", test_script="")
         self.assertEqual(commands, [])
+
+    def test_default_plans_no_expected_majors(self):
+        _, _, record = plan()
+        self.assertEqual(record["expect-majors"], {})
+        self.assertEqual(record["outputs"]["expect-majors"], "{}")
+
+    def test_highest_dry_run_matches_expected_ci_outputs(self):
+        _, commands, record = plan(**HIGHEST_INPUTS)
+        self.assertEqual(commands, EXPECTED_HIGHEST["commands"])
+        self.assertEqual(json.loads(record["outputs"]["expect-majors"]), EXPECTED_HIGHEST["expect-majors"])
 
     def test_strict_validate_adds_the_flag(self):
         _, commands, _ = plan(composer_validate_strict="true")
@@ -108,6 +145,86 @@ class RunTest(unittest.TestCase):
         self.assertEqual(len(calls), 3)
         self.assertEqual(Path(calls[0][1]), FIXTURE)
         self.assertIn("::error::composer run-script --no-interaction lint failed with exit code 2", buffer.getvalue())
+
+
+def show_output(**versions):
+    installed = [{"name": name.replace("__", "/").replace("_", "-"), "version": version}
+                 for name, version in versions.items()]
+    return json.dumps({"installed": installed})
+
+
+class MajorCheckTest(unittest.TestCase):
+    def test_reports_missing_and_other_majors(self):
+        installed = {"symfony/console": "v7.4.23", "symfony/process": "v8.1.11", "symfony/yaml": "8.1.x-dev"}
+        expected = {"symfony/console": 8, "symfony/process": 8, "symfony/yaml": 8, "symfony/finder": 8}
+        self.assertEqual(
+            check.major_mismatches(expected, installed),
+            [
+                "symfony/console v7.4.23 is installed, expected major version 8",
+                "symfony/finder is not installed (expected major version 8)",
+            ],
+        )
+
+    def test_a_branch_without_a_version_is_a_mismatch(self):
+        self.assertEqual(
+            check.major_mismatches({"acme/lib": 1}, {"acme/lib": "dev-main"}),
+            ["acme/lib dev-main is installed, expected major version 1"],
+        )
+
+    def run_plan(self, expect_majors, show_stdout, show_status=0):
+        with tempfile.TemporaryDirectory() as tmp:
+            plan_file = os.path.join(tmp, "plan.json")
+            with redirect_stdout(io.StringIO()):
+                check.command_plan(plan_args(plan_file=plan_file, dry_run="false", expect_majors=expect_majors,
+                                             composer_validate="false", strict_psr="false", lint_script="",
+                                             phpstan_script="", cs_fixer_script="", rector_script="",
+                                             composer_scripts=""))
+            calls, show_command = [], list(check.SHOW_COMMAND)
+
+            def fake_run(command, cwd, check=False, env=None, capture_output=False, text=False):
+                calls.append(command)
+                if command == show_command:
+                    return subprocess.CompletedProcess(command, show_status, stdout=show_stdout, stderr="")
+                return subprocess.CompletedProcess(command, 0)
+
+            buffer = io.StringIO()
+            with mock.patch.object(check.subprocess, "run", fake_run), redirect_stdout(buffer):
+                status = check.main(["run", "--plan-file", plan_file])
+        return status, calls, buffer.getvalue()
+
+    def test_a_mismatch_fails_before_any_check(self):
+        status, calls, printed = self.run_plan("symfony/console:8", show_output(symfony__console="v7.4.23"))
+        self.assertEqual(status, 1)
+        self.assertEqual(calls, [list(check.SHOW_COMMAND)])
+        self.assertIn("::error::expect-majors: symfony/console v7.4.23 is installed, expected major version 8", printed)
+
+    def test_matching_majors_run_the_checks(self):
+        status, calls, printed = self.run_plan("symfony/console:8", show_output(symfony__console="v8.1.11"))
+        self.assertEqual(status, 0)
+        self.assertEqual(calls, [list(check.SHOW_COMMAND), ["composer", "run-script", "--no-interaction", "test"]])
+        self.assertIn("symfony/console v8.1.11: major version 8 as expected.", printed)
+
+    def test_failed_composer_show_fails_the_job(self):
+        status, calls, printed = self.run_plan("symfony/console:8", "", show_status=1)
+        self.assertEqual(status, 1)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("composer show --format=json --no-interaction failed with exit code 1", printed)
+
+    def test_no_installed_package_is_a_mismatch(self):
+        status, calls, printed = self.run_plan("symfony/console:8", "[]")
+        self.assertEqual(status, 1)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("symfony/console is not installed (expected major version 8)", printed)
+
+    def test_output_that_is_not_json_fails_the_job(self):
+        status, _, printed = self.run_plan("symfony/console:8", "Warning: something")
+        self.assertEqual(status, 1)
+        self.assertIn("did not print JSON", printed)
+
+    def test_no_expected_majors_runs_no_composer_show(self):
+        status, calls, _ = self.run_plan("", "")
+        self.assertEqual(status, 0)
+        self.assertEqual(calls, [["composer", "run-script", "--no-interaction", "test"]])
 
 
 if __name__ == "__main__":

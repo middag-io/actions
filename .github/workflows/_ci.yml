@@ -766,6 +766,68 @@ jobs:
             exit 1
           fi
 
+  # The highest-versions form of the same call: composer update after
+  # removing config.platform.php, and the major version check, tests only.
+  # A dry run: no PHP set-up, no install, no audit, no check.
+  # zizmor self-repository: "./" is the documented form of this test job; in
+  # a job of this repository it resolves to the same commit as "$/".
+  dry-run-php-library-check-highest:
+    name: dry-run-php-library-check-highest
+    needs: changes
+    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'php-library-check') }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/php-library-check.yml # zizmor: ignore[self-repository]
+    with:
+      php-versions: '["8.4"]'
+      path: php-library-check/tests/fixtures/basic
+      dependency-versions: highest
+      unset-platform-php: true
+      expect-majors: |
+        symfony/console:8
+        symfony/process:8
+      composer-validate: false
+      strict-psr: false
+      phpstan-script: ""
+      cs-fixer-script: ""
+      rector-script: ""
+      audit-blocking-severities: critical, high
+      dry-run: true
+
+  # The dry run must plan exactly the values of
+  # php-library-check/tests/fixtures/expected/highest.json.
+  dry-run-check-php-library-check-highest:
+    name: dry-run-check-php-library-check-highest
+    needs: dry-run-php-library-check-highest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare the dry-run outputs with the expected plan
+        env:
+          COMMANDS: ${{ needs.dry-run-php-library-check-highest.outputs.commands }}
+          AUDIT_COMMAND: ${{ needs.dry-run-php-library-check-highest.outputs.audit-command }}
+          INSTALL_COMMAND: ${{ needs.dry-run-php-library-check-highest.outputs.install-command }}
+          PLATFORM_COMMAND: ${{ needs.dry-run-php-library-check-highest.outputs.platform-command }}
+          EXPECT_MAJORS: ${{ needs.dry-run-php-library-check-highest.outputs.expect-majors }}
+        run: |
+          expected="php-library-check/tests/fixtures/expected/highest.json"
+          printf '%s=%s\n' commands "$COMMANDS" audit-command "$AUDIT_COMMAND" install-command "$INSTALL_COMMAND" \
+            platform-command "$PLATFORM_COMMAND" expect-majors "$EXPECT_MAJORS"
+          if ! jq -e --argjson commands "$COMMANDS" --arg audit "$AUDIT_COMMAND" --arg install "$INSTALL_COMMAND" \
+            --arg platform "$PLATFORM_COMMAND" --argjson majors "$EXPECT_MAJORS" \
+            '.commands == $commands and .["audit-command"] == $audit and .["install-command"] == $install
+              and .["platform-command"] == $platform and .["expect-majors"] == $majors' "$expected" >/dev/null; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture manifest and a fixture title, in a family MINOR
   # window. A dry run: no git history read, findings only reported.
@@ -1182,6 +1244,8 @@ jobs:
       - dry-run-check-php-composer-scan
       - dry-run-php-library-check
       - dry-run-check-php-library-check
+      - dry-run-php-library-check-highest
+      - dry-run-check-php-library-check-highest
       - dry-run-php-version-family-check
       - dry-run-check-php-version-family-check
       - dry-run-github-release-major-check

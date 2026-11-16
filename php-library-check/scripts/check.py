@@ -4,8 +4,9 @@ Two subcommands, both called by action.yml:
 
   plan  validates the inputs and writes the plan: the Composer commands to
         run, as argument lists. Writes nothing else; a dry run stops here.
-  run   runs the commands of a plan file, in order, without a shell, and
-        stops at the first failure.
+  run   checks the installed major version of each package of
+        expect-majors, then runs the commands of a plan file, in order,
+        without a shell, and stops at the first failure.
 
 The static checks (composer validate, the PSR-4 autoload check and the
 lint, PHPStan, PHP-CS-Fixer and Rector scripts) run only in the job whose
@@ -28,6 +29,14 @@ from typing import Mapping, Sequence
 
 PHP_VERSION_RE = re.compile(r"\d+\.\d+")
 COMPOSER_SCRIPT_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9:_.-]*")
+# One expect-majors item: <vendor>/<package>:<major>, a Composer package name
+# (https://getcomposer.org/doc/04-schema.md#name) and a major version.
+EXPECT_MAJOR_RE = re.compile(
+    r"(?P<name>[a-z0-9](?:[_.-]?[a-z0-9]+)*/[a-z0-9](?:(?:[_.]|-{1,2})?[a-z0-9]+)*):(?P<major>0|[1-9][0-9]*)"
+)
+# Major version of an installed package: "v8.1.11", "8.1.11", "8.1.x-dev".
+INSTALLED_MAJOR_RE = re.compile(r"v?(0|[1-9][0-9]*)\.")
+SHOW_COMMAND = ("composer", "show", "--format=json", "--no-interaction")
 # Inputs that name one Composer script each, in the order they run.
 STATIC_SCRIPTS = ("lint-script", "phpstan-script", "cs-fixer-script", "rector-script")
 
@@ -47,6 +56,7 @@ class Options:
     static_scripts: tuple[str, ...]
     composer_scripts: tuple[str, ...]
     test_script: str
+    expect_majors: tuple[tuple[str, int], ...] = ()
 
 
 def parse_bool(name: str, value: str) -> bool:
@@ -66,6 +76,19 @@ def check_script(name: str, value: str) -> str:
     return value
 
 
+def parse_expect_majors(value: str) -> tuple[tuple[str, int], ...]:
+    """Parses expect-majors: <vendor>/<package>:<major> items, one per package."""
+    items: dict[str, int] = {}
+    for item in split_list(value):
+        match = EXPECT_MAJOR_RE.fullmatch(item)
+        if not match:
+            raise CheckError(f"input expect-majors: {item!r} is not <vendor>/<package>:<major>")
+        if match["name"] in items:
+            raise CheckError(f"input expect-majors names {match['name']} twice")
+        items[match["name"]] = int(match["major"])
+    return tuple(items.items())
+
+
 def parse_options(args: argparse.Namespace) -> Options:
     if not PHP_VERSION_RE.fullmatch(args.php_version):
         raise CheckError(f"input php-version must look like 8.3, got {args.php_version!r}")
@@ -81,6 +104,7 @@ def parse_options(args: argparse.Namespace) -> Options:
         static_scripts=tuple(script for script in scripts.values() if script),
         composer_scripts=extra,
         test_script=check_script("test-script", args.test_script),
+        expect_majors=parse_expect_majors(args.expect_majors),
     )
 
 
@@ -130,20 +154,67 @@ def command_plan(args: argparse.Namespace) -> int:
     library_dir = resolve_library_dir(Path(args.workspace), options.path)
     plan = build_plan(options)
     plan_file = Path(args.plan_file)
-    plan_file.write_text(json.dumps({"directory": str(library_dir), "commands": plan}), encoding="utf-8")
+    expect_majors = dict(options.expect_majors)
+    plan_file.write_text(
+        json.dumps({"directory": str(library_dir), "commands": plan, "expect-majors": expect_majors}),
+        encoding="utf-8",
+    )
     kind = "static checks and tests" if options.static_checks else "tests"
     print(f"PHP {options.php_version}: {kind}.")
+    for name, major in options.expect_majors:
+        print(("Would check: " if dry_run else "Will check: ") + f"{name} installed at major version {major}")
     for command in plan:
         print(("Would run: " if dry_run else "Will run: ") + " ".join(command))
     write_outputs(args.github_output, {
         "commands": json.dumps([" ".join(command) for command in plan]),
+        "expect-majors": json.dumps(expect_majors),
         "plan-file": str(plan_file),
     })
     return 0
 
 
+def installed_versions(directory: str) -> dict[str, str]:
+    """Returns {package name: version} of the installed packages."""
+    result = subprocess.run(list(SHOW_COMMAND), cwd=directory, check=False, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise CheckError(f"{' '.join(SHOW_COMMAND)} failed with exit code {result.returncode}")
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        raise CheckError(f"{' '.join(SHOW_COMMAND)} did not print JSON") from None
+    # Without any installed package, Composer prints an empty JSON array.
+    installed = data.get("installed", []) if isinstance(data, dict) else []
+    return {package.get("name", ""): package.get("version", "") for package in installed if isinstance(package, dict)}
+
+
+def major_mismatches(expected: Mapping[str, int], installed: Mapping[str, str]) -> list[str]:
+    """Returns one message per package of expected that is missing or at another major."""
+    mismatches = []
+    for name, major in expected.items():
+        version = installed.get(name)
+        if version is None:
+            mismatches.append(f"{name} is not installed (expected major version {major})")
+            continue
+        match = INSTALLED_MAJOR_RE.match(version)
+        if not match or int(match.group(1)) != major:
+            mismatches.append(f"{name} {version} is installed, expected major version {major}")
+    return mismatches
+
+
+def check_majors(directory: str, expected: Mapping[str, int]) -> None:
+    if not expected:
+        return
+    installed = installed_versions(directory)
+    mismatches = major_mismatches(expected, installed)
+    if mismatches:
+        raise CheckError("expect-majors: " + "; ".join(mismatches))
+    for name in expected:
+        print(f"{name} {installed[name]}: major version {expected[name]} as expected.")
+
+
 def command_run(args: argparse.Namespace) -> int:
     plan = json.loads(Path(args.plan_file).read_text(encoding="utf-8"))
+    check_majors(plan["directory"], plan.get("expect-majors", {}))
     # The Composer credentials are in the global Composer auth.json, written
     # by php-composer-setup before this step.
     env = dict(os.environ)
@@ -171,6 +242,7 @@ def parser() -> argparse.ArgumentParser:
         plan.add_argument(f"--{name}", default="")
     plan.add_argument("--composer-scripts", default="")
     plan.add_argument("--test-script", default="")
+    plan.add_argument("--expect-majors", default="")
     plan.add_argument("--dry-run", default="false")
     plan.add_argument("--plan-file", required=True)
     plan.add_argument("--github-output", default="")

@@ -93,6 +93,22 @@ class ActionWiringTest(unittest.TestCase):
         self.assertEqual(passed["blocking-severities"], "${{ inputs.audit-blocking-severities }}")
         self.assertEqual(passed["working-directory"], "${{ inputs.path }}")
 
+    def test_setup_maps_the_dependency_inputs(self):
+        step = self.steps[SETUP_STEP]
+        self.assertEqual(step["id"], "setup")
+        self.assertEqual(step["with"]["dependency-versions"], "${{ inputs.dependency-versions }}")
+        self.assertEqual(step["with"]["unset-platform-php"], "${{ inputs.unset-platform-php }}")
+
+    def test_expect_majors_reaches_only_the_plan_step(self):
+        plan = self.steps["Check the inputs and plan the checks"]
+        self.assertEqual(plan["env"]["EXPECT_MAJORS"], "${{ inputs.expect-majors }}")
+        for name, step in self.steps.items():
+            if name == "Check the inputs and plan the checks":
+                continue
+            values = " ".join([*step["env"].values(), *step["with"].values()])
+            with self.subTest(step=name):
+                self.assertNotIn("inputs.expect-majors", values)
+
     def test_composer_auth_reaches_only_the_setup_step(self):
         for name, step in self.steps.items():
             if name == SETUP_STEP:

@@ -75,6 +75,21 @@ on:
         type: string
         required: false
         default: test
+      dependency-versions:
+        description: locked installs with composer install (from composer.lock when there is one); highest runs composer update, for the highest versions that the constraints and the PHP version of each job allow.
+        type: string
+        required: false
+        default: locked
+      unset-platform-php:
+        description: Remove config.platform.php from composer.json in the checkout before the install, so that the PHP version of each job constrains the resolution.
+        type: boolean
+        required: false
+        default: false
+      expect-majors:
+        description: Installed packages and the major version each must have, as <vendor>/<package>:<major>, separated by commas or new lines (for example symfony/console:8); checked in every job. Empty checks nothing.
+        type: string
+        required: false
+        default: ""
       audit-blocking-severities:
         description: Severities of a dependency advisory that fail the job, separated by commas (critical, high, medium, low). Default from the variable PHP_LIBRARY_CHECK_AUDIT_BLOCKING_SEVERITIES, else critical.
         type: string
@@ -101,12 +116,23 @@ on:
       audit-command:
         description: The dependency audit command, run or planned.
         value: ${{ jobs.check.outputs.audit-command }}
+      install-command:
+        description: The composer install or composer update command, run or planned.
+        value: ${{ jobs.check.outputs.install-command }}
+      platform-command:
+        description: The command that removes config.platform.php, run or planned; empty unless unset-platform-php is true.
+        value: ${{ jobs.check.outputs.platform-command }}
+      expect-majors:
+        description: JSON object of the expected major version of each package of expect-majors; {} when empty.
+        value: ${{ jobs.check.outputs.expect-majors }}
 
 permissions: {}
 
 jobs:
   check:
-    name: check (PHP ${{ matrix.php-version }})
+    # A highest job is named apart from a locked one; the default name and
+    # concurrency group stay as they were.
+    name: check (PHP ${{ matrix.php-version }}${{ inputs.dependency-versions == 'highest' && ', highest' || '' }})
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -114,7 +140,7 @@ jobs:
     # Nothing outside the job is written: one group per run attempt, path
     # and PHP version keeps the jobs of a caller's matrix apart.
     concurrency:
-      group: php-library-check-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.path }}-${{ matrix.php-version }}
+      group: php-library-check-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.path }}-${{ matrix.php-version }}${{ inputs.dependency-versions == 'highest' && '-highest' || '' }}
       cancel-in-progress: false
     strategy:
       fail-fast: false
@@ -123,6 +149,9 @@ jobs:
     outputs:
       commands: ${{ steps.check.outputs.commands }}
       audit-command: ${{ steps.check.outputs.audit-command }}
+      install-command: ${{ steps.check.outputs.install-command }}
+      platform-command: ${{ steps.check.outputs.platform-command }}
+      expect-majors: ${{ steps.check.outputs.expect-majors }}
     steps:
       - name: Check out the calling repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -146,6 +175,9 @@ jobs:
           rector-script: ${{ inputs.rector-script }}
           composer-scripts: ${{ inputs.composer-scripts }}
           test-script: ${{ inputs.test-script }}
+          dependency-versions: ${{ inputs.dependency-versions }}
+          unset-platform-php: ${{ inputs.unset-platform-php }}
+          expect-majors: ${{ inputs.expect-majors }}
           audit-blocking-severities: ${{ inputs.audit-blocking-severities }}
           composer-auth: ${{ !inputs.dry-run && secrets.composer-auth || '' }}
           dry-run: ${{ inputs.dry-run }}

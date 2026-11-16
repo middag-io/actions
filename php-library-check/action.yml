@@ -2,13 +2,15 @@
 # one PHP version. PHP, Composer and the install come from the
 # php-composer-setup action of this repository, and the dependency audit from
 # its php-composer-scan action. See README.md next to this file for the
-# inputs, what the action deletes (nothing) and the permissions it needs.
+# inputs, what the action deletes (nothing; it can rewrite composer.json in
+# the checkout) and the permissions it needs.
 name: PHP library check
 description: >-
-  Installs a Composer package on one PHP version, audits its dependencies,
-  and runs composer validate, the PSR-4 autoload check, the lint, PHPStan,
-  PHP-CS-Fixer and Rector scripts (static checks) and the test script that
-  the caller names. Publishes nothing.
+  Installs a Composer package on one PHP version (the locked or the highest
+  dependency versions), audits its dependencies, checks the major version of
+  named packages, and runs composer validate, the PSR-4 autoload check, the
+  lint, PHPStan, PHP-CS-Fixer and Rector scripts (static checks) and the
+  test script that the caller names. Publishes nothing.
 
 inputs:
   path:
@@ -62,6 +64,28 @@ inputs:
     description: Composer script that runs the tests (PHPUnit), in every job. Empty skips it.
     required: false
     default: test
+  dependency-versions:
+    description: >-
+      locked installs with composer install (from composer.lock when there is
+      one); highest runs composer update, for the highest versions that the
+      constraints and the PHP version allow.
+    required: false
+    default: locked
+  unset-platform-php:
+    description: >-
+      Remove config.platform.php from composer.json in the checkout before
+      the install, so that the PHP version of the job, not the pinned one,
+      constrains the resolution (true or false).
+    required: false
+    default: "false"
+  expect-majors:
+    description: >-
+      Installed packages and the major version each must have, as
+      <vendor>/<package>:<major>, separated by commas or new lines (for
+      example symfony/console:8). A package that is missing or at another
+      major version fails the job before the checks. Empty checks nothing.
+    required: false
+    default: ""
   audit-blocking-severities:
     description: Severities of a dependency advisory that fail the job, separated by commas (critical, high, medium, low); lower severities are only reported.
     required: false
@@ -82,6 +106,15 @@ outputs:
   audit-command:
     description: The dependency audit command, run or planned.
     value: ${{ steps.audit.outputs.command }}
+  install-command:
+    description: The composer install or composer update command, run or planned.
+    value: ${{ steps.setup.outputs.install-command }}
+  platform-command:
+    description: The command that removes config.platform.php, run or planned; empty unless unset-platform-php is true.
+    value: ${{ steps.setup.outputs.platform-command }}
+  expect-majors:
+    description: JSON object of the expected major version of each package of expect-majors; {} when empty.
+    value: ${{ steps.plan.outputs.expect-majors }}
 
 runs:
   using: composite
@@ -102,6 +135,7 @@ runs:
         RECTOR_SCRIPT: ${{ inputs.rector-script }}
         COMPOSER_SCRIPTS: ${{ inputs.composer-scripts }}
         TEST_SCRIPT: ${{ inputs.test-script }}
+        EXPECT_MAJORS: ${{ inputs.expect-majors }}
         DRY_RUN: ${{ inputs.dry-run }}
       run: |
         plan_file="$(mktemp "$RUNNER_TEMP/php-library-check.XXXXXX")"
@@ -119,6 +153,7 @@ runs:
           --rector-script="$RECTOR_SCRIPT" \
           --composer-scripts="$COMPOSER_SCRIPTS" \
           --test-script="$TEST_SCRIPT" \
+          --expect-majors="$EXPECT_MAJORS" \
           --dry-run="$DRY_RUN" \
           --plan-file="$plan_file" \
           --github-output="$GITHUB_OUTPUT"
@@ -127,8 +162,10 @@ runs:
     # action. It validates its own inputs, sets up PHP and Composer, writes
     # composer-auth to the global Composer auth.json of the runner (outside
     # the checkout), restores the Composer download cache and runs composer
-    # install. In a dry run it only validates and reports, like this action.
+    # install (or composer update, after removing config.platform.php, when
+    # asked). In a dry run it only validates and reports, like this action.
     - name: Set up PHP and install the Composer dependencies
+      id: setup
       uses: $/php-composer-setup
       with:
         php-version: ${{ inputs.php-version }}
@@ -136,6 +173,8 @@ runs:
         coverage: none
         working-directory: ${{ inputs.path }}
         composer-auth: ${{ inputs.composer-auth }}
+        dependency-versions: ${{ inputs.dependency-versions }}
+        unset-platform-php: ${{ inputs.unset-platform-php }}
         dry-run: ${{ inputs.dry-run }}
 
     # php-composer-scan, same repository and commit: composer audit on the
