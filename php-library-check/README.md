@@ -29,7 +29,7 @@ Nothing. The component publishes nothing and commits nothing. `composer install`
 
 | Input | Workflow | Action | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `php-versions` | yes | no | `["8.2", "8.3", "8.4"]` | JSON array of PHP versions, one job each. The static checks run on the first one: list the lowest supported version first. |
+| `php-versions` | yes | no | `["8.3", "8.4", "8.5"]` | JSON array of PHP versions, one job each. The static checks run on the first one: list the lowest supported version first. |
 | `php-version` | no | yes (required) | — | PHP version of this job. |
 | `static-checks` | no | yes | `true` | Run the static checks in this job. The workflow sets it for the first PHP version only. |
 | `path` | yes | yes | `.` | Directory of the library (the one that holds `composer.json`). |
@@ -96,7 +96,7 @@ jobs:
       contents: read
     uses: <owner>/actions/.github/workflows/php-library-check.yml@php-library-check-v1
     with:
-      php-versions: '["8.2", "8.3", "8.4"]'
+      php-versions: '["8.3", "8.4", "8.5"]'
       composer-validate-strict: true
       composer-scripts: check:schemas
     secrets:
@@ -156,7 +156,7 @@ jobs:
       contents: read
     uses: <owner>/actions/.github/workflows/php-library-check.yml@php-library-check-v1
     with:
-      php-versions: '["8.2", "8.3", "8.4"]'
+      php-versions: '["8.3", "8.4", "8.5"]'
       tool-cache-paths: .cache
 ```
 
