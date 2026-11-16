@@ -173,44 +173,45 @@ class ToolCacheTest(unittest.TestCase):
         _, _, record = plan()
         outputs = record["outputs"]
         self.assertEqual(outputs["tool-cache-paths"], "[]")
-        for name in ("tool-cache-path-lines", "tool-cache-key", "tool-cache-restore-keys"):
+        for name in ("tool-cache-path-lines", "tool-cache-prefix"):
             with self.subTest(output=name):
                 self.assertEqual(outputs[name], "")
+        self.assertIsNone(record["tool-cache"])
 
     def test_no_tool_cache_without_the_static_checks(self):
         _, _, record = plan(tool_cache_paths=".cache", static_checks="false")
-        self.assertEqual(record["outputs"]["tool-cache-key"], "")
+        self.assertEqual(record["outputs"]["tool-cache-prefix"], "")
         self.assertEqual(record["outputs"]["tool-cache-paths"], "[]")
+        self.assertIsNone(record["tool-cache"])
 
     def test_basic_dry_run_matches_expected_ci_outputs(self):
         _, _, record = plan(workspace=str(REPOSITORY), path="php-library-check/tests/fixtures/basic",
                             tool_cache_paths=".cache")
         self.assertEqual(json.loads(record["outputs"]["tool-cache-paths"]), EXPECTED["tool-cache-paths"])
 
-    def test_plans_paths_key_and_restore_keys(self):
+    def test_plans_paths_and_the_key_prefix(self):
         _, _, record = plan(tool_cache_paths=".cache/phpstan\n.cache/rector, .php-cs-fixer.cache",
                             php_version="8.3", dependency_versions="highest")
         outputs = record["outputs"]
         self.assertEqual(json.loads(outputs["tool-cache-paths"]),
                          [".cache/phpstan", ".cache/rector", ".php-cs-fixer.cache"])
         self.assertEqual(outputs["tool-cache-path-lines"], ".cache/phpstan\n.cache/rector\n.php-cs-fixer.cache")
-        key = outputs["tool-cache-key"]
-        files_key = outputs["tool-cache-restore-keys"]
-        self.assertTrue(files_key.startswith("php-library-check-tools-Linux-php8.3-highest-"))
-        self.assertEqual(key, files_key + COMMIT)
-        self.assertNotIn(",", key)
+        prefix = outputs["tool-cache-prefix"]
+        self.assertRegex(prefix, r"^php-library-check-tools-Linux-php8\.3-highest-[0-9a-f]{12}-[0-9a-f]{64}-$")
+        self.assertEqual(record["tool-cache"], {"prefix": prefix, "commit": COMMIT})
+        self.assertNotIn("tool-cache-key", outputs)
 
-    def test_key_changes_with_os_php_dependency_versions_path_and_commit(self):
-        def key(**overrides):
+    def test_prefix_changes_with_os_php_dependency_versions_and_path(self):
+        def prefix(**overrides):
             _, _, record = plan(tool_cache_paths=".cache", **overrides)
-            return record["outputs"]["tool-cache-key"]
+            return record["outputs"]["tool-cache-prefix"]
 
-        base = key()
+        base = prefix()
         for override in ({"runner_os": "macOS"}, {"php_version": "8.4"}, {"dependency_versions": "highest"},
-                         {"commit": "f" * 40},
                          {"workspace": str(REPOSITORY), "path": "php-library-check/tests/fixtures/basic"}):
             with self.subTest(override=override):
-                self.assertNotEqual(key(**override), base)
+                self.assertNotEqual(prefix(**override), base)
+        self.assertEqual(prefix(commit="f" * 40), base)
 
     def test_config_hash_follows_composer_and_tool_files(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -253,12 +254,145 @@ class ToolCacheTest(unittest.TestCase):
                 check.command_plan(plan_args(plan_file=os.path.join(tmp, "plan.json"), tool_cache_paths=".cache"))
         self.assertIn("Would restore and save the tool caches .cache, key php-library-check-tools-Linux-php8.2-",
                       buffer.getvalue())
+        self.assertIn(f"-<hash of the installed dependencies>-{COMMIT}", buffer.getvalue())
 
     def test_multi_line_outputs_use_the_delimiter_form(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = os.path.join(tmp, "out")
             check.write_outputs(output, {"one": "a", "many": "b\nc"})
             self.assertEqual(read_outputs(Path(output).read_text()), {"one": "a", "many": "b\nc"})
+
+
+def installed_package(name, version, reference, **extra):
+    return {"name": name, "version": version, "source": {"type": "git", "reference": reference},
+            "dist": {"type": "zip", "reference": reference}, **extra}
+
+
+INSTALLED = {
+    "packages": [
+        installed_package("symfony/console", "v8.1.11", "a" * 40, **{"install-path": "../symfony/console"}),
+        installed_package("psr/log", "3.0.2", "b" * 40),
+    ],
+    "dev": True,
+    "dev-package-names": [],
+}
+
+
+def write_installed(vendor, data):
+    (vendor / "composer").mkdir(parents=True, exist_ok=True)
+    (vendor / "composer" / "installed.json").write_text(json.dumps(data))
+
+
+class DependenciesHashTest(unittest.TestCase):
+    def hash_of(self, data):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_installed(Path(tmp), data)
+            return check.dependencies_hash(Path(tmp) / "composer" / "installed.json")
+
+    def test_same_dependencies_give_the_same_hash(self):
+        reordered = {**INSTALLED, "packages": list(reversed(INSTALLED["packages"]))}
+        moved = {**INSTALLED, "packages": [{**package, "install-path": "/elsewhere"} for package in INSTALLED["packages"]]}
+        base = self.hash_of(INSTALLED)
+        self.assertRegex(base, r"^[0-9a-f]{64}$")
+        self.assertEqual(self.hash_of(reordered), base)
+        self.assertEqual(self.hash_of(moved), base)
+
+    def test_hash_follows_name_version_and_reference(self):
+        base = self.hash_of(INSTALLED)
+        console, log = INSTALLED["packages"]
+        cases = {
+            "version": [{**console, "version": "v8.1.12"}, log],
+            "reference": [installed_package("symfony/console", "v8.1.11", "c" * 40), log],
+            "added": [console, log, installed_package("psr/container", "2.0.2", "d" * 40)],
+            "removed": [console],
+        }
+        for case, packages in cases.items():
+            with self.subTest(case=case):
+                self.assertNotEqual(self.hash_of({**INSTALLED, "packages": packages}), base)
+
+    def test_dist_reference_is_used_without_a_source(self):
+        console, log = INSTALLED["packages"]
+        without_source = {key: value for key, value in console.items() if key != "source"}
+        self.assertEqual(self.hash_of({**INSTALLED, "packages": [without_source, log]}), self.hash_of(INSTALLED))
+
+    def test_reads_the_composer_1_list_form(self):
+        self.assertEqual(self.hash_of(INSTALLED["packages"]), self.hash_of(INSTALLED))
+
+    def test_rejects_a_missing_or_malformed_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            installed = Path(tmp) / "installed.json"
+            with self.assertRaisesRegex(check.CheckError, "does not exist"):
+                check.dependencies_hash(installed)
+            for content, message in (("{", "not readable JSON"), ('{"packages": {}}', "no package list"),
+                                     ("3", "no package list")):
+                installed.write_text(content)
+                with self.subTest(content=content), self.assertRaisesRegex(check.CheckError, message):
+                    check.dependencies_hash(installed)
+
+
+class CacheKeyTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.vendor = self.root / "vendor"
+        self.plan_file = self.root / "plan.json"
+        self.output = self.root / "out"
+
+    def cache_key(self, tool_cache, vendor_stdout=None, returncode=0):
+        self.plan_file.write_text(json.dumps({"directory": str(self.root), "commands": [], "tool-cache": tool_cache}))
+        stdout = f"{self.vendor}\n" if vendor_stdout is None else vendor_stdout
+        completed = subprocess.CompletedProcess(list(check.VENDOR_DIR_COMMAND), returncode, stdout=stdout, stderr="")
+        buffer = io.StringIO()
+        with mock.patch.object(check.subprocess, "run", return_value=completed) as run, redirect_stdout(buffer):
+            status = check.main(["cache-key", f"--plan-file={self.plan_file}", f"--github-output={self.output}"])
+        self.assertEqual(status, 0)
+        return read_outputs(self.output.read_text()), buffer.getvalue(), run
+
+    def test_key_is_prefix_dependencies_hash_and_commit(self):
+        write_installed(self.vendor, INSTALLED)
+        outputs, printed, run = self.cache_key({"prefix": "php-library-check-tools-Linux-php8.4-highest-x-y-",
+                                                "commit": COMMIT})
+        dependencies = check.dependencies_hash(self.vendor / "composer" / "installed.json")
+        restore_key = f"php-library-check-tools-Linux-php8.4-highest-x-y-{dependencies}-"
+        self.assertEqual(outputs, {"key": restore_key + COMMIT, "restore-keys": restore_key})
+        self.assertIn(restore_key + COMMIT, printed)
+        run.assert_called_once_with(list(check.VENDOR_DIR_COMMAND), cwd=str(self.root), check=False,
+                                    capture_output=True, text=True)
+
+    def test_other_dependencies_give_another_restore_key(self):
+        tool_cache = {"prefix": "p-", "commit": COMMIT}
+        write_installed(self.vendor, INSTALLED)
+        first, _, _ = self.cache_key(tool_cache)
+        write_installed(self.vendor, {**INSTALLED, "packages": INSTALLED["packages"][:1]})
+        second, _, _ = self.cache_key(tool_cache)
+        self.assertNotEqual(first["restore-keys"], second["restore-keys"])
+        self.assertTrue(second["key"].startswith(second["restore-keys"]))
+
+    def test_uses_the_last_line_of_the_vendor_dir_output(self):
+        write_installed(self.vendor, INSTALLED)
+        outputs, _, _ = self.cache_key({"prefix": "p-", "commit": COMMIT}, vendor_stdout=f"notice\n{self.vendor}\n")
+        self.assertTrue(outputs["key"].startswith("p-"))
+
+    def test_unreadable_dependencies_skip_the_cache_with_a_warning(self):
+        cases = {
+            "no installed.json": {},
+            "composer config fails": {"returncode": 1},
+            "relative vendor dir": {"vendor_stdout": "vendor\n"},
+            "empty output": {"vendor_stdout": ""},
+        }
+        for case, overrides in cases.items():
+            with self.subTest(case=case):
+                outputs, printed, _ = self.cache_key({"prefix": "p-", "commit": COMMIT}, **overrides)
+                self.assertEqual(outputs, {"key": "", "restore-keys": ""})
+                self.assertIn("::warning::No tool cache in this job:", printed)
+                self.output.unlink()
+
+    def test_no_planned_cache_writes_empty_outputs_without_composer(self):
+        outputs, printed, run = self.cache_key(None)
+        self.assertEqual(outputs, {"key": "", "restore-keys": ""})
+        self.assertEqual(printed, "")
+        run.assert_not_called()
 
 
 class RunTest(unittest.TestCase):

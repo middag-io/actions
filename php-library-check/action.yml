@@ -208,18 +208,31 @@ runs:
 
     # Only with tool-cache-paths, in the job of the static checks. The plan
     # step validated the paths (inside path, not path itself, not vendor) and
-    # built the key: runner OS, PHP version, dependency-versions, path, the
-    # hash of the Composer and tool configuration files, and the commit. The
-    # restore key falls back to the latest entry with all of those but the
-    # commit. actions/cache saves at the end of the job, only when it
-    # succeeds.
+    # built the fixed part of the key: runner OS, PHP version,
+    # dependency-versions, path and the hash of the Composer and tool
+    # configuration files. After the install, this step adds the hash of the
+    # installed dependencies (vendor/composer/installed.json) and the commit,
+    # so the key follows what Composer resolved, with or without a committed
+    # composer.lock. When it cannot read them, it warns and the job runs
+    # without the tool cache.
+    - name: Build the tool cache key from the installed dependencies
+      id: tool-cache
+      if: ${{ inputs.dry-run != 'true' && steps.plan.outputs.tool-cache-prefix != '' }}
+      shell: bash
+      env:
+        PLAN_FILE: ${{ steps.plan.outputs.plan-file }}
+      run: python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" cache-key --plan-file="$PLAN_FILE" --github-output="$GITHUB_OUTPUT"
+
+    # The restore key falls back to the latest entry with every part of the
+    # key but the commit. actions/cache saves at the end of the job, only
+    # when it succeeds.
     - name: Restore the caches of the static check tools
-      if: ${{ inputs.dry-run != 'true' && steps.plan.outputs.tool-cache-key != '' }}
+      if: ${{ inputs.dry-run != 'true' && steps.tool-cache.outputs.key != '' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.plan.outputs.tool-cache-path-lines }}
-        key: ${{ steps.plan.outputs.tool-cache-key }}
-        restore-keys: ${{ steps.plan.outputs.tool-cache-restore-keys }}
+        key: ${{ steps.tool-cache.outputs.key }}
+        restore-keys: ${{ steps.tool-cache.outputs.restore-keys }}
 
     - name: Run the library checks
       if: ${{ inputs.dry-run != 'true' }}
