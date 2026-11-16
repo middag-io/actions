@@ -731,7 +731,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/php-library-check.yml # zizmor: ignore[self-repository]
     with:
-      php-versions: '["8.2"]'
+      php-versions: '["8.3"]'
       path: php-library-check/tests/fixtures/basic
       lint-script: lint
       composer-scripts: check:schemas
