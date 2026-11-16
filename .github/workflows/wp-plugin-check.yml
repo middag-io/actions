@@ -26,7 +26,7 @@ on:
         description: JSON array of the PHP versions to check, one job each.
         type: string
         required: false
-        default: '["8.3", "8.4"]'
+        default: '["8.3", "8.4", "8.5"]'
       php-extensions:
         description: PHP extensions to install, separated by commas.
         type: string
