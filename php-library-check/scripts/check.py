@@ -199,11 +199,13 @@ def tool_cache(options: Options, root: Path, library_dir: Path, runner_os: str, 
     """Plans the tool cache, or None when tool-cache-paths is empty or the static checks are off.
 
     The key ends with the commit, so every successful job saves the caches
-    of its commit; the restore keys fall back to the latest entry with the
-    same Composer and tool files, then to the latest entry of the same
-    runner OS, PHP version, dependency versions and path. PHPStan, Rector
-    and PHP-CS-Fixer check their own cache against the code and the
-    configuration, so an older entry only costs the files that changed.
+    of its commit; the one restore key falls back to the latest entry with
+    the same runner OS, PHP version, dependency versions, path and Composer
+    and tool files. A change to composer.json, composer.lock or a tool
+    configuration starts from an empty cache, since not every tool checks
+    its cache against the installed dependencies. PHPStan, Rector and
+    PHP-CS-Fixer check their own cache against the code, so an older entry
+    only costs the files that changed.
     """
     paths = resolve_tool_cache_paths(root, library_dir, options.tool_cache_paths)
     if not paths or not options.static_checks:
@@ -216,7 +218,7 @@ def tool_cache(options: Options, root: Path, library_dir: Path, runner_os: str, 
     path_id = hashlib.sha256(library.encode("utf-8")).hexdigest()[:12]
     prefix = f"{TOOL_CACHE_KEY_PREFIX}-{runner_os}-php{options.php_version}-{options.dependency_versions}-{path_id}-"
     files = f"{prefix}{tool_config_hash(library_dir)}-"
-    return ToolCache(paths=paths, key=f"{files}{commit}", restore_keys=(files, prefix))
+    return ToolCache(paths=paths, key=f"{files}{commit}", restore_keys=(files,))
 
 
 def static_plan(options: Options) -> list[list[str]]:

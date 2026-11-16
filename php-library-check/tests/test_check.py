@@ -195,9 +195,8 @@ class ToolCacheTest(unittest.TestCase):
                          [".cache/phpstan", ".cache/rector", ".php-cs-fixer.cache"])
         self.assertEqual(outputs["tool-cache-path-lines"], ".cache/phpstan\n.cache/rector\n.php-cs-fixer.cache")
         key = outputs["tool-cache-key"]
-        files_key, prefix = outputs["tool-cache-restore-keys"].split("\n")
-        self.assertTrue(prefix.startswith("php-library-check-tools-Linux-php8.3-highest-"))
-        self.assertTrue(files_key.startswith(prefix))
+        files_key = outputs["tool-cache-restore-keys"]
+        self.assertTrue(files_key.startswith("php-library-check-tools-Linux-php8.3-highest-"))
         self.assertEqual(key, files_key + COMMIT)
         self.assertNotIn(",", key)
 

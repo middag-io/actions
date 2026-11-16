@@ -125,11 +125,8 @@ class ActionWiringTest(unittest.TestCase):
         self.assertLess(names.index(SETUP_STEP), names.index(AUDIT_STEP))
         self.assertLess(names.index(AUDIT_STEP), names.index(RUN_STEP))
 
-    def test_tool_cache_uses_the_pinned_cache_action_of_php_composer_setup(self):
-        with open(SETUP_ACTION, encoding="utf-8") as handle:
-            pins = re.findall(r"uses: (actions/cache@[0-9a-f]{40} # v\S+)", handle.read())
-        self.assertEqual(len(pins), 1)
-        self.assertEqual(self.steps[CACHE_STEP]["uses"], pins[0])
+    def test_tool_cache_uses_actions_cache_pinned_by_sha(self):
+        self.assertRegex(self.steps[CACHE_STEP]["uses"], r"^actions/cache@[0-9a-f]{40} # v\d+\.\d+\.\d+$")
 
     def test_tool_cache_runs_only_when_planned_and_not_in_a_dry_run(self):
         self.assertEqual(

@@ -161,8 +161,8 @@ jobs:
 ```
 
 - The cache step runs only in the job of the static checks (the first PHP version in the workflow, `static-checks: true` in the action), after the install and the audit, before the checks. A dry run only prints the paths and the key.
-- The key holds the runner OS, the PHP version, `dependency-versions`, a hash of `path`, a hash of the Composer and tool configuration files at the library root (`composer.json`, `composer.lock`, `*.neon`, `*.neon.dist`, `*rector*.php`, `*php-cs-fixer*.php`, `.php_cs`, `.php_cs.dist`) and the commit. The restore keys fall back to the latest entry with the same files, then to the latest entry of the same runner OS, PHP version, `dependency-versions` and `path`.
-- Each tool checks its own cache against the code, the configuration and the installed dependencies, so an older entry costs only the files that changed; it never skips a changed file.
+- The key holds the runner OS, the PHP version, `dependency-versions`, a hash of `path`, a hash of the Composer and tool configuration files at the library root (`composer.json`, `composer.lock`, `*.neon`, `*.neon.dist`, `*rector*.php`, `*php-cs-fixer*.php`, `.php_cs`, `.php_cs.dist`) and the commit. The restore key falls back to the latest entry with the same values except the commit. A change to `composer.json`, `composer.lock` or a tool configuration starts from an empty cache.
+- Each tool checks its own cache against the code, so an older entry of the same files costs only the source files that changed. With `dependency-versions: highest`, the installed versions can change while `composer.lock` stays the same.
 - The key ends with the commit, so every successful job saves a new entry; GitHub evicts the least recently used entries when the repository reaches its cache quota. `actions/cache` saves only when the job succeeds: a failing check saves nothing.
 - A pull request restores entries of its own branch and of the base branch, and saves to its own branch; it cannot change the entries that `main` restores.
 - Do not pass `tool-cache-paths` in a workflow that publishes or releases: a restored cache must never feed a release.

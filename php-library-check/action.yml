@@ -210,9 +210,9 @@ runs:
     # step validated the paths (inside path, not path itself, not vendor) and
     # built the key: runner OS, PHP version, dependency-versions, path, the
     # hash of the Composer and tool configuration files, and the commit. The
-    # restore keys fall back to the latest entry with the same files, then to
-    # the latest of the same runner OS, PHP version, dependency-versions and
-    # path. actions/cache saves at the end of the job, only when it succeeds.
+    # restore key falls back to the latest entry with all of those but the
+    # commit. actions/cache saves at the end of the job, only when it
+    # succeeds.
     - name: Restore the caches of the static check tools
       if: ${{ inputs.dry-run != 'true' && steps.plan.outputs.tool-cache-key != '' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
