@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/middag-io/actions/compare/php-composer-setup-v1.1.0...php-composer-setup-v1.2.0) (2026-11-16)
+
+
+### Features
+
+* **php-composer-setup:** add dependency-versions and unset-platform-php inputs ([472ef89](https://github.com/middag-io/actions/commit/472ef89486b99fc14ec95d3480049753971fee5d))
+
 ## [1.1.0](https://github.com/middag-io/actions/compare/php-composer-setup-v1.0.0...php-composer-setup-v1.1.0) (2026-11-03)
 
 

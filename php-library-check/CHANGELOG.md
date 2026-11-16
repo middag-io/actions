@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0](https://github.com/middag-io/actions/compare/php-library-check-v1.0.0...php-library-check-v1.1.0) (2026-11-16)
+
+
+### Features
+
+* **php-library-check:** cache the PHPStan, Rector and PHP-CS-Fixer results ([7c48b4b](https://github.com/middag-io/actions/commit/7c48b4b7f0757557c296bc8f406bdab247708f42))
+* **php-library-check:** check the highest dependency versions ([3025326](https://github.com/middag-io/actions/commit/30253262511e163982c0a07acee5a82fd2ee3eb9))
+
+
+### Bug Fixes
+
+* **php-library-check:** key the tool caches by the installed dependencies ([e64894b](https://github.com/middag-io/actions/commit/e64894bd1124c4a59188dab7a68b625978032ff8))
+* **php-library-check:** match expect-majors items in linear time ([d7bca3b](https://github.com/middag-io/actions/commit/d7bca3be80a9efb16d9a966dd39c471a020fffc4))
+* **php-library-check:** restore tool caches only with the same Composer and tool files ([56e0bf4](https://github.com/middag-io/actions/commit/56e0bf4e5cc116676d203f765d179ecc26202981))
+
 ## 1.0.0 (2026-11-05)
 
 
