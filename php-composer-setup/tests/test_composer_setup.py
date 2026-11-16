@@ -36,6 +36,8 @@ def check_args(**overrides):
         "install": "true",
         "no_dev": "false",
         "optimize_autoloader": "false",
+        "dependency_versions": "locked",
+        "unset_platform_php": "false",
         "dry_run": "false",
     }
     values.update(overrides)
@@ -70,6 +72,28 @@ class BuildPlanTest(unittest.TestCase):
         self.assertEqual(plan["auth-entries"], expected["auth-entries"])
         self.assertEqual(plan["install-command"], expected["install-command"])
 
+    def test_defaults_plan_install_and_no_platform_command(self):
+        plan = composer_setup.build_plan(check_args(), FIXTURE)
+        self.assertEqual(plan["install-command"], "composer install --no-interaction --prefer-dist")
+        self.assertEqual(plan["platform-command"], "")
+
+    def test_highest_plans_composer_update(self):
+        plan = composer_setup.build_plan(check_args(dependency_versions="highest", no_dev="true"), FIXTURE)
+        self.assertEqual(plan["install-command"], "composer update --no-interaction --prefer-dist --no-dev")
+
+    def test_unset_platform_php_plans_the_config_command(self):
+        plan = composer_setup.build_plan(check_args(unset_platform_php="true"), FIXTURE)
+        self.assertEqual(plan["platform-command"], "composer config --no-interaction --unset platform.php")
+        self.assertEqual(plan["install-command"], "composer install --no-interaction --prefer-dist")
+
+    def test_highest_and_unset_platform_php_need_install(self):
+        for args in (
+            check_args(install="false", dependency_versions="highest"),
+            check_args(install="false", unset_platform_php="true"),
+        ):
+            with self.subTest(args=args), self.assertRaisesRegex(composer_setup.InputError, "need install: true"):
+                composer_setup.build_plan(args, FIXTURE)
+
     def test_lists_github_token_entry(self):
         plan = composer_setup.build_plan(check_args(has_github_token="true"), FIXTURE)
         self.assertEqual(plan["auth-entries"], "github-oauth:github.com")
@@ -91,6 +115,8 @@ class BuildPlanTest(unittest.TestCase):
             "coverage": check_args(coverage="phpdbg"),
             "dry-run": check_args(dry_run="yes"),
             "no-dev": check_args(no_dev="1"),
+            "dependency-versions": check_args(dependency_versions="lowest"),
+            "unset-platform-php": check_args(unset_platform_php="yes"),
         }
         for name, args in cases.items():
             with self.subTest(name=name), self.assertRaisesRegex(composer_setup.InputError, name):
@@ -321,6 +347,36 @@ class InstallTest(unittest.TestCase):
             cwd="sub",
             check=False,
         )
+
+    def test_highest_runs_composer_update(self):
+        with mock.patch.object(composer_setup.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
+            code, _ = run_quietly(composer_setup.main, ["install", "--dependency-versions=highest"])
+        self.assertEqual(code, 0)
+        run.assert_called_once_with(
+            ["composer", "update", "--no-interaction", "--prefer-dist"], cwd=".", check=False
+        )
+
+    def test_unset_platform_php_runs_before_the_install(self):
+        with mock.patch.object(composer_setup.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
+            code, printed = run_quietly(
+                composer_setup.main,
+                ["install", "--working-directory=sub", "--dependency-versions=highest", "--unset-platform-php=true"],
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            run.call_args_list,
+            [
+                mock.call(["composer", "config", "--no-interaction", "--unset", "platform.php"], cwd="sub", check=False),
+                mock.call(["composer", "update", "--no-interaction", "--prefer-dist"], cwd="sub", check=False),
+            ],
+        )
+        self.assertIn("Running: composer config --no-interaction --unset platform.php", printed)
+
+    def test_failed_unset_stops_before_the_install(self):
+        with mock.patch.object(composer_setup.subprocess, "run", return_value=mock.Mock(returncode=3)) as run:
+            code, _ = run_quietly(composer_setup.main, ["install", "--unset-platform-php=true"])
+        self.assertEqual(code, 3)
+        self.assertEqual(run.call_count, 1)
 
     def test_returns_composer_exit_code(self):
         with mock.patch.object(composer_setup.subprocess, "run", return_value=mock.Mock(returncode=2)):
