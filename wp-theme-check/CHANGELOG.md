@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/middag-io/actions/compare/wp-theme-check-v1.1.0...wp-theme-check-v1.2.0) (2026-11-16)
+
+
+### Features
+
+* **wp-theme-check:** default php-versions to 8.3, 8.4 and 8.5 ([7d65619](https://github.com/middag-io/actions/commit/7d65619bf9ba3774dd020b6140921c3c616eea1b))
+
 ## [1.1.0](https://github.com/middag-io/actions/compare/wp-theme-check-v1.0.1...wp-theme-check-v1.1.0) (2026-11-05)
 
 

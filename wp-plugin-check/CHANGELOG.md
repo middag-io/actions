@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/middag-io/actions/compare/wp-plugin-check-v1.1.0...wp-plugin-check-v1.2.0) (2026-11-16)
+
+
+### Features
+
+* **wp-plugin-check:** default php-versions to 8.3, 8.4 and 8.5 ([0f40364](https://github.com/middag-io/actions/commit/0f40364c640434531415ca833fbeabc874878c84))
+
 ## [1.1.0](https://github.com/middag-io/actions/compare/wp-plugin-check-v1.0.1...wp-plugin-check-v1.1.0) (2026-11-05)
 
 
