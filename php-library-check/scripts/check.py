@@ -31,8 +31,11 @@ PHP_VERSION_RE = re.compile(r"\d+\.\d+")
 COMPOSER_SCRIPT_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9:_.-]*")
 # One expect-majors item: <vendor>/<package>:<major>, a Composer package name
 # (https://getcomposer.org/doc/04-schema.md#name) and a major version.
+# Same language as the Composer name pattern, but each repeated group starts
+# with a mandatory separator, so a run of characters splits only one way and
+# matching stays linear (no catastrophic backtracking).
 EXPECT_MAJOR_RE = re.compile(
-    r"(?P<name>[a-z0-9](?:[_.-]?[a-z0-9]+)*/[a-z0-9](?:(?:[_.]|-{1,2})?[a-z0-9]+)*):(?P<major>0|[1-9][0-9]*)"
+    r"(?P<name>[a-z0-9]+(?:[_.-][a-z0-9]+)*/[a-z0-9]+(?:(?:[_.]|-{1,2})[a-z0-9]+)*):(?P<major>0|[1-9][0-9]*)"
 )
 # Major version of an installed package: "v8.1.11", "8.1.11", "8.1.x-dev".
 INSTALLED_MAJOR_RE = re.compile(r"v?(0|[1-9][0-9]*)\.")

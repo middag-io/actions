@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -83,6 +84,26 @@ class InputTest(unittest.TestCase):
                       "symfony/console:8.1", "symfony/console 8", "console:8", "symfony/console:8; rm -rf /"):
             with self.subTest(value=value), self.assertRaisesRegex(check.CheckError, "expect-majors"):
                 check.parse_expect_majors(value)
+
+    def test_expect_majors_takes_every_composer_name_form(self):
+        for name in ("vendor/pkg", "a-b/c_d.e", "a.b_c-d/e--f", "a1/b2", "0/0", "vendor/a.b-c_d--e"):
+            with self.subTest(name=name):
+                self.assertEqual(check.parse_expect_majors(f"{name}:1"), ((name, 1),))
+
+    def test_expect_majors_rejects_bad_separators(self):
+        for name in ("-vendor/pkg", "vendor-/pkg", "ven--dor/pkg", "vendor/pkg---x", "vendor/-pkg",
+                     "vendor/pkg-", "vendor/pkg.", "vendor/p..kg", "vendor/pkg.-x", "vendor/p_-kg"):
+            with self.subTest(name=name), self.assertRaisesRegex(check.CheckError, "expect-majors"):
+                check.parse_expect_majors(f"{name}:1")
+
+    def test_expect_major_pattern_is_linear_on_adversarial_input(self):
+        # A nested optional separator made this backtrack exponentially:
+        # 24 characters already took about 0.4 s.
+        for value in ("0" * 5000 + "!", "a/" + "0" * 5000 + "!", "a-" * 2500 + "/b:", "a/" + "b-" * 2500 + "!"):
+            with self.subTest(length=len(value)):
+                start = time.perf_counter()
+                self.assertIsNone(check.EXPECT_MAJOR_RE.fullmatch(value))
+                self.assertLess(time.perf_counter() - start, 0.5)
 
     def test_expect_majors_rejects_a_package_named_twice(self):
         with self.assertRaisesRegex(check.CheckError, "symfony/console twice"):
