@@ -19,7 +19,7 @@ on:
         description: JSON array of the PHP versions to check, one job each; the static checks run on the first one.
         type: string
         required: false
-        default: '["8.2", "8.3", "8.4"]'
+        default: '["8.3", "8.4", "8.5"]'
       path:
         description: Directory of the library (the one that holds composer.json), relative to the checkout.
         type: string
