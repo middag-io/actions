@@ -27,7 +27,7 @@ Reusable workflow (`workflow_call`):
 
 | Input                    | Type    | Default                                          | Description                                                                                                    |
 | ------------------------ | ------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `php-versions`           | string  | `["8.3", "8.4"]`                                 | JSON array of the PHP versions to check with, one job each.                                                    |
+| `php-versions`           | string  | `["8.3", "8.4", "8.5"]`                          | JSON array of the PHP versions to check with, one job each.                                                    |
 | `php-extensions`         | string  | `mbstring, xml`                                  | PHP extensions to install, separated by commas (setup-php syntax).                                             |
 | `has-cs-fixer`           | boolean | `true`                                           | Run PHP CS Fixer in dry-run mode.                                                                              |
 | `has-phpstan`            | boolean | `true`                                           | Run PHPStan.                                                                                                   |
