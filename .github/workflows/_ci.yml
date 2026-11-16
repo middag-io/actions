@@ -735,11 +735,12 @@ jobs:
       path: php-library-check/tests/fixtures/basic
       lint-script: lint
       composer-scripts: check:schemas
+      tool-cache-paths: .cache
       audit-blocking-severities: critical, high
       dry-run: true
 
-  # The dry run must plan exactly the commands and the audit command of
-  # php-library-check/tests/fixtures/expected/basic.json.
+  # The dry run must plan exactly the commands, the audit command and the
+  # tool cache paths of php-library-check/tests/fixtures/expected/basic.json.
   dry-run-check-php-library-check:
     name: dry-run-check-php-library-check
     needs: dry-run-php-library-check
@@ -757,12 +758,15 @@ jobs:
         env:
           COMMANDS: ${{ needs.dry-run-php-library-check.outputs.commands }}
           AUDIT_COMMAND: ${{ needs.dry-run-php-library-check.outputs.audit-command }}
+          TOOL_CACHE_PATHS: ${{ needs.dry-run-php-library-check.outputs.tool-cache-paths }}
         run: |
           expected="php-library-check/tests/fixtures/expected/basic.json"
           echo "commands=$COMMANDS"
           echo "audit-command=$AUDIT_COMMAND"
-          if ! jq -e --argjson commands "$COMMANDS" --arg audit "$AUDIT_COMMAND" \
-            '.commands == $commands and .["audit-command"] == $audit' "$expected" >/dev/null; then
+          echo "tool-cache-paths=$TOOL_CACHE_PATHS"
+          if ! jq -e --argjson commands "$COMMANDS" --arg audit "$AUDIT_COMMAND" --argjson caches "$TOOL_CACHE_PATHS" \
+            '.commands == $commands and .["audit-command"] == $audit and .["tool-cache-paths"] == $caches' \
+            "$expected" >/dev/null; then
             echo "::error::dry-run outputs differ from $expected"
             exit 1
           fi

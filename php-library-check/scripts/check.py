@@ -12,19 +12,24 @@ The static checks (composer validate, the PSR-4 autoload check and the
 lint, PHPStan, PHP-CS-Fixer and Rector scripts) run only in the job whose
 static-checks input is true; the test script runs in every job.
 
+With tool-cache-paths, the plan also names the cache of the static check
+tools (PHPStan, Rector, PHP-CS-Fixer): the directories to restore and save
+and the actions/cache key, which action.yml passes to actions/cache.
+
 Standard library only. Run as ``python3 -I``.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Mapping, Sequence
 
 PHP_VERSION_RE = re.compile(r"\d+\.\d+")
@@ -42,6 +47,20 @@ INSTALLED_MAJOR_RE = re.compile(r"v?(0|[1-9][0-9]*)\.")
 SHOW_COMMAND = ("composer", "show", "--format=json", "--no-interaction")
 # Inputs that name one Composer script each, in the order they run.
 STATIC_SCRIPTS = ("lint-script", "phpstan-script", "cs-fixer-script", "rector-script")
+DEPENDENCY_VERSIONS = ("locked", "highest")
+RUNNER_OS_RE = re.compile(r"[A-Za-z0-9]+")
+COMMIT_RE = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
+# A tool-cache-paths item is a plain relative path: no glob, negation, home,
+# variable or backslash, which actions/cache would expand or misread.
+UNSAFE_CACHE_PATH_RE = re.compile(r"[*?\[\]{}!~$\\]")
+TOOL_CACHE_KEY_PREFIX = "php-library-check-tools"
+# Files at the library root whose content is part of the tool cache key:
+# the Composer files and the configuration of PHPStan (*.neon), Rector and
+# PHP-CS-Fixer, under their upstream names and the usual variants.
+TOOL_CONFIG_GLOBS = (
+    "composer.json", "composer.lock", "*.neon", "*.neon.dist", "*rector*.php", "*php-cs-fixer*.php", ".php_cs",
+    ".php_cs.dist",
+)
 
 
 class CheckError(Exception):
@@ -60,6 +79,17 @@ class Options:
     composer_scripts: tuple[str, ...]
     test_script: str
     expect_majors: tuple[tuple[str, int], ...] = ()
+    dependency_versions: str = "locked"
+    tool_cache_paths: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ToolCache:
+    """What action.yml passes to actions/cache; paths are relative to the checkout."""
+
+    paths: tuple[str, ...]
+    key: str
+    restore_keys: tuple[str, ...]
 
 
 def parse_bool(name: str, value: str) -> bool:
@@ -108,7 +138,15 @@ def parse_options(args: argparse.Namespace) -> Options:
         composer_scripts=extra,
         test_script=check_script("test-script", args.test_script),
         expect_majors=parse_expect_majors(args.expect_majors),
+        dependency_versions=check_dependency_versions(args.dependency_versions),
+        tool_cache_paths=split_list(args.tool_cache_paths),
     )
+
+
+def check_dependency_versions(value: str) -> str:
+    if value not in DEPENDENCY_VERSIONS:
+        raise CheckError(f"input dependency-versions must be locked or highest, got {value!r}")
+    return value
 
 
 def resolve_library_dir(workspace: Path, path: str) -> Path:
@@ -122,6 +160,63 @@ def resolve_library_dir(workspace: Path, path: str) -> Path:
     if not (library_dir / "composer.json").is_file():
         raise CheckError(f"input path {path!r} has no composer.json")
     return library_dir
+
+
+def resolve_tool_cache_paths(root: Path, library_dir: Path, items: Sequence[str]) -> tuple[str, ...]:
+    """Resolves each tool-cache-paths item inside path; returns them relative to the checkout.
+
+    Refuses an absolute path, a glob, a path that leaves path, path itself
+    and vendor: a restore there would replace the code or the dependencies
+    under check.
+    """
+    resolved: list[str] = []
+    for item in items:
+        if Path(item).is_absolute() or UNSAFE_CACHE_PATH_RE.search(item) or ".." in PurePosixPath(item).parts:
+            raise CheckError(f"input tool-cache-paths: {item!r} is not a plain path relative to path")
+        target = (library_dir / item).resolve()
+        if library_dir not in target.parents:
+            raise CheckError(f"input tool-cache-paths: {item!r} is not inside path")
+        if target.relative_to(library_dir).parts[0] == "vendor":
+            raise CheckError(f"input tool-cache-paths: {item!r} is inside vendor")
+        relative = target.relative_to(root).as_posix()
+        if relative in resolved:
+            raise CheckError(f"input tool-cache-paths names {item!r} twice")
+        resolved.append(relative)
+    return tuple(resolved)
+
+
+def tool_config_hash(library_dir: Path) -> str:
+    """SHA-256 of the name and content of each file of TOOL_CONFIG_GLOBS at the library root."""
+    names = sorted({match.name for pattern in TOOL_CONFIG_GLOBS for match in library_dir.glob(pattern) if match.is_file()})
+    digest = hashlib.sha256()
+    for name in names:
+        digest.update(name.encode("utf-8") + b"\0")
+        digest.update(hashlib.sha256((library_dir / name).read_bytes()).digest())
+    return digest.hexdigest()
+
+
+def tool_cache(options: Options, root: Path, library_dir: Path, runner_os: str, commit: str) -> ToolCache | None:
+    """Plans the tool cache, or None when tool-cache-paths is empty or the static checks are off.
+
+    The key ends with the commit, so every successful job saves the caches
+    of its commit; the restore keys fall back to the latest entry with the
+    same Composer and tool files, then to the latest entry of the same
+    runner OS, PHP version, dependency versions and path. PHPStan, Rector
+    and PHP-CS-Fixer check their own cache against the code and the
+    configuration, so an older entry only costs the files that changed.
+    """
+    paths = resolve_tool_cache_paths(root, library_dir, options.tool_cache_paths)
+    if not paths or not options.static_checks:
+        return None
+    if not RUNNER_OS_RE.fullmatch(runner_os):
+        raise CheckError(f"runner OS {runner_os!r} is not a plain name")
+    if not COMMIT_RE.fullmatch(commit):
+        raise CheckError(f"commit {commit!r} is not a full commit SHA")
+    library = library_dir.relative_to(root).as_posix() if library_dir != root else "."
+    path_id = hashlib.sha256(library.encode("utf-8")).hexdigest()[:12]
+    prefix = f"{TOOL_CACHE_KEY_PREFIX}-{runner_os}-php{options.php_version}-{options.dependency_versions}-{path_id}-"
+    files = f"{prefix}{tool_config_hash(library_dir)}-"
+    return ToolCache(paths=paths, key=f"{files}{commit}", restore_keys=(files, prefix))
 
 
 def static_plan(options: Options) -> list[list[str]]:
@@ -144,17 +239,24 @@ def build_plan(options: Options) -> list[list[str]]:
 
 
 def write_outputs(path: str, values: Mapping[str, str]) -> None:
+    """Appends each value to GITHUB_OUTPUT; a multi-line value in the delimiter form."""
     if not path:
         return
     with open(path, "a", encoding="utf-8") as handle:
         for key, value in values.items():
-            handle.write(f"{key}={value}\n")
+            if "\n" not in value:
+                handle.write(f"{key}={value}\n")
+                continue
+            delimiter = f"EOF_{hashlib.sha256(value.encode('utf-8')).hexdigest()}"
+            handle.write(f"{key}<<{delimiter}\n{value}\n{delimiter}\n")
 
 
 def command_plan(args: argparse.Namespace) -> int:
     options = parse_options(args)
     dry_run = parse_bool("dry-run", args.dry_run)
-    library_dir = resolve_library_dir(Path(args.workspace), options.path)
+    root = Path(args.workspace).resolve()
+    library_dir = resolve_library_dir(root, options.path)
+    cache = tool_cache(options, root, library_dir, args.runner_os, args.commit)
     plan = build_plan(options)
     plan_file = Path(args.plan_file)
     expect_majors = dict(options.expect_majors)
@@ -166,12 +268,18 @@ def command_plan(args: argparse.Namespace) -> int:
     print(f"PHP {options.php_version}: {kind}.")
     for name, major in options.expect_majors:
         print(("Would check: " if dry_run else "Will check: ") + f"{name} installed at major version {major}")
+    if cache:
+        print(("Would" if dry_run else "Will") + f" restore and save the tool caches {', '.join(cache.paths)}, key {cache.key}")
     for command in plan:
         print(("Would run: " if dry_run else "Will run: ") + " ".join(command))
     write_outputs(args.github_output, {
         "commands": json.dumps([" ".join(command) for command in plan]),
         "expect-majors": json.dumps(expect_majors),
         "plan-file": str(plan_file),
+        "tool-cache-paths": json.dumps(list(cache.paths) if cache else []),
+        "tool-cache-path-lines": "\n".join(cache.paths) if cache else "",
+        "tool-cache-key": cache.key if cache else "",
+        "tool-cache-restore-keys": "\n".join(cache.restore_keys) if cache else "",
     })
     return 0
 
@@ -246,6 +354,10 @@ def parser() -> argparse.ArgumentParser:
     plan.add_argument("--composer-scripts", default="")
     plan.add_argument("--test-script", default="")
     plan.add_argument("--expect-majors", default="")
+    plan.add_argument("--dependency-versions", default="locked")
+    plan.add_argument("--tool-cache-paths", default="")
+    plan.add_argument("--runner-os", default="")
+    plan.add_argument("--commit", default="")
     plan.add_argument("--dry-run", default="false")
     plan.add_argument("--plan-file", required=True)
     plan.add_argument("--github-output", default="")

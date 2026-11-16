@@ -90,6 +90,11 @@ on:
         type: string
         required: false
         default: ""
+      tool-cache-paths:
+        description: Cache directories or files of PHPStan, Rector and PHP-CS-Fixer, relative to path, separated by commas or new lines (for example .cache); restored and saved with actions/cache in the job of the static checks. Empty caches nothing.
+        type: string
+        required: false
+        default: ""
       audit-blocking-severities:
         description: Severities of a dependency advisory that fail the job, separated by commas (critical, high, medium, low). Default from the variable PHP_LIBRARY_CHECK_AUDIT_BLOCKING_SEVERITIES, else critical.
         type: string
@@ -125,6 +130,9 @@ on:
       expect-majors:
         description: JSON object of the expected major version of each package of expect-majors; {} when empty.
         value: ${{ jobs.check.outputs.expect-majors }}
+      tool-cache-paths:
+        description: JSON array of the tool cache paths, relative to the checkout, of the last job that ended; [] when no tool cache.
+        value: ${{ jobs.check.outputs.tool-cache-paths }}
 
 permissions: {}
 
@@ -152,6 +160,7 @@ jobs:
       install-command: ${{ steps.check.outputs.install-command }}
       platform-command: ${{ steps.check.outputs.platform-command }}
       expect-majors: ${{ steps.check.outputs.expect-majors }}
+      tool-cache-paths: ${{ steps.check.outputs.tool-cache-paths }}
     steps:
       - name: Check out the calling repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -178,6 +187,7 @@ jobs:
           dependency-versions: ${{ inputs.dependency-versions }}
           unset-platform-php: ${{ inputs.unset-platform-php }}
           expect-majors: ${{ inputs.expect-majors }}
+          tool-cache-paths: ${{ inputs.tool-cache-paths }}
           audit-blocking-severities: ${{ inputs.audit-blocking-severities }}
           composer-auth: ${{ !inputs.dry-run && secrets.composer-auth || '' }}
           dry-run: ${{ inputs.dry-run }}

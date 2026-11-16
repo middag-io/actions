@@ -24,6 +24,8 @@ sys.path.insert(0, str(HERE.parent / "scripts"))
 import check  # noqa: E402
 
 FIXTURE = HERE / "fixtures" / "basic"
+REPOSITORY = HERE.parent.parent
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
 EXPECTED = json.loads((HERE / "fixtures" / "expected" / "basic.json").read_text())
 EXPECTED_HIGHEST = json.loads((HERE / "fixtures" / "expected" / "highest.json").read_text())
 # Inputs of the highest dry-run job of _ci.yml that reach check.py.
@@ -41,9 +43,28 @@ def plan_args(**overrides):
         "lint_script": "lint", "phpstan_script": "check:stan", "cs_fixer_script": "check:style",
         "rector_script": "check:rector", "composer_scripts": "check:schemas", "test_script": "test",
         "expect_majors": "", "dry_run": "true", "plan_file": "", "github_output": "",
+        "dependency_versions": "locked", "tool_cache_paths": "", "runner_os": "Linux", "commit": COMMIT,
     }
     values.update(overrides)
     return argparse.Namespace(**values)
+
+
+def read_outputs(text):
+    """Parses a GITHUB_OUTPUT file: name=value lines and name<<delimiter blocks."""
+    outputs, lines = {}, iter(text.splitlines())
+    for line in lines:
+        if "<<" in line and "=" not in line.split("<<", 1)[0]:
+            name, delimiter = line.split("<<", 1)
+            block = []
+            for value in lines:
+                if value == delimiter:
+                    break
+                block.append(value)
+            outputs[name] = "\n".join(block)
+        else:
+            name, value = line.split("=", 1)
+            outputs[name] = value
+    return outputs
 
 
 def plan(**overrides):
@@ -51,7 +72,7 @@ def plan(**overrides):
         plan_file, output = os.path.join(tmp, "plan.json"), os.path.join(tmp, "out")
         with redirect_stdout(io.StringIO()):
             status = check.command_plan(plan_args(plan_file=plan_file, github_output=output, **overrides))
-        outputs = dict(line.split("=", 1) for line in Path(output).read_text().splitlines())
+        outputs = read_outputs(Path(output).read_text())
         record = json.loads(Path(plan_file).read_text())
         record["outputs"] = outputs
         return status, json.loads(outputs["commands"]), record
@@ -145,6 +166,100 @@ class PlanTest(unittest.TestCase):
     def test_strict_validate_adds_the_flag(self):
         _, commands, _ = plan(composer_validate_strict="true")
         self.assertEqual(commands[0], "composer validate --no-interaction --no-check-publish --no-check-lock --strict")
+
+
+class ToolCacheTest(unittest.TestCase):
+    def test_no_tool_cache_by_default(self):
+        _, _, record = plan()
+        outputs = record["outputs"]
+        self.assertEqual(outputs["tool-cache-paths"], "[]")
+        for name in ("tool-cache-path-lines", "tool-cache-key", "tool-cache-restore-keys"):
+            with self.subTest(output=name):
+                self.assertEqual(outputs[name], "")
+
+    def test_no_tool_cache_without_the_static_checks(self):
+        _, _, record = plan(tool_cache_paths=".cache", static_checks="false")
+        self.assertEqual(record["outputs"]["tool-cache-key"], "")
+        self.assertEqual(record["outputs"]["tool-cache-paths"], "[]")
+
+    def test_basic_dry_run_matches_expected_ci_outputs(self):
+        _, _, record = plan(workspace=str(REPOSITORY), path="php-library-check/tests/fixtures/basic",
+                            tool_cache_paths=".cache")
+        self.assertEqual(json.loads(record["outputs"]["tool-cache-paths"]), EXPECTED["tool-cache-paths"])
+
+    def test_plans_paths_key_and_restore_keys(self):
+        _, _, record = plan(tool_cache_paths=".cache/phpstan\n.cache/rector, .php-cs-fixer.cache",
+                            php_version="8.3", dependency_versions="highest")
+        outputs = record["outputs"]
+        self.assertEqual(json.loads(outputs["tool-cache-paths"]),
+                         [".cache/phpstan", ".cache/rector", ".php-cs-fixer.cache"])
+        self.assertEqual(outputs["tool-cache-path-lines"], ".cache/phpstan\n.cache/rector\n.php-cs-fixer.cache")
+        key = outputs["tool-cache-key"]
+        files_key, prefix = outputs["tool-cache-restore-keys"].split("\n")
+        self.assertTrue(prefix.startswith("php-library-check-tools-Linux-php8.3-highest-"))
+        self.assertTrue(files_key.startswith(prefix))
+        self.assertEqual(key, files_key + COMMIT)
+        self.assertNotIn(",", key)
+
+    def test_key_changes_with_os_php_dependency_versions_path_and_commit(self):
+        def key(**overrides):
+            _, _, record = plan(tool_cache_paths=".cache", **overrides)
+            return record["outputs"]["tool-cache-key"]
+
+        base = key()
+        for override in ({"runner_os": "macOS"}, {"php_version": "8.4"}, {"dependency_versions": "highest"},
+                         {"commit": "f" * 40},
+                         {"workspace": str(REPOSITORY), "path": "php-library-check/tests/fixtures/basic"}):
+            with self.subTest(override=override):
+                self.assertNotEqual(key(**override), base)
+
+    def test_config_hash_follows_composer_and_tool_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            library = Path(tmp)
+            (library / "composer.json").write_text("{}")
+            first = check.tool_config_hash(library)
+            (library / "src.php").write_text("<?php")
+            self.assertEqual(check.tool_config_hash(library), first)
+            for name in ("composer.lock", ".phpstan.neon", "phpstan.neon.dist", ".php-rector.php", "rector.php",
+                         ".php-cs-fixer.dist.php", ".php-cs-fixer.php"):
+                with self.subTest(file=name):
+                    before = check.tool_config_hash(library)
+                    (library / name).write_text(name)
+                    after = check.tool_config_hash(library)
+                    self.assertNotEqual(after, before)
+                    (library / name).write_text(name + " changed")
+                    self.assertNotEqual(check.tool_config_hash(library), after)
+
+    def test_rejects_unsafe_paths(self):
+        for value in ("/tmp/cache", "../cache", ".cache/../../x", ".", "./", "vendor", "vendor/bin", "*.cache",
+                      ".cache/**", "!.cache", "~/.cache", "$HOME/.cache", ".cache\\x", "src/../vendor/x"):
+            with self.subTest(value=value), self.assertRaisesRegex(check.CheckError, "tool-cache-paths"):
+                plan(tool_cache_paths=value)
+
+    def test_rejects_a_path_named_twice(self):
+        with self.assertRaisesRegex(check.CheckError, "twice"):
+            plan(tool_cache_paths=".cache, ./.cache")
+
+    def test_rejects_bad_dependency_versions_runner_os_and_commit(self):
+        cases = {"dependency-versions": {"dependency_versions": "lowest"}, "runner OS": {"runner_os": "Linux x"},
+                 "commit": {"commit": "main"}}
+        for message, override in cases.items():
+            with self.subTest(case=message), self.assertRaisesRegex(check.CheckError, message):
+                plan(tool_cache_paths=".cache", **override)
+
+    def test_dry_run_prints_the_tool_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                check.command_plan(plan_args(plan_file=os.path.join(tmp, "plan.json"), tool_cache_paths=".cache"))
+        self.assertIn("Would restore and save the tool caches .cache, key php-library-check-tools-Linux-php8.2-",
+                      buffer.getvalue())
+
+    def test_multi_line_outputs_use_the_delimiter_form(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = os.path.join(tmp, "out")
+            check.write_outputs(output, {"one": "a", "many": "b\nc"})
+            self.assertEqual(read_outputs(Path(output).read_text()), {"one": "a", "many": "b\nc"})
 
 
 class RunTest(unittest.TestCase):

@@ -9,5 +9,8 @@
     "composer run-script --no-interaction check:schemas",
     "composer run-script --no-interaction test"
   ],
-  "audit-command": "composer audit --format=json --abandoned=report --no-interaction"
+  "audit-command": "composer audit --format=json --abandoned=report --no-interaction",
+  "tool-cache-paths": [
+    "php-library-check/tests/fixtures/basic/.cache"
+  ]
 }

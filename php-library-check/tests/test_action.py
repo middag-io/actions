@@ -3,7 +3,8 @@
 Checks that PHP, Composer and the install come only from php-composer-setup
 and the audit only from php-composer-scan, both as dry runs in a dry run,
 that each step passes only inputs that its action declares, that
-composer-auth reaches only the setup step, and the order of the steps.
+composer-auth reaches only the setup step, that the tool cache is opt-in
+and fed only by the plan, and the order of the steps.
 
 The file is read with a small reader for its layout (two-space indentation),
 standard library only.
@@ -22,6 +23,8 @@ SETUP_ACTION = os.path.join(os.path.dirname(COMPONENT), "php-composer-setup", "a
 SETUP_STEP = "Set up PHP and install the Composer dependencies"
 AUDIT_STEP = "Audit the Composer dependencies"
 RUN_STEP = "Run the library checks"
+CACHE_STEP = "Restore the caches of the static check tools"
+PLAN_STEP = "Check the inputs and plan the checks"
 SCAN_ACTION = os.path.join(os.path.dirname(COMPONENT), "php-composer-scan", "action.yml")
 STEP_RE = re.compile(r"^    - name: (.+)$")
 KEY_RE = re.compile(r"^      ([a-z-]+):\s*(.*)$")
@@ -121,6 +124,39 @@ class ActionWiringTest(unittest.TestCase):
         names = list(self.steps)
         self.assertLess(names.index(SETUP_STEP), names.index(AUDIT_STEP))
         self.assertLess(names.index(AUDIT_STEP), names.index(RUN_STEP))
+
+    def test_tool_cache_uses_the_pinned_cache_action_of_php_composer_setup(self):
+        with open(SETUP_ACTION, encoding="utf-8") as handle:
+            pins = re.findall(r"uses: (actions/cache@[0-9a-f]{40} # v\S+)", handle.read())
+        self.assertEqual(len(pins), 1)
+        self.assertEqual(self.steps[CACHE_STEP]["uses"], pins[0])
+
+    def test_tool_cache_runs_only_when_planned_and_not_in_a_dry_run(self):
+        self.assertEqual(
+            self.steps[CACHE_STEP]["if"],
+            "${{ inputs.dry-run != 'true' && steps.plan.outputs.tool-cache-key != '' }}",
+        )
+
+    def test_tool_cache_takes_its_values_from_the_plan_only(self):
+        self.assertEqual(self.steps[CACHE_STEP]["with"], {
+            "path": "${{ steps.plan.outputs.tool-cache-path-lines }}",
+            "key": "${{ steps.plan.outputs.tool-cache-key }}",
+            "restore-keys": "${{ steps.plan.outputs.tool-cache-restore-keys }}",
+        })
+
+    def test_tool_cache_paths_reaches_only_the_plan_step(self):
+        self.assertEqual(self.steps[PLAN_STEP]["env"]["TOOL_CACHE_PATHS"], "${{ inputs.tool-cache-paths }}")
+        for name, step in self.steps.items():
+            if name == PLAN_STEP:
+                continue
+            values = " ".join([*step["env"].values(), *step["with"].values()])
+            with self.subTest(step=name):
+                self.assertNotIn("inputs.tool-cache-paths", values)
+
+    def test_tool_cache_is_restored_after_the_audit_and_before_the_checks(self):
+        names = list(self.steps)
+        self.assertLess(names.index(AUDIT_STEP), names.index(CACHE_STEP))
+        self.assertLess(names.index(CACHE_STEP), names.index(RUN_STEP))
 
 
 if __name__ == "__main__":

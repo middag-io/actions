@@ -9,12 +9,13 @@ Two forms, one name:
 
 ## What it does
 
-1. Validates the inputs before anything else: `path` stays inside the checkout and holds a `composer.json`; each script input is a Composer script name; booleans are `true` or `false`.
+1. Validates the inputs before anything else: `path` stays inside the checkout and holds a `composer.json`; each script input is a Composer script name; booleans are `true` or `false`; each `tool-cache-paths` item is a plain path inside `path`, other than `path` itself and `vendor`.
 2. Plans the Composer commands and prints them. A dry run stops here, after the dry runs of the two actions below.
 3. Sets up PHP and Composer and runs `composer install` in `path` through [`php-composer-setup`](../php-composer-setup/README.md). Without a `composer.lock`, Composer resolves the dependencies for the PHP version of the job, or for the `config.platform.php` of `composer.json` when it sets one. With `unset-platform-php: true`, that entry is removed first; with `dependency-versions: highest`, `composer update` runs in place of `composer install` (see "Highest dependency versions").
 4. Audits the installed dependencies through [`php-composer-scan`](../php-composer-scan/README.md): an advisory whose severity is in `audit-blocking-severities` fails the job; lower severities and abandoned packages are warnings. There is no input to turn the audit off; an advisory that a project does not remediate goes to `config.audit.ignore` of its `composer.json`, with the reason.
 5. With `expect-majors`, reads the installed versions (`composer show --format=json`) and fails the job when a named package is missing or at another major version, before any check runs.
-6. Runs the planned commands in `path`, in order; the first failure fails the job:
+6. With `tool-cache-paths`, in the job of the static checks, restores the caches of PHPStan, Rector and PHP-CS-Fixer with [`actions/cache`](https://github.com/actions/cache) (see "Tool caches").
+7. Runs the planned commands in `path`, in order; the first failure fails the job:
    - static checks (when `static-checks` is true): `composer validate --no-check-publish --no-check-lock` (plus `--strict` with `composer-validate-strict`), `composer dump-autoload --optimize --strict-psr`, then the Composer scripts `lint-script`, `phpstan-script`, `cs-fixer-script`, `rector-script` and `composer-scripts`, each skipped when empty;
    - tests: the Composer script `test-script`, skipped when empty.
 
@@ -22,7 +23,7 @@ The tools themselves (PHPStan, PHP-CS-Fixer, Rector, PHPUnit) come from the libr
 
 ## What it deletes
 
-Nothing. The component publishes nothing and commits nothing. `composer install` writes `vendor/` in the checkout of the job, which ends with the job. With `unset-platform-php: true` it rewrites `composer.json` there without `config.platform.php`, and `composer update` (`dependency-versions: highest`) writes `composer.lock` there; both changes end with the job. With `composer-auth`, `php-composer-setup` writes the global Composer `auth.json` of the runner, outside the checkout.
+Nothing. The component publishes nothing and commits nothing. `composer install` writes `vendor/` in the checkout of the job, which ends with the job. With `unset-platform-php: true` it rewrites `composer.json` there without `config.platform.php`, and `composer update` (`dependency-versions: highest`) writes `composer.lock` there; both changes end with the job. With `tool-cache-paths`, the cache step replaces those paths in the checkout with the restored entry, and saves a new cache entry in the calling repository at the end of a successful job. With `composer-auth`, `php-composer-setup` writes the global Composer `auth.json` of the runner, outside the checkout.
 
 ## Inputs
 
@@ -45,6 +46,7 @@ Nothing. The component publishes nothing and commits nothing. `composer install`
 | `dependency-versions` | yes | yes | `locked` | `locked` runs `composer install` (from `composer.lock` when there is one); `highest` runs `composer update`. |
 | `unset-platform-php` | yes (boolean) | yes | `false` | Remove `config.platform.php` from `composer.json` before the install, so that the PHP version of the job constrains the resolution. |
 | `expect-majors` | yes | yes | empty | Installed packages and their major version, `<vendor>/<package>:<major>`, separated by commas or new lines. A package that is missing or at another major fails the job. |
+| `tool-cache-paths` | yes | yes | empty | Cache directories or files of PHPStan, Rector and PHP-CS-Fixer, relative to `path`, separated by commas or new lines (for example `.cache`). Restored and saved in the job of the static checks only. Empty caches nothing (see "Tool caches"). |
 | `audit-blocking-severities` | yes | yes | variable `PHP_LIBRARY_CHECK_AUDIT_BLOCKING_SEVERITIES`, else `critical` (workflow); `critical` (action) | Severities that fail the dependency audit, separated by commas: any of `critical`, `high`, `medium`, `low`. |
 | `composer-auth` | secret | input | empty | Composer credentials in the `COMPOSER_AUTH` JSON format, for private dependencies. |
 | `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and plan only. |
@@ -61,6 +63,7 @@ An empty script input skips its step; a script named by an input but missing fro
 | `install-command` | The `composer install` or `composer update` command, run or planned. |
 | `platform-command` | The command that removes `config.platform.php`, run or planned; empty unless `unset-platform-php` is `true`. |
 | `expect-majors` | JSON object of the expected major version of each package of `expect-majors`; `{}` when empty. |
+| `tool-cache-paths` | JSON array of the tool cache paths, relative to the checkout, restored and saved or planned; `[]` without a tool cache. |
 
 ## Variables and secrets
 
@@ -71,7 +74,7 @@ An empty script input skips its step; a script named by an input but missing fro
 
 ## Permissions
 
-The caller grants `contents: read` to the calling job. The component asks for nothing more.
+The caller grants `contents: read` to the calling job. The component asks for nothing more. The cache steps use the runner's cache service, which needs no permission in `permissions:`.
 
 ## Example
 
@@ -135,6 +138,34 @@ jobs:
       cs-fixer-script: ""
       rector-script: ""
 ```
+
+### Tool caches
+
+PHPStan, Rector and PHP-CS-Fixer keep a cache of their results and skip the files that did not change. On a fresh runner that cache is empty, so each run analyses the whole library. `tool-cache-paths` keeps it between runs. It is off by default: a caller that does not pass it gets no cache step and the same job as before.
+
+Point each tool at a cache path inside the library, then pass those paths. For example, one `.cache/` directory at the library root:
+
+- PHPStan: `parameters.tmpDir: %currentWorkingDirectory%/.cache/phpstan` in its `.neon` configuration (it holds the result cache);
+- Rector: `->withCache(__DIR__ . '/.cache/rector')` in its configuration;
+- PHP-CS-Fixer: `->setCacheFile(__DIR__ . '/.cache/php-cs-fixer.cache')` in its configuration, or `--cache-file` in the Composer script.
+
+```yaml
+jobs:
+  php-library-check:
+    permissions:
+      contents: read
+    uses: <owner>/actions/.github/workflows/php-library-check.yml@php-library-check-v1
+    with:
+      php-versions: '["8.2", "8.3", "8.4"]'
+      tool-cache-paths: .cache
+```
+
+- The cache step runs only in the job of the static checks (the first PHP version in the workflow, `static-checks: true` in the action), after the install and the audit, before the checks. A dry run only prints the paths and the key.
+- The key holds the runner OS, the PHP version, `dependency-versions`, a hash of `path`, a hash of the Composer and tool configuration files at the library root (`composer.json`, `composer.lock`, `*.neon`, `*.neon.dist`, `*rector*.php`, `*php-cs-fixer*.php`, `.php_cs`, `.php_cs.dist`) and the commit. The restore keys fall back to the latest entry with the same files, then to the latest entry of the same runner OS, PHP version, `dependency-versions` and `path`.
+- Each tool checks its own cache against the code, the configuration and the installed dependencies, so an older entry costs only the files that changed; it never skips a changed file.
+- The key ends with the commit, so every successful job saves a new entry; GitHub evicts the least recently used entries when the repository reaches its cache quota. `actions/cache` saves only when the job succeeds: a failing check saves nothing.
+- A pull request restores entries of its own branch and of the base branch, and saves to its own branch; it cannot change the entries that `main` restores.
+- Do not pass `tool-cache-paths` in a workflow that publishes or releases: a restored cache must never feed a release.
 
 The composite action in a job of the caller:
 

@@ -86,6 +86,15 @@ inputs:
       major version fails the job before the checks. Empty checks nothing.
     required: false
     default: ""
+  tool-cache-paths:
+    description: >-
+      Cache directories or files of the static check tools (PHPStan tmpDir,
+      Rector cache directory, PHP-CS-Fixer cache file), relative to path,
+      separated by commas or new lines (for example .cache). Restored before
+      the checks and saved at the end of a successful job with actions/cache,
+      only in a job with static-checks true. Empty caches nothing.
+    required: false
+    default: ""
   audit-blocking-severities:
     description: Severities of a dependency advisory that fail the job, separated by commas (critical, high, medium, low); lower severities are only reported.
     required: false
@@ -115,6 +124,9 @@ outputs:
   expect-majors:
     description: JSON object of the expected major version of each package of expect-majors; {} when empty.
     value: ${{ steps.plan.outputs.expect-majors }}
+  tool-cache-paths:
+    description: JSON array of the tool cache paths, relative to the checkout, restored and saved or planned; [] when no tool cache.
+    value: ${{ steps.plan.outputs.tool-cache-paths }}
 
 runs:
   using: composite
@@ -136,6 +148,8 @@ runs:
         COMPOSER_SCRIPTS: ${{ inputs.composer-scripts }}
         TEST_SCRIPT: ${{ inputs.test-script }}
         EXPECT_MAJORS: ${{ inputs.expect-majors }}
+        DEPENDENCY_VERSIONS: ${{ inputs.dependency-versions }}
+        TOOL_CACHE_PATHS: ${{ inputs.tool-cache-paths }}
         DRY_RUN: ${{ inputs.dry-run }}
       run: |
         plan_file="$(mktemp "$RUNNER_TEMP/php-library-check.XXXXXX")"
@@ -154,6 +168,10 @@ runs:
           --composer-scripts="$COMPOSER_SCRIPTS" \
           --test-script="$TEST_SCRIPT" \
           --expect-majors="$EXPECT_MAJORS" \
+          --dependency-versions="$DEPENDENCY_VERSIONS" \
+          --tool-cache-paths="$TOOL_CACHE_PATHS" \
+          --runner-os="$RUNNER_OS" \
+          --commit="$GITHUB_SHA" \
           --dry-run="$DRY_RUN" \
           --plan-file="$plan_file" \
           --github-output="$GITHUB_OUTPUT"
@@ -187,6 +205,21 @@ runs:
         working-directory: ${{ inputs.path }}
         blocking-severities: ${{ inputs.audit-blocking-severities }}
         dry-run: ${{ inputs.dry-run }}
+
+    # Only with tool-cache-paths, in the job of the static checks. The plan
+    # step validated the paths (inside path, not path itself, not vendor) and
+    # built the key: runner OS, PHP version, dependency-versions, path, the
+    # hash of the Composer and tool configuration files, and the commit. The
+    # restore keys fall back to the latest entry with the same files, then to
+    # the latest of the same runner OS, PHP version, dependency-versions and
+    # path. actions/cache saves at the end of the job, only when it succeeds.
+    - name: Restore the caches of the static check tools
+      if: ${{ inputs.dry-run != 'true' && steps.plan.outputs.tool-cache-key != '' }}
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.plan.outputs.tool-cache-path-lines }}
+        key: ${{ steps.plan.outputs.tool-cache-key }}
+        restore-keys: ${{ steps.plan.outputs.tool-cache-restore-keys }}
 
     - name: Run the library checks
       if: ${{ inputs.dry-run != 'true' }}
