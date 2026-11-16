@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/middag-io/actions/compare/php-library-check-v1.1.0...php-library-check-v1.2.0) (2026-11-16)
+
+
+### Features
+
+* **php-library-check:** default php-versions to 8.3, 8.4 and 8.5 ([9bcfbe2](https://github.com/middag-io/actions/commit/9bcfbe2c49425c52d2f589303ed0ca92ea51cc96))
+* **php-library-check:** default php-versions to 8.3, 8.4 and 8.5 ([37e8de9](https://github.com/middag-io/actions/commit/37e8de93612c2d665b1a66f5c68898240e5c7394))
+
 ## [1.1.0](https://github.com/middag-io/actions/compare/php-library-check-v1.0.0...php-library-check-v1.1.0) (2026-11-16)
 
 
