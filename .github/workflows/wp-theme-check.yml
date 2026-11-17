@@ -70,6 +70,11 @@ on:
         type: number
         required: false
         default: 15
+      runner:
+        description: Runner label for the jobs, for example the label of a self-hosted runner. Default keeps the GitHub-hosted runner.
+        type: string
+        required: false
+        default: ubuntu-24.04
     secrets:
       composer-auth-password:
         description: HTTP basic password for composer-auth-host. Required when composer-auth-host is set, unless dry-run is true.
@@ -84,7 +89,7 @@ permissions: {}
 jobs:
   check:
     name: check (PHP ${{ matrix.php-version }})
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read

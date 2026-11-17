@@ -69,6 +69,7 @@ The composite action reads no variable: it receives every value through `with:`.
 | `github-environment` | reusable | no | `production` | GitHub environment of the deployment job (protection rules and deployment history); not used in a dry run |
 | `dry-run` | both | no | `false` | validate and print the plan only |
 | `timeout-minutes` | reusable | no | `20` | job timeout |
+| `runner` | reusable | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
 | `api-token` | composite | unless dry run | empty | pass from a secret |
 
 ## Secrets (reusable workflow)

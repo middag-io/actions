@@ -60,6 +60,7 @@ rsync semantics apply: a pattern without an inner `/` matches at any depth (`tes
 | `retention-days` | both | no | `30` | retention of the workflow artifact |
 | `dry-run` | both | no | `false` | validate and build the ZIP only |
 | `timeout-minutes` | reusable | no | `20` | job timeout |
+| `runner` | reusable | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
 | `composer-auth` | composite | no | empty | `COMPOSER_AUTH` JSON, passed from a secret; `php-composer-setup` writes it to the global Composer `auth.json`. A `COMPOSER_AUTH` that the job environment already sets still applies |
 | `github-token` | composite | no | the job token | token for the GitHub Packages npm registry and for the release upload |
 | `upload-release-asset` | composite | no | `false` | upload to the release of `tag-name`; needs `tag-name` |

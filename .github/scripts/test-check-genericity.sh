@@ -230,6 +230,16 @@ latest_runner() {
   replace_in "$WORKFLOW" "runs-on: ubuntu-24.04" "runs-on: ubuntu-latest"
 }
 
+runner_input() {
+  add_component
+  replace_in "$WORKFLOW" "runs-on: ubuntu-24.04" "runs-on: \${{ inputs.runner }}"
+}
+
+self_hosted_runner() {
+  add_component
+  replace_in "$WORKFLOW" "runs-on: ubuntu-24.04" "runs-on: self-hosted"
+}
+
 inherited_secrets() {
   add_component
   cat >>"$WORKFLOW" <<'EOF'
@@ -372,6 +382,8 @@ run_case "bracket access to vars" fail "dynamic or bulk access" bracket_access
 run_case "spaced bracket access to vars" fail "dynamic or bulk access" spaced_bracket_access
 run_case "toJSON(vars)" fail "dynamic or bulk access" bulk_access
 run_case "runs-on other than ubuntu-24.04" fail "runs-on must be ubuntu-24.04" latest_runner
+run_case "runs-on a fixed self-hosted label" fail "runs-on must be ubuntu-24.04" self_hosted_runner
+run_case "runs-on the runner input" pass "" runner_input
 run_case "secrets: inherit" fail "secrets: inherit is forbidden" inherited_secrets
 run_case "automatic approval in a component script" fail "automatic pull request approval" automatic_approval
 run_case "component directory outside the naming convention" fail "does not follow {scope}-{object}-{verb}" bad_directory_name

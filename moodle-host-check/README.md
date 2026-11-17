@@ -46,6 +46,7 @@ Nothing in the repository. The host lives in the temporary directory of the runn
 | `composer-auth` | secret | input | empty | Composer credentials in the `COMPOSER_AUTH` JSON format, for private dependencies of the code under test. |
 | `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and plan only: no database, no PHP set-up, no clone, no install, no probe. |
 | `timeout-minutes` | yes | no | `30` | Timeout of each job. |
+| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
 
 The reusable workflow runs PostgreSQL 17 as a service of each job, pinned by digest, with trust authentication; the service is reachable only from its job.
 

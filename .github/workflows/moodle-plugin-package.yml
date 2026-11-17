@@ -78,6 +78,11 @@ on:
         type: number
         required: false
         default: 20
+      runner:
+        description: Runner label for the jobs, for example the label of a self-hosted runner. Default keeps the GitHub-hosted runner.
+        type: string
+        required: false
+        default: ubuntu-24.04
     secrets:
       composer-auth:
         description: COMPOSER_AUTH JSON for private Composer repositories. Not needed for public dependencies.
@@ -104,7 +109,7 @@ permissions: {}
 jobs:
   package:
     name: package
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read

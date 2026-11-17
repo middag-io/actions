@@ -71,6 +71,11 @@ on:
         type: number
         required: false
         default: 20
+      runner:
+        description: Runner label for the jobs, for example the label of a self-hosted runner. Default keeps the GitHub-hosted runner.
+        type: string
+        required: false
+        default: ubuntu-24.04
     secrets:
       account-id:
         description: Cloudflare account id, passed as a secret so that GitHub masks it in the logs; use it in a public repository. Wins over the input account-id.
@@ -92,7 +97,7 @@ jobs:
   deploy:
     name: deploy
     if: ${{ !inputs.dry-run }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
@@ -138,7 +143,7 @@ jobs:
   dry-run:
     name: dry-run
     if: ${{ inputs.dry-run }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read

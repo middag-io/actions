@@ -76,6 +76,7 @@ The secrets are stored as `WP_PLUGIN_RELEASE_APP_PRIVATE_KEY` and `WP_PLUGIN_REL
 | `app-client-id` | both | unless dry run | variable (reusable) | client ID of the GitHub App |
 | `dry-run` | both | no | `false` | build and list only |
 | `timeout-minutes` | reusable | no | `20` | job timeout |
+| `runner` | reusable | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
 | `composer-auth` | composite | no | empty | JSON object in the `COMPOSER_AUTH` format, passed from a secret |
 | `app-private-key` | composite | unless dry run | empty | passed from a secret |
 
