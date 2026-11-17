@@ -51,6 +51,7 @@ Nothing. The component writes no file in the repository and publishes nothing. `
 | `audit-blocking-severities` | yes | yes | variable `MOODLE_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES`, else `critical` (workflow); `critical` (action) | Severities of a dependency advisory that fail the job, separated by commas: any of `critical`, `high`, `medium`, `low`. |
 | `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and plan only. |
 | `timeout-minutes` | yes | no | `20` | Timeout of each job. |
+| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
 
 ## Outputs
 

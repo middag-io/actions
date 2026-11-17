@@ -40,6 +40,7 @@ The component never creates the Pages project and never touches its custom domai
 | `force`                   | no                        | `false`                                                    | Deploy even when the content hash matches the deployed one.                                                                            |
 | `dry-run`                 | no                        | `false`                                                    | Validate the inputs and compute the content hash only.                                                                                 |
 | `timeout-minutes`         | no (workflow only)        | `20`                                                       | Timeout of the job.                                                                                                                    |
+| `runner`                  | no (workflow only)        | `ubuntu-24.04`                                             | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner.                                  |
 | `api-token`               | unless `dry-run` (action) | —                                                          | In the composite action only: the API token, passed from a secret. The workflow takes it as the secret `api-token`.                    |
 
 Paths accept only `[A-Za-z0-9._/-]`, must be relative and must not contain `..`.

@@ -86,6 +86,7 @@ The composite action reads no variable: it receives every value through `with:`.
 | `write-manifest` | both | no | `true` | write `<package-name>/manifest.json` after the version objects |
 | `dry-run` | both | no | `false` | validate and list only |
 | `timeout-minutes` | reusable | no | `15` | job timeout |
+| `runner` | reusable | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
 | `access-key-id` | composite | unless dry run | empty | pass from a secret |
 | `secret-access-key` | composite | unless dry run | empty | pass from a secret |
 

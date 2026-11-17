@@ -30,6 +30,7 @@ Nothing. The component writes no file.
 | `node-version` | yes | no | `22` | Node.js version to set up. |
 | `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and print the command only. |
 | `timeout-minutes` | yes | no | `10` | Timeout of the job. |
+| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
 
 ## Outputs
 

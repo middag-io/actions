@@ -175,11 +175,12 @@ check_forbidden_patterns() {
     < <(grep -H -n -E -- "${approve}|event[\"']?[[:space:]]*[=:][[:space:]]*[\"']?APPROVE" "$@" 2>/dev/null || true)
 }
 
-# Item 12: every job runs on ubuntu-24.04.
+# Item 12: every job runs on ubuntu-24.04, or on the runner input of a reusable
+# workflow (whose default is ubuntu-24.04).
 check_runner() {
-  report_matches "runs-on must be ubuntu-24.04" < <(
+  report_matches "runs-on must be ubuntu-24.04 or \${{ inputs.runner }}" < <(
     grep -H -n -E '^[[:space:]]+runs-on:' "$@" 2>/dev/null \
-      | grep -v -E "runs-on:[[:space:]]*[\"']?ubuntu-24\.04[\"']?[[:space:]]*(#.*)?$" || true
+      | grep -v -E "runs-on:[[:space:]]*([\"']?ubuntu-24\.04[\"']?|\\$\{\{[[:space:]]*inputs\.runner[[:space:]]*\}\})[[:space:]]*(#.*)?$" || true
   )
 }
 
@@ -398,7 +399,7 @@ END {
 
 # Inputs of the reusable workflow that only the workflow uses: a bare name
 # applies to every component, <component>:<input> to that component only.
-readonly WORKFLOW_ONLY_INPUTS=" timeout-minutes cloudflare-r2-docs-publish:artifact-name cloudflare-workers-deploy:github-environment moodle-host-check:hosts moodle-plugin-check:php-versions node-npm-scan:node-version php-composer-scan:php-version php-composer-scan:php-extensions php-library-check:php-versions wp-plugin-check:php-versions wp-theme-check:php-versions "
+readonly WORKFLOW_ONLY_INPUTS=" timeout-minutes runner cloudflare-r2-docs-publish:artifact-name cloudflare-workers-deploy:github-environment moodle-host-check:hosts moodle-plugin-check:php-versions node-npm-scan:node-version php-composer-scan:php-version php-composer-scan:php-extensions php-library-check:php-versions wp-plugin-check:php-versions wp-theme-check:php-versions "
 
 check_component_wiring() {
   local file component action file_name line message

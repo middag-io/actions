@@ -44,6 +44,7 @@ Nothing. The component writes no file in the repository and publishes nothing.
 | `head-sha` | no | yes | empty | Full SHA of the head commit; required unless `dry-run`. The workflow passes the one of the event. |
 | `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Check the title against the manifest of the workspace; report only. |
 | `timeout-minutes` | yes | no | `5` | Timeout of the job. |
+| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
 
 A monorepo with several packages calls the component once per package, each with its own `package`. The calling jobs run in parallel (see "Concurrency").
 

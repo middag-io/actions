@@ -62,6 +62,7 @@ Nothing. The component writes no file in the repository and publishes nothing.
 | `window-branch` | yes | yes | the default branch of the repository (workflow); empty (action) | Branch whose pull requests the window applies to. |
 | `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Check the title against the manifest of the workspace; report only. |
 | `timeout-minutes` | yes | no | `5` | Timeout of the job. |
+| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
 
 ## Outputs
 

@@ -34,6 +34,7 @@ Nothing. The component writes no file.
 | `composer-auth` | secret | no | empty | Composer credentials in the `COMPOSER_AUTH` JSON format, for private dependencies. |
 | `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and print the command only. |
 | `timeout-minutes` | yes | no | `15` | Timeout of the job. |
+| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
 
 ## Outputs
 

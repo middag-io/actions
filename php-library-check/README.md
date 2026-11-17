@@ -51,6 +51,7 @@ Nothing. The component publishes nothing and commits nothing. `composer install`
 | `composer-auth` | secret | input | empty | Composer credentials in the `COMPOSER_AUTH` JSON format, for private dependencies. |
 | `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and plan only. |
 | `timeout-minutes` | yes | no | `20` | Timeout of each job. |
+| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
 
 An empty script input skips its step; a script named by an input but missing from `composer.json` fails the job.
 

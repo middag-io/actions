@@ -42,6 +42,7 @@ What it creates:
 | `app-client-id` | unless `dry-run` | variable `RELEASE_PLEASE_APP_CLIENT_ID` (reusable workflow only) | Client id of the GitHub App. |
 | `dry-run` | no | `false` | Check the inputs, the configuration and the manifest only. |
 | `timeout-minutes` | no | `10` | Timeout of the job, in minutes (reusable workflow only). |
+| `runner` | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
 
 The composite action takes the private key as the input `app-private-key`; the reusable workflow takes it as a secret.
 

@@ -33,6 +33,11 @@ on:
         type: number
         required: false
         default: 5
+      runner:
+        description: Runner label for the jobs, for example the label of a self-hosted runner. Default keeps the GitHub-hosted runner.
+        type: string
+        required: false
+        default: ubuntu-24.04
     outputs:
       version:
         description: Version of the package in the manifest of the base commit.
@@ -52,7 +57,7 @@ permissions: {}
 jobs:
   check:
     name: check
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read

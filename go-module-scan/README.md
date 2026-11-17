@@ -44,6 +44,7 @@ Nothing in the repository. The component writes the govulncheck binary to a temp
 | `blocking-severities` | yes | yes | variable `GO_MODULE_SCAN_BLOCKING_SEVERITIES`, else `critical` (workflow); `critical` (action) | Severities that fail the scan, separated by commas (see "Severity mapping"). |
 | `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and print the command only. |
 | `timeout-minutes` | yes | no | `15` | Timeout of the job. |
+| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
 
 ## Outputs
 

@@ -40,7 +40,7 @@ All files, comments, commit messages and pull requests are in English.
 - Triggers: only `pull_request`, `push` to `main` (`branches: [main]`), `workflow_dispatch` and `workflow_call`. Never `pull_request_target`, `workflow_run`, `issue_comment` or `schedule`.
 - Workflow files use two-space indentation. `check-genericity` rejects any other indentation.
 - `actions/checkout` always with `persist-credentials: false`.
-- Every job has `timeout-minutes` and `runs-on: ubuntu-24.04`. A component job that holds a secret also has `concurrency`.
+- Every job has `timeout-minutes` and `runs-on: ubuntu-24.04`. A reusable component workflow declares a `runner` input (string, default `ubuntu-24.04`) and its jobs use `runs-on: ${{ inputs.runner }}`; internal workflows (`_*.yml`) keep the fixed label. A component job that holds a secret also has `concurrency`.
 - No automatic approval of pull requests.
 - Python code uses only the standard library, runs as `python3 -I` and is tested with `unittest` and fixtures.
 - Inputs are validated before any write.
