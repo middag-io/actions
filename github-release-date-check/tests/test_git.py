@@ -33,11 +33,11 @@ class GitRepositoryTest(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.repo = cls.tmp.name
         cls.git("init", "-q", "-b", "main")
-        cls.commit(DAY_1, "chore: start", MANIFEST, '{".": "1.0.0"}\n')
+        cls.commit(DAY_1, "chore: start", MANIFEST, '{".": "1.0.0", "b.txt": "1.1.0"}\n')
         cls.git("switch", "-q", "-c", "old-topic")
         cls.commit(DAY_2, "feat: made before the release", "a.txt", "a\n")
         cls.git("switch", "-q", "main")
-        cls.commit(DAY_3, "chore: release 1.1.0", MANIFEST, '{".": "1.1.0"}\n')
+        cls.commit(DAY_3, "chore: release 1.1.0", MANIFEST, '{".": "1.1.0", "b.txt": "1.1.0"}\n')
         cls.git("tag", "v1.1.0")
         cls.git("update-ref", "refs/remotes/origin/main", "HEAD")
         # Kept current by a merge of main: the merge commit and main's commits are skipped.
@@ -67,12 +67,12 @@ class GitRepositoryTest(unittest.TestCase):
         cls.git("add", name)
         cls.git("commit", "-q", "-m", message, env={"GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date})
 
-    def run_check(self, head, tag_format="v{version}"):
+    def run_check(self, head, tag_format="v{version}", package="."):
         output = os.path.join(self.repo, ".git", "out")
         Path(output).write_text("", encoding="utf-8")
         result = subprocess.run(
             [sys.executable, "-I", str(SCRIPT), "--base-ref=main", f"--head-sha={head}", f"--tag-format={tag_format}",
-             f"--workspace={self.repo}", f"--github-output={output}"],
+             f"--package={package}", f"--workspace={self.repo}", f"--github-output={output}"],
             capture_output=True, text=True, check=False, env={**os.environ, **GIT_ENV},
         )
         outputs = dict(line.split("=", 1) for line in Path(output).read_text(encoding="utf-8").splitlines())
@@ -91,6 +91,20 @@ class GitRepositoryTest(unittest.TestCase):
         self.assertIn(DAY_2.replace("+00:00", " +0000").replace("T", " "),
                       self.git("log", "-1", "--format=%ai", f"{self.new_head}~1"))
         self.assertIn("2 commit(s)", out)
+
+    def test_a_package_ignores_the_commits_outside_its_folder(self):
+        status, _, outputs = self.run_check(self.old_head, package="b.txt")
+        self.assertEqual((status, outputs["result"], outputs["findings"]), (0, "pass", "0"))
+
+    def test_a_shallow_checkout_is_an_error(self):
+        with tempfile.TemporaryDirectory() as shallow:
+            subprocess.run(["git", "clone", "-q", "--depth=1", f"file://{self.repo}", shallow], check=True,
+                           capture_output=True, env={**os.environ, **GIT_ENV})
+            result = subprocess.run(
+                [sys.executable, "-I", str(SCRIPT), "--base-ref=main", f"--head-sha={self.old_head}",
+                 f"--workspace={shallow}"], capture_output=True, text=True, check=False, env={**os.environ, **GIT_ENV})
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("the checkout is shallow", result.stdout)
 
     def test_a_missing_tag_warns_and_passes(self):
         status, out, outputs = self.run_check(self.old_head, tag_format="release-{version}")

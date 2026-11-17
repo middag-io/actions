@@ -34,24 +34,25 @@ def args(**overrides):
     return check.build_parser().parse_args([f"--{k.replace('_', '-')}={v}" for k, v in values.items()])
 
 
-def fake_git(tags=None, manifest='{".": "1.4.2"}', commits=(), release_time=1000):
+def fake_git(tags=None, manifest='{".": "1.4.2"}', commits=(), release_time=1000, shallow=False, calls=None):
     tags = {"v1.4.2": RELEASE} if tags is None else tags
+    refs = {BASE: "c" * 40, **{f"refs/tags/{name}": sha for name, sha in tags.items()}}
 
     def git(*argv):
+        if calls is not None:
+            calls.append(argv)
+        if argv[:2] == ("rev-parse", "--is-shallow-repository"):
+            return "true\n" if shallow else "false\n"
+        if argv[0] == "for-each-ref":
+            return f"{argv[-1]}\n" if argv[-1] in refs else ""
         if argv[0] == "rev-parse":
-            ref = argv[-1].removesuffix("^{commit}")
-            if ref == BASE:
-                return "c" * 40 + "\n"
-            name = ref.removeprefix("refs/tags/")
-            if name in tags:
-                return tags[name] + "\n"
-            raise check.CheckError("unknown revision")
+            return refs[argv[-1].removesuffix("^{commit}")] + "\n"
         if argv[0] == "show":
             return manifest
         if argv[:2] == ("log", "-1"):
             return "1970-01-01T00:16:40+00:00\n" if argv[2] == "--format=%cI" else f"{release_time}\n"
-        if argv[:2] == ("log", "--no-merges"):
-            return "".join(f"{s}\x00{t}\x00date-{t}\x00{h}\x1e\n" for s, t, h in commits)
+        if argv[:3] == ("log", "-z", "--no-merges"):
+            return "".join(f"{s} {t} date-{t} {h}\x00" for s, t, h in commits)
         raise AssertionError(argv)
     return git
 
@@ -76,7 +77,7 @@ class InputTest(unittest.TestCase):
                 self.assertIn("input tag-format", out)
 
     def test_rejects_an_unsafe_base_ref(self):
-        for value in ("", "-x", "a..b", "main/", "a b"):
+        for value in ("", "-x", "a..b", "main/", "a b", "a@{1}", "x.lock"):
             with self.subTest(value=value):
                 status, out = run(args(base_ref=value), fake_git())
                 self.assertEqual(status, 1)
@@ -123,6 +124,31 @@ class EvaluationTest(unittest.TestCase):
                 status, out = run(args(tag_format=tag_format), fake_git(tags={tag: RELEASE}, commits=[("1" * 40, 5, "feat: old")]))
                 self.assertEqual(status, 1)
                 self.assertIn(f"release {tag}:", out)
+
+    def test_a_subject_with_spaces_and_control_bytes_is_kept(self):
+        status, out = run(args(), fake_git(commits=[("1" * 40, 5, "feat: a \x1e b  c")]))
+        self.assertEqual(status, 1)
+        self.assertIn("(feat: a \x1e b  c)", out)
+
+    def test_a_monorepo_package_reads_only_the_commits_of_its_folder(self):
+        calls = []
+        manifest = '{"packages/api": "1.4.2"}'
+        status, _ = run(args(package="packages/api"), fake_git(manifest=manifest, calls=calls))
+        self.assertEqual(status, 0)
+        log = [c for c in calls if c[:2] == ("log", "-z")][0]
+        self.assertEqual(log[-2:], ("--", "packages/api"))
+        calls.clear()
+        run(args(), fake_git(calls=calls))
+        self.assertNotIn("--", [c for c in calls if c[:2] == ("log", "-z")][0])
+
+    def test_a_shallow_checkout_is_an_error(self):
+        status, out = run(args(), fake_git(shallow=True))
+        self.assertEqual(status, 1)
+        self.assertIn("the checkout is shallow", out)
+
+    def test_a_sha256_head_is_accepted(self):
+        status, _ = run(args(head_sha="b" * 64), fake_git())
+        self.assertEqual(status, 0)
 
     def test_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:

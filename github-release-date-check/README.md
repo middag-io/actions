@@ -11,8 +11,10 @@ Two forms, one name:
 
 1. Validates the inputs before anything else: `manifest-file` and `package` (relative paths), `tag-format` (exactly one `{version}`), and outside a dry run the name of the base branch and the full SHA of the head commit.
 2. Reads the version of `package` from the release-please manifest **at the tip of the base branch when the check runs** (`git show origin/<base-ref>:<manifest-file>`), not at the base commit of the event: a re-run sees a release that landed after the pull request was opened.
-3. Finds the commit of the release tag of that version (`tag-format` with the version in place of `{version}`) and reads its committer date. A missing tag is a warning and the check passes (`result` is `skip`): there is no release yet, or the release workflow has not created the tag yet.
-4. Reads every commit `origin/<base-ref>..head` that is not a merge commit, and fails on each one whose committer date is not later than the committer date of the release commit. A pull request kept current by merging the base branch into it is checked on its own commits only.
+3. Finds the commit of the release tag of that version (`tag-format` with the version in place of `{version}`) and reads its committer date. A missing tag is a warning and the check passes (`result` is `skip`): there is no release yet, the release workflow has not created the tag yet, or `tag-format` does not match the tags of the repository (read the warning when you adopt the check). Any other git error fails.
+4. Reads every commit `origin/<base-ref>..head` that is not a merge commit, and fails on each one whose committer date is not later than the committer date of the release commit. A pull request kept current by merging the base branch into it is checked on its own commits only. For a package of a monorepo (`package` other than `.`), only the commits that change a file under its folder count, as release-please assigns them.
+
+The checkout must hold the full history: a shallow checkout fails.
 
 Only the committer date counts. `git cherry-pick` and `git commit --amend` give a commit a new committer date and keep its author date.
 
@@ -72,7 +74,9 @@ The job of the reusable workflow has one concurrency group per run attempt and p
 
 ## Triggers
 
-The calling workflow runs on `pull_request` with the types `opened`, `synchronize` and `reopened`. A release that lands on the base branch after the check ran does not run it again: run the check again (re-run the job) before merging a pull request that was opened before the last release. To block the merge, make the check required in the ruleset of the base branch; the status check context is `<caller job id> / check`.
+The calling workflow runs on `pull_request` with the types `opened`, `edited` (a new base branch), `synchronize` and `reopened`. A release that lands on the base branch after the check ran does not run it again, so a green result can go stale: run the check again (re-run the job) before merging a pull request that was opened before the last release. A ruleset of the base branch that makes the check required and requires branches to be up to date closes that gap: bringing the branch up to date runs the check again, on the commits of the pull request only. The status check context is `<caller job id> / check`.
+
+The component reads the base branch and the head of a `pull_request` event; on any other event (a merge queue included) it fails with "run this check on a pull_request event".
 
 The release pull request of release-please passes: its one commit is made after the last release.
 
@@ -85,7 +89,7 @@ name: Release date
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, edited, synchronize, reopened]
 
 permissions: {}
 

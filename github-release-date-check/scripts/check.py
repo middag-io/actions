@@ -10,15 +10,17 @@ were made before the last release and merged after it.
 
 The check reads the version of the package in the release-please manifest
 of the base branch, finds the commit of its release tag, and fails when a
-commit of the pull request that is not a merge commit (commits base..head)
-has a committer date that is not later than the committer date of the
+commit of the pull request that is not a merge commit (commits base..head;
+for a package of a monorepo, only those that change its folder) has a
+committer date that is not later than the committer date of the
 release commit. The base is the tip of the base branch when the check runs
 (refs/remotes/origin/<base-ref>), not the base of the event, so that a
 re-run sees a release that landed after the pull request was opened.
 
-A missing release tag (no release yet, or the tag of a release that is
-still being created) is a warning and the check passes: there is no
-boundary to compare with.
+A missing release tag (no release yet, the tag of a release that is still
+being created, or a tag-format that does not match the tags) is a warning
+and the check passes: there is no boundary to compare with. Any other git
+error, and a shallow checkout, fail.
 
 Exit status: 0 when the pull request passes (and always in a dry run, which
 only reports), 1 on a finding or an invalid input. Every problem is printed
@@ -39,16 +41,16 @@ PATH_RE = re.compile(r"^(?!/)(?!.*(?:^|/)\.\.(?:/|$))[A-Za-z0-9._/-]+$")
 # A manifest key: "." or a repository-relative path.
 PACKAGE_RE = re.compile(r"^(\.|(?!/)(?!.*(?:^|/)\.\.(?:/|$))[A-Za-z0-9._/-]+)$")
 # A branch name: the characters git accepts in practice, no "..", no leading "-" or "/".
-BRANCH_RE = re.compile(r"^(?![-/])(?!.*\.\.)(?!.*//)[A-Za-z0-9._/-]+(?<![./])$")
+BRANCH_RE = re.compile(r"^(?![-/])(?!.*\.\.)(?!.*//)(?!.*@\{)[A-Za-z0-9._/+@-]+(?<![./])(?<!\.lock)$")
 # A tag format: the characters of a tag name around exactly one "{version}".
 TAG_FORMAT_RE = re.compile(r"^[A-Za-z0-9._/@-]*\{version\}[A-Za-z0-9._/@-]*$")
 VERSION_RE = re.compile(r"^[0-9A-Za-z.+-]+$")
-SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+# A full commit SHA: SHA-1 (40) or SHA-256 (64).
+SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 
-# Separators of the git log records, and the git format escapes that print them
-# (an argument of a process cannot hold a NUL byte).
-COMMIT_SEPARATOR, COMMIT_SEPARATOR_FORMAT = "\x1e", "%x1e"
-FIELD_SEPARATOR, FIELD_SEPARATOR_FORMAT = "\x00", "%x00"
+# git log -z ends each record with a NUL byte, which no commit message holds.
+# The subject is the last field, so a space or a control byte in it is kept.
+LOG_FORMAT = "--format=%H %ct %cI %s"
 SHORT_SHA = 7
 
 
@@ -118,26 +120,25 @@ def run_git(workspace, *args):
 
 
 def resolve_commit(git, ref):
-    """Returns the commit SHA of ref, or None when ref does not exist."""
-    try:
-        return git("rev-parse", "--quiet", "--verify", f"{ref}^{{commit}}").strip() or None
-    except CheckError:
+    """Returns the commit SHA of ref, or None when ref does not exist (any other git error raises)."""
+    if ref not in git("for-each-ref", "--format=%(refname)", ref).split():
         return None
+    return git("rev-parse", "--verify", f"{ref}^{{commit}}").strip()
 
 
-def read_commits(git, base, head_sha):
-    """Returns [(sha, committer time, committer date, header)] of the commits base..head that are not merges."""
-    output = git(
-        "log", "--no-merges",
-        f"--format=%H{FIELD_SEPARATOR_FORMAT}%ct{FIELD_SEPARATOR_FORMAT}%cI{FIELD_SEPARATOR_FORMAT}%s{COMMIT_SEPARATOR_FORMAT}",
-        f"{base}..{head_sha}",
-    )
+def read_commits(git, base, head_sha, package):
+    """Returns [(sha, committer time, committer date, header)] of the commits base..head that are not merges.
+
+    For a package of a monorepo, only the commits that change a file of its folder: release-please assigns
+    a commit to a package by path and compares it with the release of that package only.
+    """
+    paths = [] if package == "." else ["--", package]
+    output = git("log", "-z", "--no-merges", LOG_FORMAT, f"{base}..{head_sha}", *paths)
     commits = []
-    for record in output.split(COMMIT_SEPARATOR):
-        record = record.strip("\n")
+    for record in output.split("\x00"):
         if not record:
             continue
-        sha, time, date, header = record.split(FIELD_SEPARATOR, 3)
+        sha, time, date, header = record.split(" ", 3)
         commits.append((sha, int(time), date, header))
     return commits
 
@@ -195,6 +196,8 @@ def check(args, git=None):
         write_outputs(args.github_output, outputs)
         return 0
 
+    if git("rev-parse", "--is-shallow-repository").strip() == "true":
+        raise CheckError("the checkout is shallow: check out the repository with its full history (fetch-depth: 0)")
     base = f"refs/remotes/origin/{args.base_ref}"
     if resolve_commit(git, base) is None:
         raise CheckError(f"{base} not found: check out the repository with its full history (fetch-depth: 0)")
@@ -212,7 +215,7 @@ def check(args, git=None):
     release_date = git("log", "-1", "--format=%cI", release_sha).strip()
     print(f"release {tag}: commit {release_sha[:SHORT_SHA]}, committer date {release_date}")
 
-    commits = read_commits(git, base, args.head_sha)
+    commits = read_commits(git, base, args.head_sha, args.package)
     findings = evaluate(release_time, commits)
     print(f"{len(commits)} commit(s) of the pull request checked against origin/{args.base_ref}, {len(findings)} finding(s)")
     outputs.update({"release-sha": release_sha, "result": "fail" if findings else "pass", "findings": len(findings)})
