@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/middag-io/actions/compare/github-release-major-check-v1.0.1...github-release-major-check-v1.1.0) (2026-11-17)
+
+
+### Features
+
+* add a runner input to every reusable workflow ([9bff40f](https://github.com/middag-io/actions/commit/9bff40f1d93a2e5d673ba0edb3bc875a8d880c78))
+
 ## [1.0.1](https://github.com/middag-io/actions/compare/github-release-major-check-v1.0.0...github-release-major-check-v1.0.1) (2026-11-05)
 
 
