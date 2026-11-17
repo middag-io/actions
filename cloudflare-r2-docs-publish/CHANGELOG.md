@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/middag-io/actions/compare/cloudflare-r2-docs-publish-v1.0.0...cloudflare-r2-docs-publish-v1.1.0) (2026-11-17)
+
+
+### Features
+
+* add a runner input to every reusable workflow ([9bff40f](https://github.com/middag-io/actions/commit/9bff40f1d93a2e5d673ba0edb3bc875a8d880c78))
+
 ## 1.0.0 (2026-11-03)
 
 

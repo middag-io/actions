@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/middag-io/actions/compare/php-library-check-v1.2.0...php-library-check-v1.3.0) (2026-11-17)
+
+
+### Features
+
+* add a runner input to every reusable workflow ([9bff40f](https://github.com/middag-io/actions/commit/9bff40f1d93a2e5d673ba0edb3bc875a8d880c78))
+
 ## [1.2.0](https://github.com/middag-io/actions/compare/php-library-check-v1.1.0...php-library-check-v1.2.0) (2026-11-16)
 
 
