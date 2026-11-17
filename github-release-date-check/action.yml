@@ -1,0 +1,78 @@
+# Composite action: checks that no commit of a pull request is dated before
+# the commit of the last release, which release-please would never read.
+# Reads the release-please manifest and the release tag of a checkout with
+# history. See README.md next to this file for the inputs, what the action
+# deletes (nothing) and the permissions it needs.
+name: GitHub release date check
+description: >-
+  Fails a pull request with a commit (merge commits aside) whose committer
+  date is not later than the commit of the release tag of the package
+  version in the release-please manifest of the base branch: release-please
+  stops at that commit and never reads the older one. Publishes nothing.
+
+inputs:
+  manifest-file:
+    description: Path of the release-please manifest, relative to the repository root, read at the tip of the base branch.
+    required: false
+    default: .release-please-manifest.json
+  package:
+    description: Key of the package in the manifest ("." for a single package, the package folder in a monorepo).
+    required: false
+    default: "."
+  tag-format:
+    description: Release tag of a version, with "{version}" in place of the version (for example "v{version}", "{version}" or "api-v{version}").
+    required: false
+    default: "v{version}"
+  base-ref:
+    description: Name of the base branch of the pull request, read as refs/remotes/origin/<base-ref>. Required unless dry-run is true.
+    required: false
+    default: ""
+  head-sha:
+    description: Full SHA of the head commit of the pull request. Required unless dry-run is true; the checkout must hold the history, the base branch and the tags.
+    required: false
+    default: ""
+  dry-run:
+    description: Read the manifest from the workspace and report the release tag only; read no git history and never fail on a finding (true or false).
+    required: false
+    default: "false"
+
+outputs:
+  version:
+    description: Version of the package in the manifest of the base branch.
+    value: ${{ steps.check.outputs.version }}
+  tag:
+    description: Release tag of that version.
+    value: ${{ steps.check.outputs.tag }}
+  release-sha:
+    description: Commit of the release tag, or empty when the tag is missing or in a dry run.
+    value: ${{ steps.check.outputs.release-sha }}
+  result:
+    description: pass, fail, or skip (no release tag, or a dry run).
+    value: ${{ steps.check.outputs.result }}
+  findings:
+    description: Number of findings.
+    value: ${{ steps.check.outputs.findings }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the commit dates of the pull request
+      id: check
+      shell: bash
+      env:
+        MANIFEST_FILE: ${{ inputs.manifest-file }}
+        PACKAGE: ${{ inputs.package }}
+        TAG_FORMAT: ${{ inputs.tag-format }}
+        BASE_REF: ${{ inputs.base-ref }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" \
+          --manifest-file="$MANIFEST_FILE" \
+          --package="$PACKAGE" \
+          --tag-format="$TAG_FORMAT" \
+          --base-ref="$BASE_REF" \
+          --head-sha="$HEAD_SHA" \
+          --dry-run="$DRY_RUN" \
+          --workspace="$GITHUB_WORKSPACE" \
+          --github-output="$GITHUB_OUTPUT"

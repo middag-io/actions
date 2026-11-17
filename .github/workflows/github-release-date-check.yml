@@ -1,0 +1,101 @@
+# Reusable workflow of the github-release-date-check component. It checks
+# out the pull request with its history, the branches and the tags, and
+# gives the composite action a job, minimum permissions, a timeout and a
+# concurrency group. The composite action does the work: see
+# github-release-date-check/README.md.
+# Reference it by full commit SHA with a version comment (see the README).
+name: GitHub release date check
+
+on:
+  workflow_call:
+    inputs:
+      manifest-file:
+        description: Path of the release-please manifest, relative to the repository root, read at the tip of the base branch.
+        type: string
+        required: false
+        default: .release-please-manifest.json
+      package:
+        description: Key of the package in the manifest ("." for a single package, the package folder in a monorepo).
+        type: string
+        required: false
+        default: "."
+      tag-format:
+        description: Release tag of a version, with "{version}" in place of the version (for example "v{version}", "{version}" or "api-v{version}").
+        type: string
+        required: false
+        default: "v{version}"
+      dry-run:
+        description: Read the manifest from the checkout and report the release tag only; read no git history and never fail on a finding.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of the job, in minutes.
+        type: number
+        required: false
+        default: 5
+      runner:
+        description: Runner label for the jobs, for example the label of a self-hosted runner. Default keeps the GitHub-hosted runner.
+        type: string
+        required: false
+        default: ubuntu-24.04
+    outputs:
+      version:
+        description: Version of the package in the manifest of the base branch.
+        value: ${{ jobs.check.outputs.version }}
+      tag:
+        description: Release tag of that version.
+        value: ${{ jobs.check.outputs.tag }}
+      release-sha:
+        description: Commit of the release tag, or empty when the tag is missing or in a dry run.
+        value: ${{ jobs.check.outputs.release-sha }}
+      result:
+        description: pass, fail, or skip (no release tag, or a dry run).
+        value: ${{ jobs.check.outputs.result }}
+      findings:
+        description: Number of findings.
+        value: ${{ jobs.check.outputs.findings }}
+
+permissions: {}
+
+jobs:
+  check:
+    name: check
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    # Nothing outside the job is written: one group per run attempt and
+    # package, so that a monorepo caller that runs one job per package in
+    # the same run never queues or cancels its own jobs ("." is "root").
+    concurrency:
+      group: github-release-date-check-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.package == '.' && 'root' || inputs.package }}
+      cancel-in-progress: false
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+      release-sha: ${{ steps.check.outputs.release-sha }}
+      result: ${{ steps.check.outputs.result }}
+      findings: ${{ steps.check.outputs.findings }}
+    steps:
+      # The head commit with the full history: fetch-depth 0 also fetches
+      # every branch (as refs/remotes/origin/*) and every tag, so that the
+      # check reads the tip of the base branch when it runs and the commit
+      # of the release tag. A dry run reads only the checkout of the run's ref.
+      - name: Check out the pull request with its history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ !inputs.dry-run && github.event.pull_request.head.sha || '' }}
+          fetch-depth: ${{ inputs.dry-run && 1 || 0 }}
+          persist-credentials: false
+
+      - name: Check the pull request
+        id: check
+        uses: $/github-release-date-check
+        with:
+          manifest-file: ${{ inputs.manifest-file }}
+          package: ${{ inputs.package }}
+          tag-format: ${{ inputs.tag-format }}
+          base-ref: ${{ !inputs.dry-run && github.event.pull_request.base.ref || '' }}
+          head-sha: ${{ !inputs.dry-run && github.event.pull_request.head.sha || '' }}
+          dry-run: ${{ inputs.dry-run }}
