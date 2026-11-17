@@ -12,7 +12,3 @@
 
 * **github-release-date-check:** fail on git errors and shallow checkouts, filter monorepo packages by path ([f73fc22](https://github.com/middag-io/actions/commit/f73fc22404e7692a9d084815d3ebdf77d0f42513))
 
-
-### Miscellaneous Chores
-
-* release 1.0.0 of each new component ([58b1982](https://github.com/middag-io/actions/commit/58b198243b0726ffd3fcc345b8e78fdcec3b5802))
