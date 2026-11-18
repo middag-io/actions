@@ -8,6 +8,10 @@ Two subcommands, both called by action.yml:
         and fails only when an advisory has a severity listed in
         blocking-severities. npm calls medium "moderate"; this script maps it.
 
+With omit-dev true, both add ``--omit=dev`` to the audit: only the production
+dependencies are audited. Both print the audit mode to the log and to the job
+summary (GITHUB_STEP_SUMMARY).
+
 Standard library only. Run as ``python3 -I``.
 """
 
@@ -24,6 +28,9 @@ from typing import Iterable, Mapping, Sequence
 
 SEVERITIES = ("critical", "high", "medium", "low")
 AUDIT_COMMAND = ("npm", "audit", "--json", "--package-lock-only")
+OMIT_DEV_FLAG = "--omit=dev"
+MODE_FULL = "full (all dependencies)"
+MODE_PRODUCTION = "production only (--omit=dev)"
 # npm severity names that differ from the names of blocking-severities.
 NPM_SEVERITIES = {"moderate": "medium"}
 
@@ -129,6 +136,21 @@ def summarize(advisories: Iterable[Advisory], blocking: Sequence[str]) -> int:
     return count
 
 
+def audit_command(omit_dev: bool) -> tuple[str, ...]:
+    return AUDIT_COMMAND + (OMIT_DEV_FLAG,) if omit_dev else AUDIT_COMMAND
+
+
+def audit_mode(omit_dev: bool) -> str:
+    return MODE_PRODUCTION if omit_dev else MODE_FULL
+
+
+def write_summary(step_summary: str, lines: Sequence[str]) -> None:
+    if not step_summary:
+        return
+    with open(step_summary, "a", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+
+
 def write_outputs(github_output: str, outputs: Mapping[str, str]) -> None:
     if not github_output:
         return
@@ -140,18 +162,28 @@ def write_outputs(github_output: str, outputs: Mapping[str, str]) -> None:
 def run_plan(args: argparse.Namespace) -> int:
     blocking = parse_severities(args.blocking_severities)
     dry_run = parse_bool("dry-run", args.dry_run)
+    omit_dev = parse_bool("omit-dev", args.omit_dev)
     resolve_directory(Path(args.workspace), args.working_directory)
-    command = " ".join(AUDIT_COMMAND)
+    command = " ".join(audit_command(omit_dev))
     print(("would run: " if dry_run else "plan: ") + command)
+    print("audit mode: " + audit_mode(omit_dev))
     print("blocking severities: " + ", ".join(blocking))
     write_outputs(args.github_output, {"command": command, "blocking-severities": ",".join(blocking)})
+    if dry_run:
+        write_summary(args.step_summary, [
+            "### npm audit (dry run)", "",
+            f"- Mode: {audit_mode(omit_dev)}", f"- Command: `{command}`",
+            f"- Blocking severities: {', '.join(blocking)}",
+        ])
     return 0
 
 
 def run_scan(args: argparse.Namespace) -> int:
     blocking = parse_severities(args.blocking_severities)
+    omit_dev = parse_bool("omit-dev", args.omit_dev)
     directory = resolve_directory(Path(args.workspace), args.working_directory)
-    command = list(AUDIT_COMMAND)
+    command = list(audit_command(omit_dev))
+    print("audit mode: " + audit_mode(omit_dev))
     print("+ " + " ".join(command), flush=True)
     result = subprocess.run(command, cwd=directory, capture_output=True, text=True, check=False)
     if result.stderr:
@@ -161,6 +193,12 @@ def run_scan(args: argparse.Namespace) -> int:
     count = summarize(advisories, blocking)
     write_outputs(args.github_output, {"advisories": str(len(advisories)), "blocking": str(count)})
     print(f"{len(advisories)} advisories, {count} with a blocking severity ({', '.join(blocking)})")
+    write_summary(args.step_summary, [
+        "### npm audit", "",
+        f"- Mode: {audit_mode(omit_dev)}", f"- Command: `{' '.join(command)}`",
+        f"- Advisories: {len(advisories)}",
+        f"- Blocking ({', '.join(blocking)}): {count}",
+    ])
     if count:
         raise ScanError(f"{count} advisories with a blocking severity ({', '.join(blocking)})")
     return 0
@@ -175,6 +213,8 @@ def parser() -> argparse.ArgumentParser:
         sub.add_argument("--working-directory", default=".")
         sub.add_argument("--blocking-severities", default="critical")
         sub.add_argument("--github-output", default="")
+        sub.add_argument("--step-summary", default="")
+        sub.add_argument("--omit-dev", default="false")
         if name == "plan":
             sub.add_argument("--dry-run", default="false")
     return root

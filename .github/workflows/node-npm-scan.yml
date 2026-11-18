@@ -3,9 +3,10 @@
 # package-lock.json, with minimum permissions, a timeout and a concurrency
 # group. No install and no secret. See node-npm-scan/README.md.
 #
-# Only blocking-severities reads a variable of the caller
-# (NODE_NPM_SCAN_BLOCKING_SEVERITIES); in a called workflow, the vars context
-# resolves against the caller.
+# blocking-severities and omit-dev read a variable of the caller
+# (NODE_NPM_SCAN_BLOCKING_SEVERITIES, NODE_NPM_SCAN_OMIT_DEV); in a called
+# workflow, the vars context resolves against the caller (repository, then
+# organization).
 # Reference it by full commit SHA with a version comment (see the README).
 name: Node npm scan
 
@@ -27,6 +28,11 @@ on:
         type: string
         required: false
         default: ${{ vars.NODE_NPM_SCAN_BLOCKING_SEVERITIES || 'critical' }}
+      omit-dev:
+        description: Audit only the production dependencies (npm audit --omit=dev). Default from the variable NODE_NPM_SCAN_OMIT_DEV (true), else false.
+        type: boolean
+        required: false
+        default: ${{ vars.NODE_NPM_SCAN_OMIT_DEV == 'true' }}
       dry-run:
         description: Validate the inputs and print the audit command only; no Node.js set-up, no audit.
         type: boolean
@@ -89,4 +95,5 @@ jobs:
         with:
           working-directory: ${{ inputs.working-directory }}
           blocking-severities: ${{ inputs.blocking-severities }}
+          omit-dev: ${{ inputs.omit-dev }}
           dry-run: ${{ inputs.dry-run }}

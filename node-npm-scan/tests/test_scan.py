@@ -72,6 +72,23 @@ class InputTest(unittest.TestCase):
             self.assertEqual(status, 0)
             self.assertIn("would run: npm audit --json --package-lock-only", log)
             self.assertEqual(Path(output).read_text(), EXPECTED.read_text())
+            self.assertIn("audit mode: full (all dependencies)", log)
+
+    def test_omit_dev_plan_adds_the_flag_and_names_the_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output, summary = os.path.join(tmp, "out"), os.path.join(tmp, "summary")
+            status, log = run(["plan", "--workspace", str(FIXTURE), "--omit-dev", "true", "--dry-run", "true",
+                               "--github-output", output, "--step-summary", summary])
+            self.assertEqual(status, 0)
+            self.assertIn("would run: npm audit --json --package-lock-only --omit=dev", log)
+            self.assertIn("audit mode: production only (--omit=dev)", log)
+            self.assertIn("command=npm audit --json --package-lock-only --omit=dev", Path(output).read_text())
+            self.assertIn("Mode: production only (--omit=dev)", Path(summary).read_text())
+
+    def test_omit_dev_is_validated(self):
+        status, log = run(["plan", "--workspace", str(FIXTURE), "--omit-dev", "yes"])
+        self.assertEqual(status, 1)
+        self.assertIn("input omit-dev must be true or false", log)
 
 
 class ReportTest(unittest.TestCase):
@@ -86,15 +103,16 @@ class ReportTest(unittest.TestCase):
 
 
 class RunTest(unittest.TestCase):
-    def scan_with(self, report, severities):
+    def scan_with(self, report, severities, extra=()):
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "package-lock.json").write_text("{}")
-            output = Path(tmp) / "out"
+            output, summary = Path(tmp) / "out", Path(tmp) / "summary"
             fake = mock.Mock(return_value=subprocess.CompletedProcess([], 1, stdout=json.dumps(report), stderr=""))
             with mock.patch.object(scan.subprocess, "run", fake):
                 status, log = run(["run", "--workspace", tmp, "--blocking-severities", severities,
-                                   "--github-output", str(output)])
+                                   "--github-output", str(output), "--step-summary", str(summary), *extra])
             outputs = dict(line.split("=", 1) for line in output.read_text().splitlines()) if output.exists() else {}
+            self.summary = summary.read_text() if summary.exists() else ""
             return status, log, outputs, fake
 
     def test_fails_on_a_blocking_severity_only(self):
@@ -104,6 +122,17 @@ class RunTest(unittest.TestCase):
         self.assertIn("::error::lib-a: medium: ReDoS", log)
         self.assertIn("::warning::lib-a: critical", log)
         self.assertEqual(fake.call_args.args[0], list(scan.AUDIT_COMMAND))
+        self.assertIn("audit mode: full (all dependencies)", log)
+        self.assertIn("Mode: full (all dependencies)", self.summary)
+
+    def test_omit_dev_audits_production_dependencies_only(self):
+        report = {"vulnerabilities": {"lib-c": REPORT["vulnerabilities"]["lib-c"]}}
+        status, log, _, fake = self.scan_with(report, "critical", ("--omit-dev", "true"))
+        self.assertEqual(status, 0)
+        self.assertEqual(fake.call_args.args[0], [*scan.AUDIT_COMMAND, "--omit=dev"])
+        self.assertIn("audit mode: production only (--omit=dev)", log)
+        self.assertIn("Mode: production only (--omit=dev)", self.summary)
+        self.assertIn("--package-lock-only --omit=dev", self.summary)
 
     def test_passes_with_the_default_when_nothing_is_critical(self):
         report = {"vulnerabilities": {"lib-c": REPORT["vulnerabilities"]["lib-c"]}}
