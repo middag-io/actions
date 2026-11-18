@@ -13,7 +13,7 @@ The `*-check` components of this repository with an npm project run the composit
 
 1. Validates the inputs before anything else: `working-directory` stays inside the checkout and holds a `package-lock.json`; `blocking-severities` lists one or more of `critical`, `high`, `medium`, `low`.
 2. Prints the audit command. A dry run stops here.
-3. Runs `npm audit --json --package-lock-only`: the audit reads the lock file only, so no install is needed.
+3. Runs `npm audit --json --package-lock-only`: the audit reads the lock file only, so no install is needed. With `omit-dev` true, it adds `--omit=dev` and audits only the production dependencies. The log and the job summary name the mode used: full (all dependencies) or production only.
 4. Prints every advisory once (from the `via` entries of the report) as an annotation: an error when its severity is in `blocking-severities`, a warning otherwise. npm calls the medium severity `moderate`; the component maps it to `medium`. `info` never blocks.
 5. Fails when at least one advisory has a blocking severity, or when npm prints no JSON report or an error (for example, the registry is unreachable).
 
@@ -27,6 +27,7 @@ Nothing. The component writes no file.
 | --- | --- | --- | --- | --- |
 | `working-directory` | yes | yes | `.` | Directory that holds `package-lock.json`, relative to the checkout. |
 | `blocking-severities` | yes | yes | variable `NODE_NPM_SCAN_BLOCKING_SEVERITIES`, else `critical` (workflow); `critical` (action) | Severities that fail the audit, separated by commas. |
+| `omit-dev` | yes (boolean) | yes (`true`/`false`) | variable `NODE_NPM_SCAN_OMIT_DEV` (`true`), else `false` (workflow); `false` (action) | Audit only the production dependencies (`npm audit --omit=dev`). |
 | `node-version` | yes | no | `22` | Node.js version to set up. |
 | `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and print the command only. |
 | `timeout-minutes` | yes | no | `10` | Timeout of the job. |
@@ -46,6 +47,9 @@ Nothing. The component writes no file.
 | Name | Kind | Read by |
 | --- | --- | --- |
 | `NODE_NPM_SCAN_BLOCKING_SEVERITIES` | variable | default of `blocking-severities` in the reusable workflow |
+| `NODE_NPM_SCAN_OMIT_DEV` | variable | default of `omit-dev` in the reusable workflow; only `true` turns it on |
+
+Precedence: the input of the caller, then the variable of the repository, then the variable of the organization, then the default. A repository variable overrides an organization variable of the same name.
 
 No secret.
 

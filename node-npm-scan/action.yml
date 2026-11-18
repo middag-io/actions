@@ -21,6 +21,12 @@ inputs:
       high, medium and low. Lower severities are only reported.
     required: false
     default: critical
+  omit-dev:
+    description: >-
+      Audit only the production dependencies (npm audit --omit=dev); true or
+      false. The job summary names the mode used.
+    required: false
+    default: "false"
   dry-run:
     description: Validate the inputs and print the audit command only; no audit (true or false).
     required: false
@@ -49,14 +55,17 @@ runs:
       env:
         WORKING_DIRECTORY: ${{ inputs.working-directory }}
         BLOCKING_SEVERITIES: ${{ inputs.blocking-severities }}
+        OMIT_DEV: ${{ inputs.omit-dev }}
         DRY_RUN: ${{ inputs.dry-run }}
       run: |
         python3 -I "$GITHUB_ACTION_PATH/scripts/scan.py" plan \
           --workspace="$GITHUB_WORKSPACE" \
           --working-directory="$WORKING_DIRECTORY" \
           --blocking-severities="$BLOCKING_SEVERITIES" \
+          --omit-dev="$OMIT_DEV" \
           --dry-run="$DRY_RUN" \
-          --github-output="$GITHUB_OUTPUT"
+          --github-output="$GITHUB_OUTPUT" \
+          --step-summary="$GITHUB_STEP_SUMMARY"
 
     - name: Audit the dependencies
       id: scan
@@ -65,9 +74,12 @@ runs:
       env:
         WORKING_DIRECTORY: ${{ inputs.working-directory }}
         BLOCKING_SEVERITIES: ${{ inputs.blocking-severities }}
+        OMIT_DEV: ${{ inputs.omit-dev }}
       run: |
         python3 -I "$GITHUB_ACTION_PATH/scripts/scan.py" run \
           --workspace="$GITHUB_WORKSPACE" \
           --working-directory="$WORKING_DIRECTORY" \
           --blocking-severities="$BLOCKING_SEVERITIES" \
-          --github-output="$GITHUB_OUTPUT"
+          --omit-dev="$OMIT_DEV" \
+          --github-output="$GITHUB_OUTPUT" \
+          --step-summary="$GITHUB_STEP_SUMMARY"
