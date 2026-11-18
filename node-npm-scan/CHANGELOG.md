@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/middag-io/actions/compare/node-npm-scan-v1.1.0...node-npm-scan-v1.2.0) (2026-11-18)
+
+
+### Features
+
+* **node-npm-scan:** add omit-dev input to audit only production dependencies ([bc58c88](https://github.com/middag-io/actions/commit/bc58c8875a72588852c53d53c5a3e057cde21e6a))
+
 ## [1.1.0](https://github.com/middag-io/actions/compare/node-npm-scan-v1.0.0...node-npm-scan-v1.1.0) (2026-11-17)
 
 
