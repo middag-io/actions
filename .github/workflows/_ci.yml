@@ -4,8 +4,8 @@
 # The changes job plans the run (.github/scripts/ci-changes.sh): a pull
 # request runs the dry-run jobs only of the components it changes, the
 # release pull request that changes only changelogs and the manifest runs
-# only the lint and secret scans, and a push to main runs only the lint and
-# secret scans (the pull request already ran the rest on the same merge).
+# only the lint and secret scan steps of `lint`, and a push to main runs
+# only those steps (the pull request already ran the rest on the same merge).
 # ci-gate accepts a skipped job only when the plan skips it
 # (.github/scripts/ci-gate.sh).
 #
@@ -54,19 +54,29 @@ jobs:
         run: |
           bash .github/scripts/ci-changes.sh "$EVENT_NAME" "$HEAD_BRANCH" | tee -a "$GITHUB_OUTPUT"
 
-  actionlint:
-    name: actionlint
+  # Lint, secret scan, repository checks and unit tests in one job: one
+  # runner instead of five. actionlint, zizmor and gitleaks run on every
+  # plan; the repository checks and the unit tests only on a full plan.
+  # Every step runs even after an earlier one fails, so one run reports
+  # every failing check.
+  lint:
+    name: lint
+    needs: changes
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
-      - name: Check out the repository
+      # Full history for gitleaks; it also holds the first parent of the
+      # merge commit that the component path check compares with.
+      - name: Check out the repository with full history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Install actionlint
+        if: ${{ !cancelled() }}
         env:
           ACTIONLINT_VERSION: 1.7.12
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
@@ -79,23 +89,13 @@ jobs:
           tar -xzf "$archive" -C "$RUNNER_TEMP/bin" actionlint
 
       - name: Run actionlint
+        if: ${{ !cancelled() }}
         run: |
           shellcheck --version
           "$RUNNER_TEMP/bin/actionlint" -color
 
-  zizmor:
-    name: zizmor
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
       - name: Install zizmor
+        if: ${{ !cancelled() }}
         env:
           ZIZMOR_VERSION: 1.32.0
           ZIZMOR_SHA256: bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b
@@ -110,26 +110,15 @@ jobs:
       # Online mode: the token enables the audits that query GitHub,
       # known-vulnerable-actions among them. Any finding fails the job.
       - name: Run zizmor
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           "$RUNNER_TEMP/bin/zizmor" --version
           "$RUNNER_TEMP/bin/zizmor" --config zizmor.yml --format github .
 
-  gitleaks:
-    name: gitleaks
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository with full history
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
       - name: Install gitleaks
+        if: ${{ !cancelled() }}
         env:
           GITLEAKS_VERSION: 8.30.1
           GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
@@ -142,29 +131,13 @@ jobs:
           tar -xzf "$archive" -C "$RUNNER_TEMP/bin" gitleaks
 
       - name: Scan the git history for secrets
+        if: ${{ !cancelled() }}
         run: |
           "$RUNNER_TEMP/bin/gitleaks" version
           "$RUNNER_TEMP/bin/gitleaks" git --redact --no-banner --verbose .
 
-  check-genericity:
-    name: check-genericity
-    needs: changes
-    if: ${{ needs.changes.outputs.full == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      # Depth 2: the checked-out commit is a merge (the pull request merge
-      # ref, or a merge into main), and its first parent is the base that
-      # the component path check compares with.
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 2
-          persist-credentials: false
-
       - name: Lint the repository scripts
+        if: ${{ !cancelled() && needs.changes.outputs.full == 'true' }}
         run: |
           shellcheck --version
           shellcheck .github/scripts/*.sh
@@ -173,12 +146,15 @@ jobs:
       # requires the check to fail, so that a check that stops failing is
       # caught here.
       - name: Test the genericity check
+        if: ${{ !cancelled() && needs.changes.outputs.full == 'true' }}
         run: bash .github/scripts/test-check-genericity.sh
 
       - name: Check the genericity rules
+        if: ${{ !cancelled() && needs.changes.outputs.full == 'true' }}
         run: bash .github/scripts/check-genericity.sh
 
       - name: Test the component path check, the major tag script and the CI plan
+        if: ${{ !cancelled() && needs.changes.outputs.full == 'true' }}
         run: |
           bash .github/scripts/test-check-component-paths.sh
           bash .github/scripts/test-move-major-tags.sh
@@ -191,27 +167,14 @@ jobs:
       # release, and Dependabot updates the action pins of the component
       # workflows from the root directory.
       - name: Check that component workflow changes touch the component folder
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]' }}
+        if: ${{ !cancelled() && needs.changes.outputs.full == 'true' && github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]' }}
         run: bash .github/scripts/check-component-paths.sh HEAD^1 HEAD
-
-  unit-tests:
-    name: unit-tests
-    needs: changes
-    if: ${{ needs.changes.outputs.full == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
 
       # Every component (a top-level folder with an action.yml or
       # action.yaml) must have a tests/ folder. The tests run without
       # network access to any cloud: HTTP calls are simulated.
       - name: Run the component tests
+        if: ${{ !cancelled() && needs.changes.outputs.full == 'true' }}
         run: |
           python3 --version
           mapfile -t components < <(find . -mindepth 2 -maxdepth 2 -path './.*' -prune -o \( -name action.yml -o -name action.yaml \) -print | cut -d/ -f2 | sort -u)
@@ -245,28 +208,6 @@ jobs:
       manifest-file: release-please/tests/fixtures/basic/.release-please-manifest.json
       dry-run: true
 
-  # The dry run must list the packages of the fixture configuration and
-  # create no release.
-  dry-run-check-release-please:
-    name: dry-run-check-release-please
-    needs: dry-run-release-please
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions: {}
-    steps:
-      - name: Compare the dry-run outputs with the fixture
-        env:
-          PACKAGES: ${{ needs.dry-run-release-please.outputs.packages }}
-          RELEASE_CREATED: ${{ needs.dry-run-release-please.outputs.release-created }}
-          TAG_NAME: ${{ needs.dry-run-release-please.outputs.tag-name }}
-          PATHS_RELEASED: ${{ needs.dry-run-release-please.outputs.paths-released }}
-        run: |
-          echo "packages=$PACKAGES release-created=$RELEASE_CREATED tag-name=$TAG_NAME paths-released=$PATHS_RELEASED"
-          if [ "$PACKAGES" != '["."]' ] || [ "$RELEASE_CREATED" != "false" ] || [ -n "$TAG_NAME" ] || [ "$PATHS_RELEASED" != '[]' ]; then
-            echo '::error::dry-run outputs differ: expected packages=["."] release-created=false tag-name= paths-released=[]'
-            exit 1
-          fi
-
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture plugin tree. A dry run: no credentials, no dependency
   # install, no artifact and no release upload.
@@ -283,37 +224,6 @@ jobs:
       zip-name: local_example
       path: moodle-plugin-package/tests/fixtures/basic
       dry-run: true
-
-  # The dry run must package exactly the files of the reference listing
-  # (tests/fixtures/expected/basic.sha256) and read version.php.
-  dry-run-check-moodle-plugin-package:
-    name: dry-run-check-moodle-plugin-package
-    needs: dry-run-moodle-plugin-package
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected listing
-        env:
-          VERSION: ${{ needs.dry-run-moodle-plugin-package.outputs.version }}
-          RELEASE: ${{ needs.dry-run-moodle-plugin-package.outputs.release }}
-          FILES: ${{ needs.dry-run-moodle-plugin-package.outputs.files }}
-          LISTING_SHA256: ${{ needs.dry-run-moodle-plugin-package.outputs.listing-sha256 }}
-        run: |
-          expected="moodle-plugin-package/tests/fixtures/expected/basic.sha256"
-          expected_sha="$(sha256sum "$expected" | cut -d' ' -f1)"
-          expected_files="$(grep -c . "$expected")"
-          echo "version=$VERSION release=$RELEASE files=$FILES listing-sha256=$LISTING_SHA256"
-          if [ "$VERSION" != "2026110300" ] || [ "$RELEASE" != "1.2.0" ] || [ "$FILES" != "$expected_files" ] || [ "$LISTING_SHA256" != "$expected_sha" ]; then
-            echo "::error::dry-run outputs differ: expected version=2026110300 release=1.2.0 files=$expected_files listing-sha256=$expected_sha"
-            exit 1
-          fi
 
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture library and probe. A dry run: no database, no PHP
@@ -332,32 +242,6 @@ jobs:
       path: moodle-host-check/tests/fixtures/basic
       probe-script: moodle-host-check/tests/fixtures/basic/probe.php
       dry-run: true
-
-  # The dry run must plan exactly the commands of the reference plan
-  # (tests/fixtures/expected/basic.json).
-  dry-run-check-moodle-host-check:
-    name: dry-run-check-moodle-host-check
-    needs: dry-run-moodle-host-check
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected plan
-        env:
-          COMMANDS: ${{ needs.dry-run-moodle-host-check.outputs.commands }}
-        run: |
-          expected="moodle-host-check/tests/fixtures/expected/basic.json"
-          echo "$COMMANDS"
-          if ! jq -e --argjson actual "$COMMANDS" '. == $actual' "$expected" >/dev/null; then
-            echo "::error::dry-run outputs differ from $expected"
-            exit 1
-          fi
 
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture plugin. A dry run: no credentials, no PHP set-up, no
@@ -378,30 +262,6 @@ jobs:
       composer-scripts: check:style, test
       dry-run: true
 
-  # The dry run must plan exactly the commands of the reference plan
-  # (tests/fixtures/expected/basic.json) for the plugin of the fixture.
-  dry-run-check-moodle-plugin-check:
-    name: dry-run-check-moodle-plugin-check
-    needs: dry-run-moodle-plugin-check
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected plan
-        env:
-          COMPONENT: ${{ needs.dry-run-moodle-plugin-check.outputs.component }}
-          VERSION: ${{ needs.dry-run-moodle-plugin-check.outputs.version }}
-          COMMANDS: ${{ needs.dry-run-moodle-plugin-check.outputs.commands }}
-        run: |
-          python3 -I -B moodle-plugin-check/tests/compare_plan.py \
-            moodle-plugin-check/tests/fixtures/expected/basic.json
-
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture Workers project. A dry run: no credentials, no npm
   # install, no npm script and no Wrangler run.
@@ -421,30 +281,6 @@ jobs:
       wrangler-dry-run: true
       dry-run: true
 
-  # The dry run must plan exactly the commands of the reference plan
-  # (tests/fixtures/expected/basic.json) for the project of the fixture.
-  dry-run-check-cloudflare-workers-check:
-    name: dry-run-check-cloudflare-workers-check
-    needs: dry-run-cloudflare-workers-check
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected plan
-        env:
-          NAME: ${{ needs.dry-run-cloudflare-workers-check.outputs.name }}
-          WRANGLER_CONFIG: ${{ needs.dry-run-cloudflare-workers-check.outputs.wrangler-config }}
-          COMMANDS: ${{ needs.dry-run-cloudflare-workers-check.outputs.commands }}
-        run: |
-          python3 -I -B cloudflare-workers-check/tests/compare_plan.py \
-            cloudflare-workers-check/tests/fixtures/expected/basic.json
-
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture site. A dry run: no credentials, no fetch of the
   # deployed hash, no build and no deploy.
@@ -461,38 +297,6 @@ jobs:
       docs-path: cloudflare-pages-deploy/tests/fixtures/basic/site
       project-name: example-docs
       dry-run: true
-
-  # The dry run must plan exactly the values of
-  # cloudflare-pages-deploy/tests/fixtures/expected/basic.env and deploy
-  # nothing.
-  dry-run-check-cloudflare-pages-deploy:
-    name: dry-run-check-cloudflare-pages-deploy
-    needs: dry-run-cloudflare-pages-deploy
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected values
-        env:
-          CONTENT_HASH: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.content-hash }}
-          DEPLOY: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.deploy }}
-          DIST_PATH: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.dist-path }}
-          COMMAND: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.command }}
-          DEPLOYMENT_URL: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.deployment-url }}
-        run: |
-          expected="cloudflare-pages-deploy/tests/fixtures/expected/basic.env"
-          actual="$(printf 'content-hash=%s\ndeploy=%s\ndist-path=%s\ncommand=%s\n' "$CONTENT_HASH" "$DEPLOY" "$DIST_PATH" "$COMMAND")"
-          echo "$actual"
-          if ! diff -u <(grep -E '^(content-hash|deploy|dist-path|command)=' "$expected") - <<<"$actual" || [ -n "$DEPLOYMENT_URL" ]; then
-            echo "::error::dry-run outputs differ from $expected, or the dry run deployed"
-            exit 1
-          fi
 
   # Calls the reusable workflow of cloudflare-workers-deploy by a relative
   # path on a fixture project. A dry run: no credentials, no install, no
@@ -511,25 +315,6 @@ jobs:
       wrangler-environment: production
       account-id: ""
       dry-run: true
-
-  # The dry run must find the fixture's Wrangler configuration.
-  dry-run-check-cloudflare-workers-deploy:
-    name: dry-run-check-cloudflare-workers-deploy
-    needs: dry-run-cloudflare-workers-deploy
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions: {}
-    steps:
-      - name: Compare the dry-run outputs with the fixture
-        env:
-          WRANGLER_CONFIG: ${{ needs.dry-run-cloudflare-workers-deploy.outputs.wrangler-config }}
-          VERSION_ID: ${{ needs.dry-run-cloudflare-workers-deploy.outputs.version-id }}
-        run: |
-          echo "wrangler-config=$WRANGLER_CONFIG version-id=$VERSION_ID"
-          if [ "$WRANGLER_CONFIG" != "wrangler.toml" ] || [ -n "$VERSION_ID" ]; then
-            echo "::error::dry-run outputs differ: expected wrangler-config=wrangler.toml and an empty version-id"
-            exit 1
-          fi
 
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture tree. A dry run: no credentials, no PHP setup, no
@@ -552,35 +337,6 @@ jobs:
       optimize-autoloader: true
       dry-run: true
 
-  # The dry run must plan exactly the outputs of
-  # php-composer-setup/tests/fixtures/expected/basic.env.
-  dry-run-check-php-composer-setup:
-    name: dry-run-check-php-composer-setup
-    needs: dry-run-php-composer-setup
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected values
-        env:
-          PHP_VERSION: ${{ needs.dry-run-php-composer-setup.outputs.php-version }}
-          AUTH_ENTRIES: ${{ needs.dry-run-php-composer-setup.outputs.auth-entries }}
-          INSTALL_COMMAND: ${{ needs.dry-run-php-composer-setup.outputs.install-command }}
-        run: |
-          expected="php-composer-setup/tests/fixtures/expected/basic.env"
-          actual="$(printf 'php-version=%s\nauth-entries=%s\ninstall-command=%s\n' "$PHP_VERSION" "$AUTH_ENTRIES" "$INSTALL_COMMAND")"
-          echo "$actual"
-          if ! diff -u "$expected" - <<<"$actual"; then
-            echo "::error::dry-run outputs differ from $expected"
-            exit 1
-          fi
-
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture project. A dry run: no credentials, no PHP set-up, no install,
   # no audit.
@@ -598,35 +354,6 @@ jobs:
       blocking-severities: high, critical
       dry-run: true
 
-  # The dry run must plan exactly the outputs of
-  # php-composer-scan/tests/fixtures/expected/basic.env.
-  dry-run-check-php-composer-scan:
-    name: dry-run-check-php-composer-scan
-    needs: dry-run-php-composer-scan
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected values
-        env:
-          COMMAND: ${{ needs.dry-run-php-composer-scan.outputs.command }}
-          BLOCKING_SEVERITIES: ${{ needs.dry-run-php-composer-scan.outputs.blocking-severities }}
-          ADVISORIES: ${{ needs.dry-run-php-composer-scan.outputs.advisories }}
-        run: |
-          expected="php-composer-scan/tests/fixtures/expected/basic.env"
-          actual="$(printf 'command=%s\nblocking-severities=%s\n' "$COMMAND" "$BLOCKING_SEVERITIES")"
-          echo "$actual"
-          if ! diff -u "$expected" - <<<"$actual" || [ -n "$ADVISORIES" ]; then
-            echo "::error::dry-run outputs differ from $expected, or the dry run audited"
-            exit 1
-          fi
-
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture project. A dry run: no Node.js set-up, no audit.
   # zizmor self-repository: "./" is the documented form of this test job; in
@@ -643,35 +370,6 @@ jobs:
       blocking-severities: critical, high
       dry-run: true
 
-  # The dry run must plan exactly the outputs of
-  # node-npm-scan/tests/fixtures/expected/basic.env.
-  dry-run-check-node-npm-scan:
-    name: dry-run-check-node-npm-scan
-    needs: dry-run-node-npm-scan
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected values
-        env:
-          COMMAND: ${{ needs.dry-run-node-npm-scan.outputs.command }}
-          BLOCKING_SEVERITIES: ${{ needs.dry-run-node-npm-scan.outputs.blocking-severities }}
-          ADVISORIES: ${{ needs.dry-run-node-npm-scan.outputs.advisories }}
-        run: |
-          expected="node-npm-scan/tests/fixtures/expected/basic.env"
-          actual="$(printf 'command=%s\nblocking-severities=%s\n' "$COMMAND" "$BLOCKING_SEVERITIES")"
-          echo "$actual"
-          if ! diff -u "$expected" - <<<"$actual" || [ -n "$ADVISORIES" ]; then
-            echo "::error::dry-run outputs differ from $expected, or the dry run audited"
-            exit 1
-          fi
-
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture module. A dry run: no Go set-up, no install, no scan.
   # zizmor self-repository: "./" is the documented form of this test job; in
@@ -687,36 +385,6 @@ jobs:
       working-directory: go-module-scan/tests/fixtures/basic
       blocking-severities: critical, high
       dry-run: true
-
-  # The dry run must plan exactly the outputs of
-  # go-module-scan/tests/fixtures/expected/basic.env.
-  dry-run-check-go-module-scan:
-    name: dry-run-check-go-module-scan
-    needs: dry-run-go-module-scan
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected values
-        env:
-          COMMAND: ${{ needs.dry-run-go-module-scan.outputs.command }}
-          TOOL: ${{ needs.dry-run-go-module-scan.outputs.tool }}
-          BLOCKING_SEVERITIES: ${{ needs.dry-run-go-module-scan.outputs.blocking-severities }}
-          ADVISORIES: ${{ needs.dry-run-go-module-scan.outputs.advisories }}
-        run: |
-          expected="go-module-scan/tests/fixtures/expected/basic.env"
-          actual="$(printf 'command=%s\ntool=%s\nblocking-severities=%s\n' "$COMMAND" "$TOOL" "$BLOCKING_SEVERITIES")"
-          echo "$actual"
-          if ! diff -u "$expected" - <<<"$actual" || [ -n "$ADVISORIES" ]; then
-            echo "::error::dry-run outputs differ from $expected, or the dry run audited"
-            exit 1
-          fi
 
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture library. A dry run: no credentials, no PHP set-up, no
@@ -738,38 +406,6 @@ jobs:
       tool-cache-paths: .cache
       audit-blocking-severities: critical, high
       dry-run: true
-
-  # The dry run must plan exactly the commands, the audit command and the
-  # tool cache paths of php-library-check/tests/fixtures/expected/basic.json.
-  dry-run-check-php-library-check:
-    name: dry-run-check-php-library-check
-    needs: dry-run-php-library-check
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected plan
-        env:
-          COMMANDS: ${{ needs.dry-run-php-library-check.outputs.commands }}
-          AUDIT_COMMAND: ${{ needs.dry-run-php-library-check.outputs.audit-command }}
-          TOOL_CACHE_PATHS: ${{ needs.dry-run-php-library-check.outputs.tool-cache-paths }}
-        run: |
-          expected="php-library-check/tests/fixtures/expected/basic.json"
-          echo "commands=$COMMANDS"
-          echo "audit-command=$AUDIT_COMMAND"
-          echo "tool-cache-paths=$TOOL_CACHE_PATHS"
-          if ! jq -e --argjson commands "$COMMANDS" --arg audit "$AUDIT_COMMAND" --argjson caches "$TOOL_CACHE_PATHS" \
-            '.commands == $commands and .["audit-command"] == $audit and .["tool-cache-paths"] == $caches' \
-            "$expected" >/dev/null; then
-            echo "::error::dry-run outputs differ from $expected"
-            exit 1
-          fi
 
   # The highest-versions form of the same call: composer update after
   # removing config.platform.php, and the major version check, tests only.
@@ -799,40 +435,6 @@ jobs:
       audit-blocking-severities: critical, high
       dry-run: true
 
-  # The dry run must plan exactly the values of
-  # php-library-check/tests/fixtures/expected/highest.json.
-  dry-run-check-php-library-check-highest:
-    name: dry-run-check-php-library-check-highest
-    needs: dry-run-php-library-check-highest
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected plan
-        env:
-          COMMANDS: ${{ needs.dry-run-php-library-check-highest.outputs.commands }}
-          AUDIT_COMMAND: ${{ needs.dry-run-php-library-check-highest.outputs.audit-command }}
-          INSTALL_COMMAND: ${{ needs.dry-run-php-library-check-highest.outputs.install-command }}
-          PLATFORM_COMMAND: ${{ needs.dry-run-php-library-check-highest.outputs.platform-command }}
-          EXPECT_MAJORS: ${{ needs.dry-run-php-library-check-highest.outputs.expect-majors }}
-        run: |
-          expected="php-library-check/tests/fixtures/expected/highest.json"
-          printf '%s=%s\n' commands "$COMMANDS" audit-command "$AUDIT_COMMAND" install-command "$INSTALL_COMMAND" \
-            platform-command "$PLATFORM_COMMAND" expect-majors "$EXPECT_MAJORS"
-          if ! jq -e --argjson commands "$COMMANDS" --arg audit "$AUDIT_COMMAND" --arg install "$INSTALL_COMMAND" \
-            --arg platform "$PLATFORM_COMMAND" --argjson majors "$EXPECT_MAJORS" \
-            '.commands == $commands and .["audit-command"] == $audit and .["install-command"] == $install
-              and .["platform-command"] == $platform and .["expect-majors"] == $majors' "$expected" >/dev/null; then
-            echo "::error::dry-run outputs differ from $expected"
-            exit 1
-          fi
-
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture manifest and a fixture title, in a family MINOR
   # window. A dry run: no git history read, findings only reported.
@@ -852,36 +454,6 @@ jobs:
       title: "feat(api): add a thing"
       dry-run: true
 
-  # The dry run must report exactly the outputs of
-  # php-version-family-check/tests/fixtures/expected/basic.env.
-  dry-run-check-php-version-family-check:
-    name: dry-run-check-php-version-family-check
-    needs: dry-run-php-version-family-check
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected values
-        env:
-          VERSION: ${{ needs.dry-run-php-version-family-check.outputs.version }}
-          WINDOW_KIND: ${{ needs.dry-run-php-version-family-check.outputs.window-kind }}
-          RESULT: ${{ needs.dry-run-php-version-family-check.outputs.result }}
-          FINDINGS: ${{ needs.dry-run-php-version-family-check.outputs.findings }}
-        run: |
-          expected="php-version-family-check/tests/fixtures/expected/basic.env"
-          actual="$(printf 'version=%s\nwindow-kind=%s\nresult=%s\nfindings=%s\n' "$VERSION" "$WINDOW_KIND" "$RESULT" "$FINDINGS")"
-          echo "$actual"
-          if ! diff -u "$expected" - <<<"$actual"; then
-            echo "::error::dry-run outputs differ from $expected"
-            exit 1
-          fi
-
   # Calls the reusable workflow by a relative path, as a caller would by SHA,
   # on the fixture manifest. A dry run: no git history read, the release tag
   # only reported.
@@ -897,37 +469,6 @@ jobs:
     with:
       manifest-file: github-release-date-check/tests/fixtures/basic/.release-please-manifest.json
       dry-run: true
-
-  # The dry run must report exactly the outputs of
-  # github-release-date-check/tests/fixtures/expected/basic.env.
-  dry-run-check-github-release-date-check:
-    name: dry-run-check-github-release-date-check
-    needs: dry-run-github-release-date-check
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected values
-        env:
-          VERSION: ${{ needs.dry-run-github-release-date-check.outputs.version }}
-          TAG: ${{ needs.dry-run-github-release-date-check.outputs.tag }}
-          RELEASE_SHA: ${{ needs.dry-run-github-release-date-check.outputs.release-sha }}
-          RESULT: ${{ needs.dry-run-github-release-date-check.outputs.result }}
-          FINDINGS: ${{ needs.dry-run-github-release-date-check.outputs.findings }}
-        run: |
-          expected="github-release-date-check/tests/fixtures/expected/basic.env"
-          actual="$(printf 'version=%s\ntag=%s\nrelease-sha=%s\nresult=%s\nfindings=%s\n' "$VERSION" "$TAG" "$RELEASE_SHA" "$RESULT" "$FINDINGS")"
-          echo "$actual"
-          if ! diff -u "$expected" - <<<"$actual"; then
-            echo "::error::dry-run outputs differ from $expected"
-            exit 1
-          fi
 
   # Calls the reusable workflow by a relative path, as a caller would by SHA,
   # on the fixture manifest: a breaking change title without a Release-As
@@ -945,36 +486,6 @@ jobs:
       manifest-file: github-release-major-check/tests/fixtures/basic/.release-please-manifest.json
       title: "feat(api)!: drop a thing"
       dry-run: true
-
-  # The dry run must report exactly the outputs of
-  # github-release-major-check/tests/fixtures/expected/basic.env.
-  dry-run-check-github-release-major-check:
-    name: dry-run-check-github-release-major-check
-    needs: dry-run-github-release-major-check
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected values
-        env:
-          VERSION: ${{ needs.dry-run-github-release-major-check.outputs.version }}
-          RELEASE_AS_MAJOR: ${{ needs.dry-run-github-release-major-check.outputs.release-as-major }}
-          RESULT: ${{ needs.dry-run-github-release-major-check.outputs.result }}
-          FINDINGS: ${{ needs.dry-run-github-release-major-check.outputs.findings }}
-        run: |
-          expected="github-release-major-check/tests/fixtures/expected/basic.env"
-          actual="$(printf 'version=%s\nrelease-as-major=%s\nresult=%s\nfindings=%s\n' "$VERSION" "$RELEASE_AS_MAJOR" "$RESULT" "$FINDINGS")"
-          echo "$actual"
-          if ! diff -u "$expected" - <<<"$actual"; then
-            echo "::error::dry-run outputs differ from $expected"
-            exit 1
-          fi
 
   # A monorepo caller: three calls in parallel in the same run, one per
   # package of the fixture manifest. Each call has its own concurrency group,
@@ -1021,39 +532,6 @@ jobs:
       title: "fix(cli): handle a thing"
       dry-run: true
 
-  # The three calls must report exactly the outputs of
-  # github-release-major-check/tests/fixtures/expected/monorepo.env.
-  dry-run-check-github-release-major-check-monorepo:
-    name: dry-run-check-github-release-major-check-monorepo
-    needs:
-      - dry-run-github-release-major-check-monorepo-api
-      - dry-run-github-release-major-check-monorepo-web
-      - dry-run-github-release-major-check-monorepo-cli
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the outputs of the three calls with the expected values
-        env:
-          API: ${{ toJSON(needs.dry-run-github-release-major-check-monorepo-api.outputs) }}
-          WEB: ${{ toJSON(needs.dry-run-github-release-major-check-monorepo-web.outputs) }}
-          CLI: ${{ toJSON(needs.dry-run-github-release-major-check-monorepo-cli.outputs) }}
-        run: |
-          expected="github-release-major-check/tests/fixtures/expected/monorepo.env"
-          line() { jq -r --arg p "$1" '"\($p) version=\(.version) release-as-major=\(."release-as-major") result=\(.result) findings=\(.findings)"' <<<"$2"; }
-          actual="$(line packages/api "$API"; line packages/web "$WEB"; line packages/cli "$CLI")"
-          echo "$actual"
-          if ! diff -u "$expected" - <<<"$actual"; then
-            echo "::error::dry-run outputs differ from $expected"
-            exit 1
-          fi
-
   # Calls the reusable workflow by a relative path, as a caller would by SHA,
   # on the fixture plugin. A dry run: no setup, no install, no credentials.
   # zizmor self-repository: "./" is the documented form of this test job; in
@@ -1074,41 +552,6 @@ jobs:
       npm-scripts: lint, build
       dry-run: true
 
-  # The dry run must plan exactly the commands of the reference listings
-  # (tests/fixtures/expected/php.plan and ui.plan).
-  dry-run-check-wp-plugin-check:
-    name: dry-run-check-wp-plugin-check
-    needs: dry-run-wp-plugin-check
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected plans
-        env:
-          PHP_COMMANDS: ${{ needs.dry-run-wp-plugin-check.outputs.php-commands }}
-          PHP_PLAN_SHA256: ${{ needs.dry-run-wp-plugin-check.outputs.php-plan-sha256 }}
-          UI_COMMANDS: ${{ needs.dry-run-wp-plugin-check.outputs.ui-commands }}
-          UI_PLAN_SHA256: ${{ needs.dry-run-wp-plugin-check.outputs.ui-plan-sha256 }}
-        run: |
-          expected="wp-plugin-check/tests/fixtures/expected"
-          php_sha="$(sha256sum "$expected/php.plan" | cut -d' ' -f1)"
-          ui_sha="$(sha256sum "$expected/ui.plan" | cut -d' ' -f1)"
-          php_commands="$(grep -c . "$expected/php.plan")"
-          ui_commands="$(grep -c . "$expected/ui.plan")"
-          echo "php: commands=$PHP_COMMANDS plan-sha256=$PHP_PLAN_SHA256"
-          echo "ui: commands=$UI_COMMANDS plan-sha256=$UI_PLAN_SHA256"
-          if [ "$PHP_COMMANDS" != "$php_commands" ] || [ "$PHP_PLAN_SHA256" != "$php_sha" ] \
-            || [ "$UI_COMMANDS" != "$ui_commands" ] || [ "$UI_PLAN_SHA256" != "$ui_sha" ]; then
-            echo "::error::dry-run outputs differ: expected php commands=$php_commands plan-sha256=$php_sha, ui commands=$ui_commands plan-sha256=$ui_sha"
-            exit 1
-          fi
-
   # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on the fixture theme. A dry run: no PHP setup, no install, no
   # credentials.
@@ -1127,24 +570,6 @@ jobs:
       composer-auth-host: packages.example.com
       composer-auth-username: example
       dry-run: true
-
-  # The dry run must plan the default checks, in run order.
-  dry-run-check-wp-theme-check:
-    name: dry-run-check-wp-theme-check
-    needs: dry-run-wp-theme-check
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions: {}
-    steps:
-      - name: Compare the dry-run outputs with the expected checks
-        env:
-          CHECKS: ${{ needs.dry-run-wp-theme-check.outputs.checks }}
-        run: |
-          echo "checks=$CHECKS"
-          if [ "$CHECKS" != "php-cs-fixer phpstan" ]; then
-            echo "::error::dry-run outputs differ: expected checks=php-cs-fixer phpstan"
-            exit 1
-          fi
 
   # Calls the reusable workflow by a relative path, as a caller would by SHA,
   # on the fixture plugin. A dry run: no credentials, no upload. vendor/* is
@@ -1165,36 +590,6 @@ jobs:
       path: wp-plugin-release/tests/fixtures/basic
       extra-zip-excludes: phpunit.xml vendor/*
       dry-run: true
-
-  # The dry run must archive exactly the files of the reference listing
-  # (tests/fixtures/expected/basic.txt).
-  dry-run-check-wp-plugin-release:
-    name: dry-run-check-wp-plugin-release
-    needs: dry-run-wp-plugin-release
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compare the dry-run outputs with the expected listing
-        env:
-          ARCHIVE_NAME: ${{ needs.dry-run-wp-plugin-release.outputs.archive-name }}
-          FILES: ${{ needs.dry-run-wp-plugin-release.outputs.files }}
-          FILES_SHA256: ${{ needs.dry-run-wp-plugin-release.outputs.files-sha256 }}
-        run: |
-          expected="wp-plugin-release/tests/fixtures/expected/basic.txt"
-          expected_sha="$(sha256sum "$expected" | cut -d' ' -f1)"
-          expected_files="$(grep -c . "$expected")"
-          echo "archive-name=$ARCHIVE_NAME files=$FILES files-sha256=$FILES_SHA256"
-          if [ "$ARCHIVE_NAME" != "example-plugin-1.2.3.zip" ] || [ "$FILES" != "$expected_files" ] || [ "$FILES_SHA256" != "$expected_sha" ]; then
-            echo "::error::dry-run outputs differ: expected archive-name=example-plugin-1.2.3.zip files=$expected_files files-sha256=$expected_sha"
-            exit 1
-          fi
 
   # The cloudflare-r2-docs-publish dry run reads its package from a workflow
   # artifact, as a caller would: this job uploads the fixture package.
@@ -1237,13 +632,40 @@ jobs:
       bucket: example-bucket
       dry-run: true
 
-  # The dry run must plan exactly the objects of the reference listing
-  # (tests/fixtures/expected/basic.sha256, manifest.json included).
-  dry-run-check-cloudflare-r2-docs-publish:
-    name: dry-run-check-cloudflare-r2-docs-publish
-    needs: dry-run-cloudflare-r2-docs-publish
+  # Checks the outputs of every dry run in one job: one runner instead of
+  # one per dry run. Each step runs only when its dry run succeeded; a
+  # failed or cancelled dry run fails ci-gate by itself. The job is skipped
+  # only when the plan runs no dry run.
+  dry-run-checks:
+    name: dry-run-checks
+    needs:
+      - dry-run-release-please
+      - dry-run-moodle-plugin-package
+      - dry-run-moodle-host-check
+      - dry-run-moodle-plugin-check
+      - dry-run-cloudflare-workers-check
+      - dry-run-cloudflare-pages-deploy
+      - dry-run-cloudflare-workers-deploy
+      - dry-run-php-composer-setup
+      - dry-run-php-composer-scan
+      - dry-run-node-npm-scan
+      - dry-run-go-module-scan
+      - dry-run-php-library-check
+      - dry-run-php-library-check-highest
+      - dry-run-php-version-family-check
+      - dry-run-github-release-date-check
+      - dry-run-github-release-major-check
+      - dry-run-github-release-major-check-monorepo-api
+      - dry-run-github-release-major-check-monorepo-web
+      - dry-run-github-release-major-check-monorepo-cli
+      - dry-run-wp-plugin-check
+      - dry-run-wp-theme-check
+      - dry-run-wp-plugin-release
+      - dry-run-cloudflare-r2-docs-publish
+      - changes
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.components != '[]' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -1252,7 +674,353 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Compare the dry-run outputs with the expected listing
+      # The dry run must list the packages of the fixture configuration and
+      # create no release.
+      - name: release-please / Compare the dry-run outputs with the fixture
+        if: ${{ !cancelled() && needs.dry-run-release-please.result == 'success' }}
+        env:
+          PACKAGES: ${{ needs.dry-run-release-please.outputs.packages }}
+          RELEASE_CREATED: ${{ needs.dry-run-release-please.outputs.release-created }}
+          TAG_NAME: ${{ needs.dry-run-release-please.outputs.tag-name }}
+          PATHS_RELEASED: ${{ needs.dry-run-release-please.outputs.paths-released }}
+        run: |
+          echo "packages=$PACKAGES release-created=$RELEASE_CREATED tag-name=$TAG_NAME paths-released=$PATHS_RELEASED"
+          if [ "$PACKAGES" != '["."]' ] || [ "$RELEASE_CREATED" != "false" ] || [ -n "$TAG_NAME" ] || [ "$PATHS_RELEASED" != '[]' ]; then
+            echo '::error::dry-run outputs differ: expected packages=["."] release-created=false tag-name= paths-released=[]'
+            exit 1
+          fi
+
+      # The dry run must package exactly the files of the reference listing
+      # (tests/fixtures/expected/basic.sha256) and read version.php.
+      - name: moodle-plugin-package / Compare the dry-run outputs with the expected listing
+        if: ${{ !cancelled() && needs.dry-run-moodle-plugin-package.result == 'success' }}
+        env:
+          VERSION: ${{ needs.dry-run-moodle-plugin-package.outputs.version }}
+          RELEASE: ${{ needs.dry-run-moodle-plugin-package.outputs.release }}
+          FILES: ${{ needs.dry-run-moodle-plugin-package.outputs.files }}
+          LISTING_SHA256: ${{ needs.dry-run-moodle-plugin-package.outputs.listing-sha256 }}
+        run: |
+          expected="moodle-plugin-package/tests/fixtures/expected/basic.sha256"
+          expected_sha="$(sha256sum "$expected" | cut -d' ' -f1)"
+          expected_files="$(grep -c . "$expected")"
+          echo "version=$VERSION release=$RELEASE files=$FILES listing-sha256=$LISTING_SHA256"
+          if [ "$VERSION" != "2026110300" ] || [ "$RELEASE" != "1.2.0" ] || [ "$FILES" != "$expected_files" ] || [ "$LISTING_SHA256" != "$expected_sha" ]; then
+            echo "::error::dry-run outputs differ: expected version=2026110300 release=1.2.0 files=$expected_files listing-sha256=$expected_sha"
+            exit 1
+          fi
+
+      # The dry run must plan exactly the commands of the reference plan
+      # (tests/fixtures/expected/basic.json).
+      - name: moodle-host-check / Compare the dry-run outputs with the expected plan
+        if: ${{ !cancelled() && needs.dry-run-moodle-host-check.result == 'success' }}
+        env:
+          COMMANDS: ${{ needs.dry-run-moodle-host-check.outputs.commands }}
+        run: |
+          expected="moodle-host-check/tests/fixtures/expected/basic.json"
+          echo "$COMMANDS"
+          if ! jq -e --argjson actual "$COMMANDS" '. == $actual' "$expected" >/dev/null; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
+      # The dry run must plan exactly the commands of the reference plan
+      # (tests/fixtures/expected/basic.json) for the plugin of the fixture.
+      - name: moodle-plugin-check / Compare the dry-run outputs with the expected plan
+        if: ${{ !cancelled() && needs.dry-run-moodle-plugin-check.result == 'success' }}
+        env:
+          COMPONENT: ${{ needs.dry-run-moodle-plugin-check.outputs.component }}
+          VERSION: ${{ needs.dry-run-moodle-plugin-check.outputs.version }}
+          COMMANDS: ${{ needs.dry-run-moodle-plugin-check.outputs.commands }}
+        run: |
+          python3 -I -B moodle-plugin-check/tests/compare_plan.py \
+            moodle-plugin-check/tests/fixtures/expected/basic.json
+
+      # The dry run must plan exactly the commands of the reference plan
+      # (tests/fixtures/expected/basic.json) for the project of the fixture.
+      - name: cloudflare-workers-check / Compare the dry-run outputs with the expected plan
+        if: ${{ !cancelled() && needs.dry-run-cloudflare-workers-check.result == 'success' }}
+        env:
+          NAME: ${{ needs.dry-run-cloudflare-workers-check.outputs.name }}
+          WRANGLER_CONFIG: ${{ needs.dry-run-cloudflare-workers-check.outputs.wrangler-config }}
+          COMMANDS: ${{ needs.dry-run-cloudflare-workers-check.outputs.commands }}
+        run: |
+          python3 -I -B cloudflare-workers-check/tests/compare_plan.py \
+            cloudflare-workers-check/tests/fixtures/expected/basic.json
+
+      # The dry run must plan exactly the values of
+      # cloudflare-pages-deploy/tests/fixtures/expected/basic.env and deploy
+      # nothing.
+      - name: cloudflare-pages-deploy / Compare the dry-run outputs with the expected values
+        if: ${{ !cancelled() && needs.dry-run-cloudflare-pages-deploy.result == 'success' }}
+        env:
+          CONTENT_HASH: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.content-hash }}
+          DEPLOY: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.deploy }}
+          DIST_PATH: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.dist-path }}
+          COMMAND: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.command }}
+          DEPLOYMENT_URL: ${{ needs.dry-run-cloudflare-pages-deploy.outputs.deployment-url }}
+        run: |
+          expected="cloudflare-pages-deploy/tests/fixtures/expected/basic.env"
+          actual="$(printf 'content-hash=%s\ndeploy=%s\ndist-path=%s\ncommand=%s\n' "$CONTENT_HASH" "$DEPLOY" "$DIST_PATH" "$COMMAND")"
+          echo "$actual"
+          if ! diff -u <(grep -E '^(content-hash|deploy|dist-path|command)=' "$expected") - <<<"$actual" || [ -n "$DEPLOYMENT_URL" ]; then
+            echo "::error::dry-run outputs differ from $expected, or the dry run deployed"
+            exit 1
+          fi
+
+      # The dry run must find the fixture's Wrangler configuration.
+      - name: cloudflare-workers-deploy / Compare the dry-run outputs with the fixture
+        if: ${{ !cancelled() && needs.dry-run-cloudflare-workers-deploy.result == 'success' }}
+        env:
+          WRANGLER_CONFIG: ${{ needs.dry-run-cloudflare-workers-deploy.outputs.wrangler-config }}
+          VERSION_ID: ${{ needs.dry-run-cloudflare-workers-deploy.outputs.version-id }}
+        run: |
+          echo "wrangler-config=$WRANGLER_CONFIG version-id=$VERSION_ID"
+          if [ "$WRANGLER_CONFIG" != "wrangler.toml" ] || [ -n "$VERSION_ID" ]; then
+            echo "::error::dry-run outputs differ: expected wrangler-config=wrangler.toml and an empty version-id"
+            exit 1
+          fi
+
+      # The dry run must plan exactly the outputs of
+      # php-composer-setup/tests/fixtures/expected/basic.env.
+      - name: php-composer-setup / Compare the dry-run outputs with the expected values
+        if: ${{ !cancelled() && needs.dry-run-php-composer-setup.result == 'success' }}
+        env:
+          PHP_VERSION: ${{ needs.dry-run-php-composer-setup.outputs.php-version }}
+          AUTH_ENTRIES: ${{ needs.dry-run-php-composer-setup.outputs.auth-entries }}
+          INSTALL_COMMAND: ${{ needs.dry-run-php-composer-setup.outputs.install-command }}
+        run: |
+          expected="php-composer-setup/tests/fixtures/expected/basic.env"
+          actual="$(printf 'php-version=%s\nauth-entries=%s\ninstall-command=%s\n' "$PHP_VERSION" "$AUTH_ENTRIES" "$INSTALL_COMMAND")"
+          echo "$actual"
+          if ! diff -u "$expected" - <<<"$actual"; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
+      # The dry run must plan exactly the outputs of
+      # php-composer-scan/tests/fixtures/expected/basic.env.
+      - name: php-composer-scan / Compare the dry-run outputs with the expected values
+        if: ${{ !cancelled() && needs.dry-run-php-composer-scan.result == 'success' }}
+        env:
+          COMMAND: ${{ needs.dry-run-php-composer-scan.outputs.command }}
+          BLOCKING_SEVERITIES: ${{ needs.dry-run-php-composer-scan.outputs.blocking-severities }}
+          ADVISORIES: ${{ needs.dry-run-php-composer-scan.outputs.advisories }}
+        run: |
+          expected="php-composer-scan/tests/fixtures/expected/basic.env"
+          actual="$(printf 'command=%s\nblocking-severities=%s\n' "$COMMAND" "$BLOCKING_SEVERITIES")"
+          echo "$actual"
+          if ! diff -u "$expected" - <<<"$actual" || [ -n "$ADVISORIES" ]; then
+            echo "::error::dry-run outputs differ from $expected, or the dry run audited"
+            exit 1
+          fi
+
+      # The dry run must plan exactly the outputs of
+      # node-npm-scan/tests/fixtures/expected/basic.env.
+      - name: node-npm-scan / Compare the dry-run outputs with the expected values
+        if: ${{ !cancelled() && needs.dry-run-node-npm-scan.result == 'success' }}
+        env:
+          COMMAND: ${{ needs.dry-run-node-npm-scan.outputs.command }}
+          BLOCKING_SEVERITIES: ${{ needs.dry-run-node-npm-scan.outputs.blocking-severities }}
+          ADVISORIES: ${{ needs.dry-run-node-npm-scan.outputs.advisories }}
+        run: |
+          expected="node-npm-scan/tests/fixtures/expected/basic.env"
+          actual="$(printf 'command=%s\nblocking-severities=%s\n' "$COMMAND" "$BLOCKING_SEVERITIES")"
+          echo "$actual"
+          if ! diff -u "$expected" - <<<"$actual" || [ -n "$ADVISORIES" ]; then
+            echo "::error::dry-run outputs differ from $expected, or the dry run audited"
+            exit 1
+          fi
+
+      # The dry run must plan exactly the outputs of
+      # go-module-scan/tests/fixtures/expected/basic.env.
+      - name: go-module-scan / Compare the dry-run outputs with the expected values
+        if: ${{ !cancelled() && needs.dry-run-go-module-scan.result == 'success' }}
+        env:
+          COMMAND: ${{ needs.dry-run-go-module-scan.outputs.command }}
+          TOOL: ${{ needs.dry-run-go-module-scan.outputs.tool }}
+          BLOCKING_SEVERITIES: ${{ needs.dry-run-go-module-scan.outputs.blocking-severities }}
+          ADVISORIES: ${{ needs.dry-run-go-module-scan.outputs.advisories }}
+        run: |
+          expected="go-module-scan/tests/fixtures/expected/basic.env"
+          actual="$(printf 'command=%s\ntool=%s\nblocking-severities=%s\n' "$COMMAND" "$TOOL" "$BLOCKING_SEVERITIES")"
+          echo "$actual"
+          if ! diff -u "$expected" - <<<"$actual" || [ -n "$ADVISORIES" ]; then
+            echo "::error::dry-run outputs differ from $expected, or the dry run audited"
+            exit 1
+          fi
+
+      # The dry run must plan exactly the commands, the audit command and the
+      # tool cache paths of php-library-check/tests/fixtures/expected/basic.json.
+      - name: php-library-check / Compare the dry-run outputs with the expected plan
+        if: ${{ !cancelled() && needs.dry-run-php-library-check.result == 'success' }}
+        env:
+          COMMANDS: ${{ needs.dry-run-php-library-check.outputs.commands }}
+          AUDIT_COMMAND: ${{ needs.dry-run-php-library-check.outputs.audit-command }}
+          TOOL_CACHE_PATHS: ${{ needs.dry-run-php-library-check.outputs.tool-cache-paths }}
+        run: |
+          expected="php-library-check/tests/fixtures/expected/basic.json"
+          echo "commands=$COMMANDS"
+          echo "audit-command=$AUDIT_COMMAND"
+          echo "tool-cache-paths=$TOOL_CACHE_PATHS"
+          if ! jq -e --argjson commands "$COMMANDS" --arg audit "$AUDIT_COMMAND" --argjson caches "$TOOL_CACHE_PATHS" \
+            '.commands == $commands and .["audit-command"] == $audit and .["tool-cache-paths"] == $caches' \
+            "$expected" >/dev/null; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
+      # The dry run must plan exactly the values of
+      # php-library-check/tests/fixtures/expected/highest.json.
+      - name: php-library-check-highest / Compare the dry-run outputs with the expected plan
+        if: ${{ !cancelled() && needs.dry-run-php-library-check-highest.result == 'success' }}
+        env:
+          COMMANDS: ${{ needs.dry-run-php-library-check-highest.outputs.commands }}
+          AUDIT_COMMAND: ${{ needs.dry-run-php-library-check-highest.outputs.audit-command }}
+          INSTALL_COMMAND: ${{ needs.dry-run-php-library-check-highest.outputs.install-command }}
+          PLATFORM_COMMAND: ${{ needs.dry-run-php-library-check-highest.outputs.platform-command }}
+          EXPECT_MAJORS: ${{ needs.dry-run-php-library-check-highest.outputs.expect-majors }}
+        run: |
+          expected="php-library-check/tests/fixtures/expected/highest.json"
+          printf '%s=%s\n' commands "$COMMANDS" audit-command "$AUDIT_COMMAND" install-command "$INSTALL_COMMAND" \
+            platform-command "$PLATFORM_COMMAND" expect-majors "$EXPECT_MAJORS"
+          if ! jq -e --argjson commands "$COMMANDS" --arg audit "$AUDIT_COMMAND" --arg install "$INSTALL_COMMAND" \
+            --arg platform "$PLATFORM_COMMAND" --argjson majors "$EXPECT_MAJORS" \
+            '.commands == $commands and .["audit-command"] == $audit and .["install-command"] == $install
+              and .["platform-command"] == $platform and .["expect-majors"] == $majors' "$expected" >/dev/null; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
+      # The dry run must report exactly the outputs of
+      # php-version-family-check/tests/fixtures/expected/basic.env.
+      - name: php-version-family-check / Compare the dry-run outputs with the expected values
+        if: ${{ !cancelled() && needs.dry-run-php-version-family-check.result == 'success' }}
+        env:
+          VERSION: ${{ needs.dry-run-php-version-family-check.outputs.version }}
+          WINDOW_KIND: ${{ needs.dry-run-php-version-family-check.outputs.window-kind }}
+          RESULT: ${{ needs.dry-run-php-version-family-check.outputs.result }}
+          FINDINGS: ${{ needs.dry-run-php-version-family-check.outputs.findings }}
+        run: |
+          expected="php-version-family-check/tests/fixtures/expected/basic.env"
+          actual="$(printf 'version=%s\nwindow-kind=%s\nresult=%s\nfindings=%s\n' "$VERSION" "$WINDOW_KIND" "$RESULT" "$FINDINGS")"
+          echo "$actual"
+          if ! diff -u "$expected" - <<<"$actual"; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
+      # The dry run must report exactly the outputs of
+      # github-release-date-check/tests/fixtures/expected/basic.env.
+      - name: github-release-date-check / Compare the dry-run outputs with the expected values
+        if: ${{ !cancelled() && needs.dry-run-github-release-date-check.result == 'success' }}
+        env:
+          VERSION: ${{ needs.dry-run-github-release-date-check.outputs.version }}
+          TAG: ${{ needs.dry-run-github-release-date-check.outputs.tag }}
+          RELEASE_SHA: ${{ needs.dry-run-github-release-date-check.outputs.release-sha }}
+          RESULT: ${{ needs.dry-run-github-release-date-check.outputs.result }}
+          FINDINGS: ${{ needs.dry-run-github-release-date-check.outputs.findings }}
+        run: |
+          expected="github-release-date-check/tests/fixtures/expected/basic.env"
+          actual="$(printf 'version=%s\ntag=%s\nrelease-sha=%s\nresult=%s\nfindings=%s\n' "$VERSION" "$TAG" "$RELEASE_SHA" "$RESULT" "$FINDINGS")"
+          echo "$actual"
+          if ! diff -u "$expected" - <<<"$actual"; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
+      # The dry run must report exactly the outputs of
+      # github-release-major-check/tests/fixtures/expected/basic.env.
+      - name: github-release-major-check / Compare the dry-run outputs with the expected values
+        if: ${{ !cancelled() && needs.dry-run-github-release-major-check.result == 'success' }}
+        env:
+          VERSION: ${{ needs.dry-run-github-release-major-check.outputs.version }}
+          RELEASE_AS_MAJOR: ${{ needs.dry-run-github-release-major-check.outputs.release-as-major }}
+          RESULT: ${{ needs.dry-run-github-release-major-check.outputs.result }}
+          FINDINGS: ${{ needs.dry-run-github-release-major-check.outputs.findings }}
+        run: |
+          expected="github-release-major-check/tests/fixtures/expected/basic.env"
+          actual="$(printf 'version=%s\nrelease-as-major=%s\nresult=%s\nfindings=%s\n' "$VERSION" "$RELEASE_AS_MAJOR" "$RESULT" "$FINDINGS")"
+          echo "$actual"
+          if ! diff -u "$expected" - <<<"$actual"; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
+      # The three calls must report exactly the outputs of
+      # github-release-major-check/tests/fixtures/expected/monorepo.env.
+      - name: github-release-major-check-monorepo / Compare the outputs of the three calls with the expected values
+        if: ${{ !cancelled() && needs.dry-run-github-release-major-check-monorepo-api.result == 'success' && needs.dry-run-github-release-major-check-monorepo-web.result == 'success' && needs.dry-run-github-release-major-check-monorepo-cli.result == 'success' }}
+        env:
+          API: ${{ toJSON(needs.dry-run-github-release-major-check-monorepo-api.outputs) }}
+          WEB: ${{ toJSON(needs.dry-run-github-release-major-check-monorepo-web.outputs) }}
+          CLI: ${{ toJSON(needs.dry-run-github-release-major-check-monorepo-cli.outputs) }}
+        run: |
+          expected="github-release-major-check/tests/fixtures/expected/monorepo.env"
+          line() { jq -r --arg p "$1" '"\($p) version=\(.version) release-as-major=\(."release-as-major") result=\(.result) findings=\(.findings)"' <<<"$2"; }
+          actual="$(line packages/api "$API"; line packages/web "$WEB"; line packages/cli "$CLI")"
+          echo "$actual"
+          if ! diff -u "$expected" - <<<"$actual"; then
+            echo "::error::dry-run outputs differ from $expected"
+            exit 1
+          fi
+
+      # The dry run must plan exactly the commands of the reference listings
+      # (tests/fixtures/expected/php.plan and ui.plan).
+      - name: wp-plugin-check / Compare the dry-run outputs with the expected plans
+        if: ${{ !cancelled() && needs.dry-run-wp-plugin-check.result == 'success' }}
+        env:
+          PHP_COMMANDS: ${{ needs.dry-run-wp-plugin-check.outputs.php-commands }}
+          PHP_PLAN_SHA256: ${{ needs.dry-run-wp-plugin-check.outputs.php-plan-sha256 }}
+          UI_COMMANDS: ${{ needs.dry-run-wp-plugin-check.outputs.ui-commands }}
+          UI_PLAN_SHA256: ${{ needs.dry-run-wp-plugin-check.outputs.ui-plan-sha256 }}
+        run: |
+          expected="wp-plugin-check/tests/fixtures/expected"
+          php_sha="$(sha256sum "$expected/php.plan" | cut -d' ' -f1)"
+          ui_sha="$(sha256sum "$expected/ui.plan" | cut -d' ' -f1)"
+          php_commands="$(grep -c . "$expected/php.plan")"
+          ui_commands="$(grep -c . "$expected/ui.plan")"
+          echo "php: commands=$PHP_COMMANDS plan-sha256=$PHP_PLAN_SHA256"
+          echo "ui: commands=$UI_COMMANDS plan-sha256=$UI_PLAN_SHA256"
+          if [ "$PHP_COMMANDS" != "$php_commands" ] || [ "$PHP_PLAN_SHA256" != "$php_sha" ] \
+            || [ "$UI_COMMANDS" != "$ui_commands" ] || [ "$UI_PLAN_SHA256" != "$ui_sha" ]; then
+            echo "::error::dry-run outputs differ: expected php commands=$php_commands plan-sha256=$php_sha, ui commands=$ui_commands plan-sha256=$ui_sha"
+            exit 1
+          fi
+
+      # The dry run must plan the default checks, in run order.
+      - name: wp-theme-check / Compare the dry-run outputs with the expected checks
+        if: ${{ !cancelled() && needs.dry-run-wp-theme-check.result == 'success' }}
+        env:
+          CHECKS: ${{ needs.dry-run-wp-theme-check.outputs.checks }}
+        run: |
+          echo "checks=$CHECKS"
+          if [ "$CHECKS" != "php-cs-fixer phpstan" ]; then
+            echo "::error::dry-run outputs differ: expected checks=php-cs-fixer phpstan"
+            exit 1
+          fi
+
+      # The dry run must archive exactly the files of the reference listing
+      # (tests/fixtures/expected/basic.txt).
+      - name: wp-plugin-release / Compare the dry-run outputs with the expected listing
+        if: ${{ !cancelled() && needs.dry-run-wp-plugin-release.result == 'success' }}
+        env:
+          ARCHIVE_NAME: ${{ needs.dry-run-wp-plugin-release.outputs.archive-name }}
+          FILES: ${{ needs.dry-run-wp-plugin-release.outputs.files }}
+          FILES_SHA256: ${{ needs.dry-run-wp-plugin-release.outputs.files-sha256 }}
+        run: |
+          expected="wp-plugin-release/tests/fixtures/expected/basic.txt"
+          expected_sha="$(sha256sum "$expected" | cut -d' ' -f1)"
+          expected_files="$(grep -c . "$expected")"
+          echo "archive-name=$ARCHIVE_NAME files=$FILES files-sha256=$FILES_SHA256"
+          if [ "$ARCHIVE_NAME" != "example-plugin-1.2.3.zip" ] || [ "$FILES" != "$expected_files" ] || [ "$FILES_SHA256" != "$expected_sha" ]; then
+            echo "::error::dry-run outputs differ: expected archive-name=example-plugin-1.2.3.zip files=$expected_files files-sha256=$expected_sha"
+            exit 1
+          fi
+
+      # The dry run must plan exactly the objects of the reference listing
+      # (tests/fixtures/expected/basic.sha256, manifest.json included).
+      - name: cloudflare-r2-docs-publish / Compare the dry-run outputs with the expected listing
+        if: ${{ !cancelled() && needs.dry-run-cloudflare-r2-docs-publish.result == 'success' }}
         env:
           VERSION: ${{ needs.dry-run-cloudflare-r2-docs-publish.outputs.version }}
           OBJECTS: ${{ needs.dry-run-cloudflare-r2-docs-publish.outputs.objects }}
@@ -1270,57 +1038,33 @@ jobs:
   ci-gate:
     name: ci-gate
     needs:
-      - actionlint
       - changes
-      - zizmor
-      - gitleaks
-      - check-genericity
-      - unit-tests
+      - lint
       - dry-run-release-please
-      - dry-run-check-release-please
       - dry-run-moodle-plugin-package
-      - dry-run-check-moodle-plugin-package
       - dry-run-moodle-host-check
-      - dry-run-check-moodle-host-check
       - dry-run-moodle-plugin-check
-      - dry-run-check-moodle-plugin-check
       - dry-run-cloudflare-workers-check
-      - dry-run-check-cloudflare-workers-check
       - dry-run-cloudflare-pages-deploy
-      - dry-run-check-cloudflare-pages-deploy
       - dry-run-cloudflare-workers-deploy
-      - dry-run-check-cloudflare-workers-deploy
       - dry-run-php-composer-setup
-      - dry-run-check-php-composer-setup
       - dry-run-php-composer-scan
-      - dry-run-check-php-composer-scan
+      - dry-run-node-npm-scan
+      - dry-run-go-module-scan
       - dry-run-php-library-check
-      - dry-run-check-php-library-check
       - dry-run-php-library-check-highest
-      - dry-run-check-php-library-check-highest
       - dry-run-php-version-family-check
-      - dry-run-check-php-version-family-check
       - dry-run-github-release-date-check
-      - dry-run-check-github-release-date-check
       - dry-run-github-release-major-check
-      - dry-run-check-github-release-major-check
       - dry-run-github-release-major-check-monorepo-api
       - dry-run-github-release-major-check-monorepo-web
       - dry-run-github-release-major-check-monorepo-cli
-      - dry-run-check-github-release-major-check-monorepo
-      - dry-run-node-npm-scan
-      - dry-run-check-node-npm-scan
-      - dry-run-go-module-scan
-      - dry-run-check-go-module-scan
       - dry-run-wp-plugin-check
-      - dry-run-check-wp-plugin-check
       - dry-run-wp-theme-check
-      - dry-run-check-wp-theme-check
       - dry-run-wp-plugin-release
-      - dry-run-check-wp-plugin-release
       - dry-run-cloudflare-r2-docs-publish-package
       - dry-run-cloudflare-r2-docs-publish
-      - dry-run-check-cloudflare-r2-docs-publish
+      - dry-run-checks
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -1336,5 +1080,4 @@ jobs:
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
           COMPONENTS: ${{ needs.changes.outputs.components || '[]' }}
-          FULL: ${{ needs.changes.outputs.full || 'false' }}
         run: bash .github/scripts/ci-gate.sh

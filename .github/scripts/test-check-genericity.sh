@@ -126,7 +126,7 @@ EOF
 
   ci-gate:
 "
-  replace_in "$CI_WORKFLOW" $'    needs:\n      - actionlint\n' $'    needs:\n      - actionlint\n      - '"${DRY_RUN_JOB}"$'\n'
+  replace_in "$CI_WORKFLOW" $'    needs:\n      - changes\n' $'    needs:\n      - changes\n      - '"${DRY_RUN_JOB}"$'\n'
 }
 
 # Runs one case: $1 name, $2 expected exit ("pass" or "fail"), $3 expected
@@ -363,7 +363,7 @@ dry_run_job_without_dry_run() {
 
 dry_run_job_outside_gate() {
   add_component
-  replace_in "$CI_WORKFLOW" $'      - actionlint\n      - '"${DRY_RUN_JOB}"$'\n' $'      - actionlint\n'
+  replace_in "$CI_WORKFLOW" $'      - changes\n      - '"${DRY_RUN_JOB}"$'\n' $'      - changes\n'
 }
 
 run_case "clean repository passes" pass "" nothing
