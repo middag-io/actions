@@ -28,7 +28,7 @@ REPOSITORY = HERE.parent.parent
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 EXPECTED = json.loads((HERE / "fixtures" / "expected" / "basic.json").read_text())
 EXPECTED_HIGHEST = json.loads((HERE / "fixtures" / "expected" / "highest.json").read_text())
-# Inputs of the highest dry-run job of _ci.yml that reach check.py.
+# Inputs of a highest-dependency-versions call that reach check.py.
 HIGHEST_INPUTS = {
     "php_version": "8.4", "composer_validate": "false", "strict_psr": "false", "lint_script": "",
     "phpstan_script": "", "cs_fixer_script": "", "rector_script": "", "composer_scripts": "",

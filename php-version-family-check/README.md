@@ -2,10 +2,7 @@
 
 Checks a pull request against the window of a **version family**: a set of packages (for example PHP libraries in separate repositories) that share MAJOR.MINOR, where PATCH carries only fixes, a feature waits for a family MINOR and a breaking change waits for a family MAJOR. Publishes nothing.
 
-Two forms, one name:
-
-- reusable workflow `.github/workflows/php-version-family-check.yml`: checks out the head of the pull request with its history and runs the check;
-- composite action `php-version-family-check/action.yml`: runs the check in a job of the caller, on a checkout the caller made (with the history of the base and head commits).
+A composite action, `php-version-family-check/action.yml`: it runs the check in a job of the caller, on a checkout the caller made (with the history of the base and head commits).
 
 ## The window
 
@@ -17,11 +14,11 @@ One value, usually an organization variable set and cleared by whoever owns the 
 | `X.Y` with `Y > 0` (for example `2.1`) | family MINOR window: features pass |
 | `X.0` (for example `3.0`) | family MAJOR window: features and breaking changes pass |
 
-The component only reads the window. It never writes a variable, so no token of the workflow needs a permission on variables.
+The component only reads the window. It never writes a variable, so no token of the calling job needs a permission on variables.
 
 A window counts as open for a pull request only when both hold, and as closed otherwise:
 
-- the pull request goes into the window branch (`window-branch`, by default the default branch of the repository). A pull request into a maintenance branch such as `release/X.Y` always sees the window closed;
+- the pull request goes into the window branch (`window-branch`; the caller passes the default branch of the repository, see "Example"). A pull request into a maintenance branch such as `release/X.Y` always sees the window closed;
 - the window is ahead of the package version at the base commit: a MINOR window `X.Y` when `X` is the MAJOR of that version and `Y` is above its MINOR, a MAJOR window `X.0` when `X.0.0` is above that version (so `2.0` is open on `1.x` and `0.x`, the cut of the family). A window left set after its family release (window `2.1` on a package at `2.1.x`) is closed: a feature does not slip into a PATCH.
 
 The annotation says why a set window counts as closed.
@@ -49,20 +46,18 @@ Nothing. The component writes no file in the repository and publishes nothing.
 
 ## Inputs
 
-| Input | Workflow | Action | Default | Meaning |
-| --- | --- | --- | --- | --- |
-| `window` | yes | yes | variable `PHP_VERSION_FAMILY_CHECK_WINDOW` (workflow); empty (action) | The family window: empty, `X.Y` or `X.0`. Surrounding white space is ignored. |
-| `family-from` | yes | yes | empty | Package version from which a `feat` needs an open window. |
-| `manifest-file` | yes | yes | `.release-please-manifest.json` | release-please manifest, read at the base commit. |
-| `package` | yes | yes | `.` | Key of the package in the manifest. |
-| `title` | yes | yes (required) | the title of the pull request of the event (workflow) | Title to check. |
-| `base-sha` | no | yes | empty | Full SHA of the base commit; required unless `dry-run`. The workflow passes the one of the event. |
-| `head-sha` | no | yes | empty | Full SHA of the head commit; required unless `dry-run`. The workflow passes the one of the event. |
-| `base-ref` | no | yes | empty | Name of the base branch of the pull request. With `window-branch`, the window applies only to a pull request into `window-branch`; empty skips that rule. The workflow passes the one of the event. |
-| `window-branch` | yes | yes | the default branch of the repository (workflow); empty (action) | Branch whose pull requests the window applies to. |
-| `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Check the title against the manifest of the workspace; report only. |
-| `timeout-minutes` | yes | no | `5` | Timeout of the job. |
-| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `window` | empty | The family window: empty, `X.Y` or `X.0`. Surrounding white space is ignored. |
+| `family-from` | empty | Package version from which a `feat` needs an open window. |
+| `manifest-file` | `.release-please-manifest.json` | release-please manifest, read at the base commit. |
+| `package` | `.` | Key of the package in the manifest. |
+| `title` | none (required) | Title to check. |
+| `base-sha` | empty | Full SHA of the base commit; required unless `dry-run`. |
+| `head-sha` | empty | Full SHA of the head commit; required unless `dry-run`. |
+| `base-ref` | empty | Name of the base branch of the pull request. With `window-branch`, the window applies only to a pull request into `window-branch`; empty skips that rule. |
+| `window-branch` | empty | Branch whose pull requests the window applies to. |
+| `dry-run` | `false` | Check the title against the manifest of the workspace; report only. |
 
 ## Outputs
 
@@ -75,11 +70,7 @@ Nothing. The component writes no file in the repository and publishes nothing.
 
 ## Variables and secrets
 
-| Name | Kind | Read by |
-| --- | --- | --- |
-| `PHP_VERSION_FAMILY_CHECK_WINDOW` | variable | default of `window` in the reusable workflow |
-
-No secret. The variable is unset unless the caller defines it, and unset means a closed window. A caller whose window lives in a variable of another name (for example one organization variable for the whole family) passes it in `with:` (`window: ${{ vars.<NAME> }}`) in every repository of the family, so that one name holds the window.
+The action reads no variable and no secret. The caller passes the window in `with:` (`window: ${{ vars.<NAME> }}`, for example `PHP_VERSION_FAMILY_CHECK_WINDOW`) in every repository of the family, so that one name holds the window. An unset variable is empty, and empty means a closed window.
 
 ## Permissions
 
@@ -87,36 +78,13 @@ The caller grants `contents: read` to the calling job. The component asks for no
 
 ## Triggers
 
-The calling workflow runs on `pull_request` with the types `opened`, `edited` (a new title), `synchronize` (new commits) and `reopened`. Make the check required in the ruleset of the base branch, so that a pull request cannot merge while it fails. The status check context is `<caller job id> / check`: with the example below, `php-version-family-check / check`. The ruleset entry must match it exactly.
+The calling workflow runs on `pull_request` with the types `opened`, `edited` (a new title), `synchronize` (new commits) and `reopened`. Make the check required in the ruleset of the base branch, so that a pull request cannot merge while it fails. The status check context is the name of the calling job. The ruleset entry must match it exactly.
 
 When the window opens, re-run the failed check, or push a merge of the base branch into the pull request. A re-run reads the title, the base and head SHAs and the base branch of the original event: a title changed since then is read by the run of its `edited` event, and a base branch that moved (for example after a release) is read only after a merge of the base branch into the pull request.
 
 ## Example
 
 Reference the component by its major tag `php-version-family-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # php-version-family-check-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/php-version-family-check-vX.Y.Z` (dereference an annotated tag).
-
-```yaml
-name: Version family
-
-on:
-  pull_request:
-    types: [opened, edited, synchronize, reopened]
-
-permissions: {}
-
-jobs:
-  php-version-family-check:
-    permissions:
-      contents: read
-    uses: <owner>/actions/.github/workflows/php-version-family-check.yml@php-version-family-check-v1
-    with:
-      # Name the window variable explicitly; without this line the window
-      # comes from PHP_VERSION_FAMILY_CHECK_WINDOW.
-      window: ${{ vars.<NAME> }}
-      family-from: 2.0.0
-```
-
-The composite action in a job of the caller:
 
 ```yaml
 steps:

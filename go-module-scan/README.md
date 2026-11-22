@@ -2,17 +2,14 @@
 
 Scans the packages of a Go module for known vulnerabilities with [govulncheck](https://go.dev/doc/tutorial/govulncheck) and fails only on a blocking severity. Publishes nothing.
 
-Two forms, one name:
-
-- reusable workflow `.github/workflows/go-module-scan.yml`: checks out the calling repository, sets up the Go of its `go.mod` and scans;
-- composite action `go-module-scan/action.yml`: scans in a job of the caller, with the Go of that job (for example `actions/setup-go` before this action).
+A composite action, `go-module-scan/action.yml`: it scans in a job of the caller, with the Go of that job (for example `actions/setup-go` with `go-version-file: go.mod` before this action).
 
 ## What it does
 
 1. Validates the inputs before anything else: `working-directory` stays inside the checkout and holds a `go.mod`; `blocking-severities` lists one or more of `critical`, `high`, `medium`, `low`.
 2. Prints the scan command and the govulncheck version. A dry run stops here.
 3. Installs `golang.org/x/vuln/cmd/govulncheck@v1.9.0` with `go install` into a temporary directory, removed after the scan. `go install` checks the module against the Go checksum database. The install runs with `GOTOOLCHAIN=auto`, so a Go older than the one govulncheck needs downloads that toolchain for the install only.
-4. Runs `govulncheck -format json ./...` in `working-directory`, with the Go of the job (source mode, symbol level). The standard library findings are those of that Go version: the reusable workflow sets up the version of the `toolchain` line of `go.mod`, else of its `go` line.
+4. Runs `govulncheck -format json ./...` in `working-directory`, with the Go of the job (source mode, symbol level). The standard library findings are those of that Go version: set up the version of the `toolchain` line of `go.mod` (`actions/setup-go` with `go-version-file: go.mod` reads it, else the `go` line).
 5. Prints every vulnerability once, at the deepest level found, as an annotation: an error when its severity is in `blocking-severities`, a warning otherwise. The annotation names the Go vulnerability ID, its aliases (CVE, GHSA), the module and version, the called symbol, the fixed version and the link.
 6. Fails when at least one vulnerability has a blocking severity, when the install fails, or when govulncheck exits with an error or prints no JSON report (for example, the vulnerability database or the module proxy is unreachable, or the packages do not build).
 
@@ -38,13 +35,11 @@ Nothing in the repository. The component writes the govulncheck binary to a temp
 
 ## Inputs
 
-| Input | Workflow | Action | Default | Meaning |
-| --- | --- | --- | --- | --- |
-| `working-directory` | yes | yes | `.` | Directory that holds `go.mod`, relative to the checkout. |
-| `blocking-severities` | yes | yes | variable `GO_MODULE_SCAN_BLOCKING_SEVERITIES`, else `critical` (workflow); `critical` (action) | Severities that fail the scan, separated by commas (see "Severity mapping"). |
-| `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and print the command only. |
-| `timeout-minutes` | yes | no | `15` | Timeout of the job. |
-| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `working-directory` | `.` | Directory that holds `go.mod`, relative to the checkout. |
+| `blocking-severities` | `critical` | Severities that fail the scan, separated by commas (see "Severity mapping"). |
+| `dry-run` | `false` | Validate and print the command only. |
 
 ## Outputs
 
@@ -58,11 +53,7 @@ Nothing in the repository. The component writes the govulncheck binary to a temp
 
 ## Variables and secrets
 
-| Name | Kind | Read by |
-| --- | --- | --- |
-| `GO_MODULE_SCAN_BLOCKING_SEVERITIES` | variable | default of `blocking-severities` in the reusable workflow |
-
-No secret. A module with private dependencies needs the composite action, after the caller set up `GOPRIVATE` and the credentials of those dependencies in its job.
+The action reads no variable and no secret. A caller that keeps the severities in a variable passes them in `with:`, for example `blocking-severities: ${{ vars.GO_MODULE_SCAN_BLOCKING_SEVERITIES || 'critical' }}`. A module with private dependencies needs `GOPRIVATE` and the credentials of those dependencies set up in the job before the step.
 
 ## Permissions
 
@@ -73,19 +64,14 @@ The caller grants `contents: read` to the calling job. The component asks for no
 Reference the component by its major tag `go-module-scan-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # go-module-scan-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/go-module-scan-vX.Y.Z` (dereference an annotated tag).
 
 ```yaml
-jobs:
-  go-module-scan:
-    permissions:
-      contents: read
-    uses: <owner>/actions/.github/workflows/go-module-scan.yml@go-module-scan-v1
-    with:
-      blocking-severities: critical, low
-```
-
-```yaml
 steps:
+  - uses: actions/checkout@<sha40> # vX.Y.Z
+    with:
+      persist-credentials: false
   - uses: actions/setup-go@<sha40> # vX.Y.Z
     with:
       go-version-file: go.mod
   - uses: <owner>/actions/go-module-scan@go-module-scan-v1
+    with:
+      blocking-severities: critical, low
 ```

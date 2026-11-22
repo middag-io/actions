@@ -2,10 +2,7 @@
 
 Audits the npm dependencies of a project for known vulnerabilities, from its `package-lock.json`, and fails only on a blocking severity. Publishes nothing.
 
-Two forms, one name:
-
-- reusable workflow `.github/workflows/node-npm-scan.yml`: checks out the calling repository, sets up Node.js and audits;
-- composite action `node-npm-scan/action.yml`: audits in a job of the caller, with the npm of that job.
+A composite action, `node-npm-scan/action.yml`: it audits in a job of the caller, with the npm of that job. The caller checks out its repository and sets up Node.js before the step.
 
 The `*-check` components of this repository with an npm project run the composite action, with their input `audit-blocking-severities`.
 
@@ -23,15 +20,12 @@ Nothing. The component writes no file.
 
 ## Inputs
 
-| Input | Workflow | Action | Default | Meaning |
-| --- | --- | --- | --- | --- |
-| `working-directory` | yes | yes | `.` | Directory that holds `package-lock.json`, relative to the checkout. |
-| `blocking-severities` | yes | yes | variable `NODE_NPM_SCAN_BLOCKING_SEVERITIES`, else `critical` (workflow); `critical` (action) | Severities that fail the audit, separated by commas. |
-| `omit-dev` | yes (boolean) | yes (`true`/`false`) | variable `NODE_NPM_SCAN_OMIT_DEV` (`true`), else `false` (workflow); `false` (action) | Audit only the production dependencies (`npm audit --omit=dev`). |
-| `node-version` | yes | no | `22` | Node.js version to set up. |
-| `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and print the command only. |
-| `timeout-minutes` | yes | no | `10` | Timeout of the job. |
-| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `working-directory` | `.` | Directory that holds `package-lock.json`, relative to the checkout. |
+| `blocking-severities` | `critical` | Severities that fail the audit, separated by commas. |
+| `omit-dev` | `false` | `true` audits only the production dependencies (`npm audit --omit=dev`). |
+| `dry-run` | `false` | `true` validates and prints the command only. |
 
 ## Outputs
 
@@ -44,14 +38,7 @@ Nothing. The component writes no file.
 
 ## Variables and secrets
 
-| Name | Kind | Read by |
-| --- | --- | --- |
-| `NODE_NPM_SCAN_BLOCKING_SEVERITIES` | variable | default of `blocking-severities` in the reusable workflow |
-| `NODE_NPM_SCAN_OMIT_DEV` | variable | default of `omit-dev` in the reusable workflow; only `true` turns it on |
-
-Precedence: the input of the caller, then the variable of the repository, then the variable of the organization, then the default. A repository variable overrides an organization variable of the same name.
-
-No secret.
+The action reads no variable and no secret. A caller that keeps the values in variables passes them in `with:`, for example `blocking-severities: ${{ vars.NODE_NPM_SCAN_BLOCKING_SEVERITIES || 'critical' }}`.
 
 ## Permissions
 
@@ -62,18 +49,15 @@ The caller grants `contents: read` to the calling job. The component asks for no
 Reference the component by its major tag `node-npm-scan-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # node-npm-scan-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/node-npm-scan-vX.Y.Z` (dereference an annotated tag).
 
 ```yaml
-jobs:
-  node-npm-scan:
-    permissions:
-      contents: read
-    uses: <owner>/actions/.github/workflows/node-npm-scan.yml@node-npm-scan-v1
-    with:
-      blocking-severities: critical, high
-```
-
-```yaml
 steps:
+  - uses: actions/checkout@<sha40> # vX.Y.Z
+    with:
+      persist-credentials: false
+  - uses: actions/setup-node@<sha40> # vX.Y.Z
+    with:
+      node-version: 22
   - uses: <owner>/actions/node-npm-scan@node-npm-scan-v1
     with:
       working-directory: ui
+      blocking-severities: critical, high
 ```

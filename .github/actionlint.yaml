@@ -6,9 +6,6 @@
 # message, only for the named component, only in its own workflow file.
 # Remove it when actionlint supports the form. While it is here, actionlint
 # skips the with: keys of that step; check-genericity.sh checks them instead.
-# php-composer-scan is the one workflow that also calls another component
-# (php-composer-setup, to install before the audit): its file ignores the
-# same message for that second "$/" step.
 paths:
   .github/workflows/cloudflare-pages-deploy.yml:
     ignore:
@@ -16,55 +13,18 @@ paths:
   .github/workflows/cloudflare-r2-docs-publish.yml:
     ignore:
       - 'specifying action "\$/cloudflare-r2-docs-publish" in invalid format because ref is missing'
-  .github/workflows/cloudflare-workers-check.yml:
-    ignore:
-      - 'specifying action "\$/cloudflare-workers-check" in invalid format because ref is missing'
   .github/workflows/cloudflare-workers-deploy.yml:
     ignore:
       - 'specifying action "\$/cloudflare-workers-deploy" in invalid format because ref is missing'
-  .github/workflows/github-release-date-check.yml:
-    ignore:
-      - 'specifying action "\$/github-release-date-check" in invalid format because ref is missing'
-  .github/workflows/github-release-major-check.yml:
-    ignore:
-      - 'specifying action "\$/github-release-major-check" in invalid format because ref is missing'
-  .github/workflows/go-module-scan.yml:
-    ignore:
-      - 'specifying action "\$/go-module-scan" in invalid format because ref is missing'
-  .github/workflows/moodle-host-check.yml:
-    ignore:
-      - 'specifying action "\$/moodle-host-check" in invalid format because ref is missing'
-  .github/workflows/moodle-plugin-check.yml:
-    ignore:
-      - 'specifying action "\$/moodle-plugin-check" in invalid format because ref is missing'
   .github/workflows/moodle-plugin-package.yml:
     ignore:
       - 'specifying action "\$/moodle-plugin-package" in invalid format because ref is missing'
-  .github/workflows/node-npm-scan.yml:
-    ignore:
-      - 'specifying action "\$/node-npm-scan" in invalid format because ref is missing'
-  .github/workflows/php-composer-scan.yml:
-    ignore:
-      - 'specifying action "\$/php-composer-scan" in invalid format because ref is missing'
-      - 'specifying action "\$/php-composer-setup" in invalid format because ref is missing'
   .github/workflows/php-composer-setup.yml:
     ignore:
       - 'specifying action "\$/php-composer-setup" in invalid format because ref is missing'
-  .github/workflows/php-library-check.yml:
-    ignore:
-      - 'specifying action "\$/php-library-check" in invalid format because ref is missing'
-  .github/workflows/php-version-family-check.yml:
-    ignore:
-      - 'specifying action "\$/php-version-family-check" in invalid format because ref is missing'
   .github/workflows/release-please.yml:
     ignore:
       - 'specifying action "\$/release-please" in invalid format because ref is missing'
-  .github/workflows/wp-plugin-check.yml:
-    ignore:
-      - 'specifying action "\$/wp-plugin-check" in invalid format because ref is missing'
   .github/workflows/wp-plugin-release.yml:
     ignore:
       - 'specifying action "\$/wp-plugin-release" in invalid format because ref is missing'
-  .github/workflows/wp-theme-check.yml:
-    ignore:
-      - 'specifying action "\$/wp-theme-check" in invalid format because ref is missing'

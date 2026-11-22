@@ -1,11 +1,8 @@
 # php-library-check
 
-Validates a PHP library (a Composer package) in a change: a dependency audit, the static checks and the tests, one job per PHP version. Publishes nothing.
+Validates a PHP library (a Composer package) in a change: a dependency audit, the static checks and the tests, for one PHP version per call. Publishes nothing.
 
-Two forms, one name:
-
-- reusable workflow `.github/workflows/php-library-check.yml`: checks out the calling repository and runs one job per PHP version of `php-versions`. The static checks run in the job of the first version; the audit and the tests run in every job;
-- composite action `php-library-check/action.yml`: checks one PHP version in a job of the caller, on a checkout the caller made.
+A composite action, `php-library-check/action.yml`: it checks one PHP version in a job of the caller, on a checkout the caller made. Several PHP versions are a job matrix of the caller: run the static checks in one job (`static-checks`), the audit and the tests in every job (see "Example").
 
 ## What it does
 
@@ -27,31 +24,28 @@ Nothing. The component publishes nothing and commits nothing. `composer install`
 
 ## Inputs
 
-| Input | Workflow | Action | Default | Meaning |
-| --- | --- | --- | --- | --- |
-| `php-versions` | yes | no | `["8.3", "8.4", "8.5"]` | JSON array of PHP versions, one job each. The static checks run on the first one: list the lowest supported version first. |
-| `php-version` | no | yes (required) | — | PHP version of this job. |
-| `static-checks` | no | yes | `true` | Run the static checks in this job. The workflow sets it for the first PHP version only. |
-| `path` | yes | yes | `.` | Directory of the library (the one that holds `composer.json`). |
-| `php-extensions` | yes | yes | `mbstring, xml, curl, intl` | PHP extensions, separated by commas. |
-| `composer-validate` | yes (boolean) | yes | `true` | Run `composer validate --no-check-publish --no-check-lock`. |
-| `composer-validate-strict` | yes (boolean) | yes | `false` | Add `--strict`: warnings fail too. |
-| `strict-psr` | yes (boolean) | yes | `true` | Run `composer dump-autoload --optimize --strict-psr`: a class outside its PSR-4 path fails. |
-| `lint-script` | yes | yes | empty | Composer script of the PHP syntax lint. |
-| `phpstan-script` | yes | yes | `check:stan` | Composer script that runs PHPStan. |
-| `cs-fixer-script` | yes | yes | `check:style` | Composer script that runs PHP-CS-Fixer without fixing. |
-| `rector-script` | yes | yes | `check:rector` | Composer script that runs Rector in dry-run mode. |
-| `composer-scripts` | yes | yes | empty | More Composer scripts, static checks too, separated by commas or new lines. |
-| `test-script` | yes | yes | `test` | Composer script that runs the tests, in every job. |
-| `dependency-versions` | yes | yes | `locked` | `locked` runs `composer install` (from `composer.lock` when there is one); `highest` runs `composer update`. |
-| `unset-platform-php` | yes (boolean) | yes | `false` | Remove `config.platform.php` from `composer.json` before the install, so that the PHP version of the job constrains the resolution. |
-| `expect-majors` | yes | yes | empty | Installed packages and their major version, `<vendor>/<package>:<major>`, separated by commas or new lines. A package that is missing or at another major fails the job. |
-| `tool-cache-paths` | yes | yes | empty | Cache directories or files of PHPStan, Rector and PHP-CS-Fixer, relative to `path`, separated by commas or new lines (for example `.cache`). Restored and saved in the job of the static checks only. Empty caches nothing (see "Tool caches"). |
-| `audit-blocking-severities` | yes | yes | variable `PHP_LIBRARY_CHECK_AUDIT_BLOCKING_SEVERITIES`, else `critical` (workflow); `critical` (action) | Severities that fail the dependency audit, separated by commas: any of `critical`, `high`, `medium`, `low`. |
-| `composer-auth` | secret | input | empty | Composer credentials in the `COMPOSER_AUTH` JSON format, for private dependencies. |
-| `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and plan only. |
-| `timeout-minutes` | yes | no | `20` | Timeout of each job. |
-| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `php-version` | — | PHP version of this job. |
+| `static-checks` | `true` | Run the static checks in this job. |
+| `path` | `.` | Directory of the library (the one that holds `composer.json`). |
+| `php-extensions` | `mbstring, xml, curl, intl` | PHP extensions, separated by commas. |
+| `composer-validate` | `true` | Run `composer validate --no-check-publish --no-check-lock`. |
+| `composer-validate-strict` | `false` | Add `--strict`: warnings fail too. |
+| `strict-psr` | `true` | Run `composer dump-autoload --optimize --strict-psr`: a class outside its PSR-4 path fails. |
+| `lint-script` | empty | Composer script of the PHP syntax lint. |
+| `phpstan-script` | `check:stan` | Composer script that runs PHPStan. |
+| `cs-fixer-script` | `check:style` | Composer script that runs PHP-CS-Fixer without fixing. |
+| `rector-script` | `check:rector` | Composer script that runs Rector in dry-run mode. |
+| `composer-scripts` | empty | More Composer scripts, static checks too, separated by commas or new lines. |
+| `test-script` | `test` | Composer script that runs the tests, in every job. |
+| `dependency-versions` | `locked` | `locked` runs `composer install` (from `composer.lock` when there is one); `highest` runs `composer update`. |
+| `unset-platform-php` | `false` | Remove `config.platform.php` from `composer.json` before the install, so that the PHP version of the job constrains the resolution. |
+| `expect-majors` | empty | Installed packages and their major version, `<vendor>/<package>:<major>`, separated by commas or new lines. A package that is missing or at another major fails the job. |
+| `tool-cache-paths` | empty | Cache directories or files of PHPStan, Rector and PHP-CS-Fixer, relative to `path`, separated by commas or new lines (for example `.cache`). Restored and saved in the job of the static checks only. Empty caches nothing (see "Tool caches"). |
+| `audit-blocking-severities` | `critical` | Severities that fail the dependency audit, separated by commas: any of `critical`, `high`, `medium`, `low`. |
+| `composer-auth` | empty | Composer credentials in the `COMPOSER_AUTH` JSON format, for private dependencies. |
+| `dry-run` | `false` | Validate and plan only. |
 
 An empty script input skips its step; a script named by an input but missing from `composer.json` fails the job.
 
@@ -59,7 +53,7 @@ An empty script input skips its step; a script named by an input but missing fro
 
 | Output | Meaning |
 | --- | --- |
-| `commands` | JSON array of the Composer commands planned after the install, in order. In the workflow, the value of the last job that ended: pass one PHP version for a stable value. |
+| `commands` | JSON array of the Composer commands planned after the install, in order. |
 | `audit-command` | The dependency audit command, run or planned. |
 | `install-command` | The `composer install` or `composer update` command, run or planned. |
 | `platform-command` | The command that removes `config.platform.php`, run or planned; empty unless `unset-platform-php` is `true`. |
@@ -68,10 +62,12 @@ An empty script input skips its step; a script named by an input but missing fro
 
 ## Variables and secrets
 
-| Name | Kind | Read by |
+The action reads no variable and no secret by itself. The caller passes them in `with:`, one explicit line each:
+
+| Name | Kind | Passed to |
 | --- | --- | --- |
-| `PHP_LIBRARY_CHECK_AUDIT_BLOCKING_SEVERITIES` | variable | default of `audit-blocking-severities` in the reusable workflow |
-| `PHP_LIBRARY_CHECK_COMPOSER_AUTH` | secret | passed by the caller to `composer-auth`, one explicit line |
+| `PHP_LIBRARY_CHECK_AUDIT_BLOCKING_SEVERITIES` | variable | `audit-blocking-severities` |
+| `PHP_LIBRARY_CHECK_COMPOSER_AUTH` | secret | `composer-auth` |
 
 ## Permissions
 
@@ -82,31 +78,32 @@ The caller grants `contents: read` to the calling job. The component asks for no
 Reference the component by its major tag `php-library-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # php-library-check-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/php-library-check-vX.Y.Z` (dereference an annotated tag).
 
 ```yaml
-name: CI
-
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-permissions: {}
-
 jobs:
   php-library-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/php-library-check.yml@php-library-check-v1
-    with:
-      php-versions: '["8.3", "8.4", "8.5"]'
-      composer-validate-strict: true
-      composer-scripts: check:schemas
-    secrets:
-      composer-auth: ${{ secrets.PHP_LIBRARY_CHECK_COMPOSER_AUTH }}
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.3", "8.4", "8.5"]
+    steps:
+      - uses: actions/checkout@<sha40> # vX.Y.Z
+        with:
+          persist-credentials: false
+      - uses: <owner>/actions/php-library-check@php-library-check-v1
+        with:
+          php-version: ${{ matrix.php }}
+          static-checks: ${{ matrix.php == '8.3' }}
+          composer-validate-strict: "true"
+          composer-scripts: check:schemas
+          composer-auth: ${{ secrets.PHP_LIBRARY_CHECK_COMPOSER_AUTH }}
 ```
 
 ### Highest dependency versions
 
-A library that pins `config.platform.php` to its lowest supported PHP version resolves the same dependencies on every PHP version: a `^7.4 || ^8.1` constraint stays on 7.4 even in a PHP 8.4 job. A second call with `dependency-versions: highest` and `unset-platform-php: true` resolves for the PHP version of each job instead, and `expect-majors` fails the job when the resolution did not reach the major version under test, so the job cannot pass on the older major.
+A library that pins `config.platform.php` to its lowest supported PHP version resolves the same dependencies on every PHP version: a `^7.4 || ^8.1` constraint stays on 7.4 even in a PHP 8.4 job. A second job with `dependency-versions: highest` and `unset-platform-php: true` resolves for the PHP version of each job instead, and `expect-majors` fails the job when the resolution did not reach the major version under test, so the job cannot pass on the older major.
 
 `unset-platform-php` lets the PHP version of the job constrain the resolution. Do not pass `--ignore-platform-req=php` for this: it admits packages that the PHP version of the job cannot run (a package that requires PHP 8.4 installs on PHP 8.3, and `composer check-platform-reqs` then fails).
 
@@ -114,30 +111,29 @@ List only the PHP versions on which the expected major version can install: a jo
 
 ```yaml
 jobs:
-  php-library-check:
-    permissions:
-      contents: read
-    uses: <owner>/actions/.github/workflows/php-library-check.yml@php-library-check-v1
-    with:
-      php-versions: '["8.3", "8.4", "8.5"]'
-
   php-library-check-highest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/php-library-check.yml@php-library-check-v1
-    with:
-      php-versions: '["8.4", "8.5"]'
-      dependency-versions: highest
-      unset-platform-php: true
-      expect-majors: |
-        symfony/console:8
-        symfony/http-kernel:8
-      # The static checks already run in the locked job.
-      composer-validate: false
-      strict-psr: false
-      phpstan-script: ""
-      cs-fixer-script: ""
-      rector-script: ""
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.4", "8.5"]
+    steps:
+      - uses: actions/checkout@<sha40> # vX.Y.Z
+        with:
+          persist-credentials: false
+      - uses: <owner>/actions/php-library-check@php-library-check-v1
+        with:
+          php-version: ${{ matrix.php }}
+          # The static checks already run in the locked job.
+          static-checks: "false"
+          dependency-versions: highest
+          unset-platform-php: "true"
+          expect-majors: |
+            symfony/console:8
+            symfony/http-kernel:8
 ```
 
 ### Tool caches
@@ -151,17 +147,14 @@ Point each tool at a cache path inside the library, then pass those paths. For e
 - PHP-CS-Fixer: `->setCacheFile(__DIR__ . '/.cache/php-cs-fixer.cache')` in its configuration, or `--cache-file` in the Composer script.
 
 ```yaml
-jobs:
-  php-library-check:
-    permissions:
-      contents: read
-    uses: <owner>/actions/.github/workflows/php-library-check.yml@php-library-check-v1
-    with:
-      php-versions: '["8.3", "8.4", "8.5"]'
-      tool-cache-paths: .cache
+      - uses: <owner>/actions/php-library-check@php-library-check-v1
+        with:
+          php-version: ${{ matrix.php }}
+          static-checks: ${{ matrix.php == '8.3' }}
+          tool-cache-paths: .cache
 ```
 
-- The cache steps run only in the job of the static checks (the first PHP version in the workflow, `static-checks: true` in the action), after the install and the audit, before the checks. A dry run only prints the paths and the key, with a placeholder for the dependencies part, which is known only after the install.
+- The cache steps run only in the job of the static checks (`static-checks: true`), after the install and the audit, before the checks. A dry run only prints the paths and the key, with a placeholder for the dependencies part, which is known only after the install.
 - The key is `php-library-check-tools-<runner OS>-php<version>-<dependency-versions>-<hash of path>-<hash of the Composer and tool files>-<hash of the installed dependencies>-<commit>`:
   - the Composer and tool files are those at the library root: `composer.json`, `composer.lock`, `*.neon`, `*.neon.dist`, `*rector*.php`, `*php-cs-fixer*.php`, `.php_cs` and `.php_cs.dist`;
   - the installed dependencies are the name, version and source reference of each package in `vendor/composer/installed.json` (in the vendor directory that Composer reports), read after `composer install` or `composer update`. The key therefore follows what Composer resolved: with `dependency-versions: locked` and a committed `composer.lock`, with `locked` without one (Composer resolves afresh on every run), and with `highest`.
@@ -171,18 +164,5 @@ jobs:
 - The key ends with the commit, so every successful job saves a new entry; GitHub evicts the least recently used entries when the repository reaches its cache quota. `actions/cache` saves only when the job succeeds: a failing check saves nothing.
 - A pull request restores entries of its own branch and of the base branch, and saves to its own branch; it cannot change the entries that `main` restores.
 - Do not pass `tool-cache-paths` in a workflow that publishes or releases: a restored cache must never feed a release.
-
-The composite action in a job of the caller:
-
-```yaml
-steps:
-  - uses: actions/checkout@<sha40> # vX.Y.Z
-    with:
-      persist-credentials: false
-  - uses: <owner>/actions/php-library-check@php-library-check-v1
-    with:
-      php-version: "8.4"
-      static-checks: "false"
-```
 
 A pull request from a fork gets no secrets: a library with private dependencies cannot be installed there.
