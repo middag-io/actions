@@ -147,7 +147,7 @@ class BuildPlanTest(unittest.TestCase):
 
     def test_http_basic_needs_password_outside_dry_run(self):
         args = check_args(http_basic_host="repo.example.com", http_basic_username="user")
-        with self.assertRaisesRegex(composer_setup.InputError, "PHP_COMPOSER_SETUP_HTTP_BASIC_PASSWORD"):
+        with self.assertRaisesRegex(composer_setup.InputError, "http-basic-password is empty"):
             composer_setup.build_plan(args, FIXTURE)
 
     def test_rejects_invalid_host_and_username(self):

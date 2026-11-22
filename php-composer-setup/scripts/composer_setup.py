@@ -74,8 +74,7 @@ def check_http_basic(host, username, has_password, dry_run):
         raise InputError("http-basic-username must be 1 to 256 characters without spaces or colons")
     if not has_password and not dry_run:
         raise InputError(
-            "http-basic-password is empty: pass it from a secret, or set dry-run: true "
-            "(reusable workflow: the secret http-basic-password, from PHP_COMPOSER_SETUP_HTTP_BASIC_PASSWORD)"
+            "http-basic-password is empty: pass it from a secret, or set dry-run: true"
         )
     return host
 
