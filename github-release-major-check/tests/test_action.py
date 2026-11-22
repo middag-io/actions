@@ -1,9 +1,8 @@
-"""Tests of the wiring in action.yml and in the reusable workflow.
+"""Tests of the wiring in action.yml.
 
 Checks that the title and the other inputs reach the script only through
-env: (never inside run:), that every env: value comes from an input of the
-action, and that the reusable workflow passes the pull request SHAs and the
-full history outside a dry run.
+env: (never inside run:), and that every env: value comes from an input of
+the action.
 
 The files are read as text, standard library only.
 
@@ -17,7 +16,6 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 COMPONENT = os.path.dirname(HERE)
 ACTION = os.path.join(COMPONENT, "action.yml")
-WORKFLOW = os.path.join(os.path.dirname(COMPONENT), ".github", "workflows", "github-release-major-check.yml")
 INPUT_RE = re.compile(r"^  ([a-z-]+):$", re.MULTILINE)
 ENV_RE = re.compile(r"^        ([A-Z_]+): \$\{\{ inputs\.([a-z-]+) \}\}$", re.MULTILINE)
 
@@ -41,33 +39,6 @@ class ActionWiringTest(unittest.TestCase):
         env = dict(ENV_RE.findall(self.text))
         self.assertEqual(sorted(env.values()), sorted(self.inputs))
         self.assertEqual(env["PR_TITLE"], "title")
-
-
-class WorkflowWiringTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.text = read(WORKFLOW)
-
-    def test_permissions_are_contents_read_only(self):
-        self.assertIn("permissions: {}", self.text)
-        self.assertNotIn("pull-requests:", self.text)
-        self.assertNotIn(": write", self.text)
-
-    def test_full_history_and_pull_request_shas_outside_a_dry_run(self):
-        self.assertIn("ref: ${{ !inputs.dry-run && github.event.pull_request.head.sha || '' }}", self.text)
-        self.assertIn("fetch-depth: ${{ inputs.dry-run && 1 || 0 }}", self.text)
-        self.assertIn("base-sha: ${{ !inputs.dry-run && github.event.pull_request.base.sha || '' }}", self.text)
-        self.assertIn("head-sha: ${{ !inputs.dry-run && github.event.pull_request.head.sha || '' }}", self.text)
-        self.assertIn("persist-credentials: false", self.text)
-
-    def test_concurrency_group_holds_the_run_attempt_and_the_package(self):
-        self.assertIn(
-            "group: github-release-major-check-${{ github.run_id }}-${{ github.run_attempt }}"
-            "-${{ inputs.package == '.' && 'root' || inputs.package }}", self.text)
-        self.assertIn("cancel-in-progress: false", self.text)
-
-    def test_reads_no_variable(self):
-        self.assertNotIn("vars.", self.text)
 
 
 if __name__ == "__main__":

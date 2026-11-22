@@ -2,10 +2,7 @@
 
 Audits the Composer dependencies of a project for known vulnerabilities and fails only on a blocking severity. Publishes nothing.
 
-Two forms, one name:
-
-- reusable workflow `.github/workflows/php-composer-scan.yml`: checks out the calling repository, sets up PHP and installs the dependencies with [`php-composer-setup`](../php-composer-setup/README.md), then audits them;
-- composite action `php-composer-scan/action.yml`: audits in a job of the caller, after the caller (or a component such as `php-composer-setup`) set up Composer and installed the dependencies.
+A composite action, `php-composer-scan/action.yml`: it audits in a job of the caller, after the caller (or a component such as [`php-composer-setup`](../php-composer-setup/README.md)) set up Composer and installed the dependencies.
 
 The `*-check` components of this repository run the composite action after their install, with their input `audit-blocking-severities`.
 
@@ -25,16 +22,11 @@ Nothing. The component writes no file.
 
 ## Inputs
 
-| Input | Workflow | Action | Default | Meaning |
-| --- | --- | --- | --- | --- |
-| `working-directory` | yes | yes | `.` | Directory that holds `composer.json`, relative to the checkout. |
-| `blocking-severities` | yes | yes | variable `PHP_COMPOSER_SCAN_BLOCKING_SEVERITIES`, else `critical` (workflow); `critical` (action) | Severities that fail the audit, separated by commas. |
-| `php-version` | yes | no | `8.4` | PHP version that resolves the dependencies. |
-| `php-extensions` | yes | no | `mbstring, xml` | PHP extensions, in the `shivammathur/setup-php` syntax. |
-| `composer-auth` | secret | no | empty | Composer credentials in the `COMPOSER_AUTH` JSON format, for private dependencies. |
-| `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and print the command only. |
-| `timeout-minutes` | yes | no | `15` | Timeout of the job. |
-| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `working-directory` | `.` | Directory that holds `composer.json`, relative to the checkout. |
+| `blocking-severities` | `critical` | Severities that fail the audit, separated by commas. |
+| `dry-run` | `false` | Validate and print the command only. |
 
 ## Outputs
 
@@ -47,10 +39,7 @@ Nothing. The component writes no file.
 
 ## Variables and secrets
 
-| Name | Kind | Read by |
-| --- | --- | --- |
-| `PHP_COMPOSER_SCAN_BLOCKING_SEVERITIES` | variable | default of `blocking-severities` in the reusable workflow |
-| `PHP_COMPOSER_SCAN_COMPOSER_AUTH` | secret | passed by the caller to `composer-auth`, one explicit line |
+The action reads no variable and no secret. A caller that keeps the severities in a variable passes them in `with:`, for example `blocking-severities: ${{ vars.PHP_COMPOSER_SCAN_BLOCKING_SEVERITIES || 'critical' }}`. Credentials for private dependencies go to the install step (`php-composer-setup`), not to the audit.
 
 ## Permissions
 
@@ -59,18 +48,6 @@ The caller grants `contents: read` to the calling job. The component asks for no
 ## Example
 
 Reference the component by its major tag `php-composer-scan-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # php-composer-scan-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/php-composer-scan-vX.Y.Z` (dereference an annotated tag).
-
-```yaml
-jobs:
-  php-composer-scan:
-    permissions:
-      contents: read
-    uses: <owner>/actions/.github/workflows/php-composer-scan.yml@php-composer-scan-v1
-    with:
-      blocking-severities: critical, high
-    secrets:
-      composer-auth: ${{ secrets.PHP_COMPOSER_SCAN_COMPOSER_AUTH }}
-```
 
 The composite action after an install in a job of the caller:
 

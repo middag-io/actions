@@ -2,17 +2,14 @@
 
 Checks a WordPress plugin in a change. It publishes nothing.
 
-- **PHP**, one job per PHP version: sets up PHP with the chosen extensions and runs `composer install --no-interaction --prefer-dist` through the [`php-composer-setup`](../php-composer-setup/README.md) action of the same release, with its Composer download cache keyed by `composer.lock`, then each Composer script of `composer-scripts` (for example `check:style`, `check:stan`, `check:rector`, `test`). A failed install stops the job. A failed script does not: every script runs, and the job fails at the end with the list of failed scripts.
-- **UI**, one job when `ui-directory` is set: sets up Node.js, runs `npm ci`, `tsc --noEmit` (unless `typecheck` is false), then each npm script of `npm-scripts`. The reusable workflow installs from the URLs of `package-lock.json` without a token. For a scope on GitHub Packages, see "UI with GitHub Packages".
+- **PHP** (`target: php`), one PHP version per call: sets up PHP with the chosen extensions and runs `composer install --no-interaction --prefer-dist` through the [`php-composer-setup`](../php-composer-setup/README.md) action of the same release, with its Composer download cache keyed by `composer.lock`, then each Composer script of `composer-scripts` (for example `check:style`, `check:stan`, `check:rector`, `test`). A failed install stops the job. A failed script does not: every script runs, and the job fails at the end with the list of failed scripts.
+- **UI** (`target: ui`): sets up Node.js, runs `npm ci`, `tsc --noEmit` (unless `typecheck` is false), then each npm script of `npm-scripts`. Without `github-packages-npm-scope`, it installs from the URLs of `package-lock.json` without a token. For a scope on GitHub Packages, see "UI with GitHub Packages".
 
 - **Dependency audit**, in each job: after the install of the PHP job, `composer audit` through the [`php-composer-scan`](../php-composer-scan/README.md) action of the same release; before `npm ci` of the UI job, `npm audit` on `package-lock.json` through [`node-npm-scan`](../node-npm-scan/README.md). An advisory whose severity is in `audit-blocking-severities` fails the job; lower severities (and abandoned Composer packages) are warnings. No input turns the audit off.
 
 Before any setup, the component validates its inputs and the plugin files: each Composer script must be declared in `composer.json`, each npm script in `package.json`, and `package-lock.json` must exist.
 
-Two forms, one name:
-
-- reusable workflow `.github/workflows/wp-plugin-check.yml`: checks out the calling repository and runs the jobs above;
-- composite action `wp-plugin-check/action.yml`: one target (`php` or `ui`) in a job of your own, after your own checkout.
+A composite action, `wp-plugin-check/action.yml`: one target (`php` or `ui`) in a job of your own, after your own checkout. Several PHP versions are a job matrix of the caller; the UI check is one more job (see "Example").
 
 ## What it deletes or overwrites
 
@@ -30,35 +27,38 @@ Code that the npm install runs gets the same environment: the lifecycle scripts 
 | `app-client-id` and secret `app-private-key`                      | the global Composer `auth.json`, as `github-oauth` for `github.com`           | private Composer packages hosted on GitHub. The token reads, with `contents: read` only, the repositories of `app-repositories` (same owner as the calling repository), or only the calling repository when it is empty |
 | job token, composite action with `github-packages-npm-scope` only | the registry access check and `npm ci`, as `NODE_AUTH_TOKEN`                  | npm packages of that scope on GitHub Packages. Without the scope, `npm ci` follows the URLs of `package-lock.json` with no token at all                                                                                 |
 
-## Inputs of the reusable workflow
+## Inputs
 
-| Input                       | Type    | Default                                                               | Description                                                                                                                                         |
-| --------------------------- | ------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `path`                      | string  | `.`                                                                   | Plugin directory (`composer.json`), relative to the checkout.                                                                                       |
-| `php-versions`              | string  | `["8.3", "8.4", "8.5"]`                                               | JSON array of PHP versions, one job each.                                                                                                           |
-| `php-extensions`            | string  | `mbstring, xml`                                                       | PHP extensions to install, separated by commas.                                                                                                     |
-| `composer-scripts`          | string  | `check:style, check:stan`                                             | Composer scripts to run after `composer install`, separated by commas or new lines. Empty runs only the install.                                    |
-| `app-client-id`             | string  | variable `WP_PLUGIN_CHECK_APP_CLIENT_ID`                              | Client id of a GitHub App for private Composer packages on GitHub. Empty uses no App.                                                               |
-| `app-repositories`          | string  | variable `WP_PLUGIN_CHECK_APP_REPOSITORIES`                           | Repositories of the calling repository's owner that the App token reads, separated by commas or new lines. Empty reads the calling repository only. |
-| `ui-directory`              | string  | empty                                                                 | UI directory (`package.json`, `package-lock.json`), relative to `path`. Empty skips the UI job.                                                     |
-| `node-version`              | string  | `22`                                                                  | Node.js version of the UI job.                                                                                                                      |
-| `npm-scripts`               | string  | `lint, build`                                                         | npm scripts to run after `npm ci`, separated by commas or new lines.                                                                                |
-| `typecheck`                 | boolean | `true`                                                                | Run `tsc --noEmit` in the UI directory, with the TypeScript installed by `npm ci`.                                                                  |
-| `audit-blocking-severities` | string  | variable `WP_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES`, else `critical` | Severities of a dependency advisory that fail the job, separated by commas: any of `critical`, `high`, `medium`, `low`.                             |
-| `dry-run`                   | boolean | `false`                                                               | Validate the inputs and the plugin files and report the commands only: no PHP or Node.js setup, no install, no credentials.                         |
-| `timeout-minutes`           | number  | `20`                                                                  | Timeout of each job, in minutes.                                                                                                                    |
-| `runner`                    | string  | `ubuntu-24.04`                                                        | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner.                                               |
+| Input                       | Default         | Description                                                                                                                                         |
+| --------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `target`                    | required        | What to check: `php` or `ui`.                                                                                                                       |
+| `path`                      | `.`             | Plugin directory (`composer.json`), relative to the checkout.                                                                                       |
+| `php-version`               | empty           | PHP version of the `php` target (for example `8.4`); required for `php`.                                                                            |
+| `php-extensions`            | `mbstring, xml` | PHP extensions to install, separated by commas.                                                                                                     |
+| `composer-scripts`          | empty           | Composer scripts to run after `composer install`, separated by commas or new lines. Empty runs only the install.                                    |
+| `composer-auth`             | empty           | Composer credentials, a JSON object in the `COMPOSER_AUTH` format, passed from a secret.                                                            |
+| `app-client-id`             | empty           | Client id of a GitHub App for private Composer packages on GitHub. Empty uses no App.                                                               |
+| `app-private-key`           | empty           | Private key (PEM) of the GitHub App of `app-client-id`, passed from a secret; required with `app-client-id`, unless `dry-run`.                      |
+| `app-repositories`          | empty           | Repositories of the calling repository's owner that the App token reads, separated by commas or new lines. Empty reads the calling repository only. |
+| `ui-directory`              | `ui`            | UI directory (`package.json`, `package-lock.json`) of the `ui` target, relative to `path`.                                                          |
+| `node-version`              | `22`            | Node.js version of the `ui` target.                                                                                                                 |
+| `npm-scripts`               | empty           | npm scripts to run after `npm ci`, separated by commas or new lines.                                                                                |
+| `typecheck`                 | `true`          | Run `tsc --noEmit` in the UI directory, with the TypeScript installed by `npm ci`.                                                                  |
+| `github-packages-npm-scope` | empty           | npm scope installed from GitHub Packages with the job token (see "UI with GitHub Packages").                                                        |
+| `audit-blocking-severities` | `critical`      | Severities of a dependency advisory that fail the job, separated by commas: any of `critical`, `high`, `medium`, `low`.                             |
+| `dry-run`                   | `false`         | Validate the inputs and the plugin files and report the commands only: no PHP or Node.js setup, no install, no credentials.                         |
 
-The composite action takes the same inputs, with `target` (`php` or `ui`, required) and `php-version` (one version, required for `php`) in place of `php-versions`, the default `ui` for `ui-directory`, empty `composer-scripts` and `npm-scripts`, and the secrets as the inputs `composer-auth` and `app-private-key`. It has no `timeout-minutes`. It also takes `github-packages-npm-scope` (see "UI with GitHub Packages").
+## Secrets and variables
 
-## Secrets
+The action reads no variable and no secret by itself. The caller passes each one in `with:`, one explicit line each:
 
-| Secret            | Required                                      | Caller secret name                | Description                                                        |
-| ----------------- | --------------------------------------------- | --------------------------------- | ------------------------------------------------------------------ |
-| `composer-auth`   | no                                            | `WP_PLUGIN_CHECK_COMPOSER_AUTH`   | Composer credentials, a JSON object in the `COMPOSER_AUTH` format. |
-| `app-private-key` | when `app-client-id` is set, unless `dry-run` | `WP_PLUGIN_CHECK_APP_PRIVATE_KEY` | Private key (PEM) of the GitHub App of `app-client-id`.            |
-
-Pass each secret with one explicit line. Never `secrets: inherit`.
+| Name                                        | Kind     | Passed to                   |
+| ------------------------------------------- | -------- | --------------------------- |
+| `WP_PLUGIN_CHECK_COMPOSER_AUTH`             | secret   | `composer-auth`             |
+| `WP_PLUGIN_CHECK_APP_PRIVATE_KEY`           | secret   | `app-private-key`           |
+| `WP_PLUGIN_CHECK_APP_CLIENT_ID`             | variable | `app-client-id`             |
+| `WP_PLUGIN_CHECK_APP_REPOSITORIES`          | variable | `app-repositories`          |
+| `WP_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES` | variable | `audit-blocking-severities` |
 
 Example of `WP_PLUGIN_CHECK_COMPOSER_AUTH` for a private Composer repository with HTTP Basic authentication:
 
@@ -70,34 +70,22 @@ Example of `WP_PLUGIN_CHECK_COMPOSER_AUTH` for a private Composer repository wit
 }
 ```
 
-## Variables
-
-| Variable                           | Fills              | Level                                    |
-| ---------------------------------- | ------------------ | ---------------------------------------- |
-| `WP_PLUGIN_CHECK_APP_CLIENT_ID`    | `app-client-id`    | repository or organization of the caller |
-| `WP_PLUGIN_CHECK_APP_REPOSITORIES` | `app-repositories` | repository or organization of the caller |
-| `WP_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES` | `audit-blocking-severities` | repository or organization of the caller |
-
-An explicit `with:` input wins over the variables.
-
 ## Outputs
 
-| Output            | Description                                                |
-| ----------------- | ---------------------------------------------------------- |
-| `php-commands`    | Number of commands of the PHP plan.                        |
-| `php-plan-sha256` | SHA-256 of the PHP plan.                                   |
-| `ui-commands`     | Number of commands of the UI plan; empty without a UI job. |
-| `ui-plan-sha256`  | SHA-256 of the UI plan; empty without a UI job.            |
+| Output        | Description                               |
+| ------------- | ----------------------------------------- |
+| `commands`    | Number of commands of the plan of the target. |
+| `plan-sha256` | SHA-256 of the plan of the target.        |
 
-The plan has one line per command: the directory relative to the workspace, a tab, then the command and its arguments, each line ending with a new line. The plan does not depend on the PHP version. The composite action gives `commands` and `plan-sha256` for its target.
+The plan has one line per command: the directory relative to the workspace, a tab, then the command and its arguments, each line ending with a new line. The plan does not depend on the PHP version.
 
 ## Permissions
 
-Grant the calling job `contents: read`. The reusable workflow asks for nothing more.
+Grant the calling job `contents: read`. The component asks for nothing more; the `ui` target with a GitHub Packages scope also needs `packages: read`.
 
 ## UI with GitHub Packages
 
-A UI whose `package-lock.json` resolves a scope from GitHub Packages (`https://npm.pkg.github.com`) needs the job token with `packages: read`, more than a component workflow grants. Run the UI check with the composite action in a job of your own instead, and leave `ui-directory` of the reusable workflow empty:
+A UI whose `package-lock.json` resolves a scope from GitHub Packages (`https://npm.pkg.github.com`) needs the job token with `packages: read`. Grant it to the UI job only:
 
 ```yaml
 check-ui:
@@ -124,42 +112,43 @@ With `github-packages-npm-scope`, the action first checks read access to every p
 ## Example
 
 ```yaml
-name: CI
-
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-permissions: {}
-
 jobs:
-  check:
+  check-php:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
-    uses: <owner>/actions/.github/workflows/wp-plugin-check.yml@wp-plugin-check-v1
-    with:
-      php-versions: '["8.4"]'
-      php-extensions: mbstring, xml, intl
-      composer-scripts: check:style, check:stan, check:rector, test
-      ui-directory: ui
-    secrets:
-      composer-auth: ${{ secrets.WP_PLUGIN_CHECK_COMPOSER_AUTH }}
-      app-private-key: ${{ secrets.WP_PLUGIN_CHECK_APP_PRIVATE_KEY }}
-```
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.3", "8.4"]
+    steps:
+      - uses: actions/checkout@<sha40> # vX.Y.Z
+        with:
+          persist-credentials: false
+      - uses: <owner>/actions/wp-plugin-check@wp-plugin-check-v1
+        with:
+          target: php
+          php-version: ${{ matrix.php }}
+          php-extensions: mbstring, xml, intl
+          composer-scripts: check:style, check:stan, check:rector, test
+          composer-auth: ${{ secrets.WP_PLUGIN_CHECK_COMPOSER_AUTH }}
+          app-client-id: ${{ vars.WP_PLUGIN_CHECK_APP_CLIENT_ID }}
+          app-private-key: ${{ secrets.WP_PLUGIN_CHECK_APP_PRIVATE_KEY }}
 
-Composite action, in a job of your own:
-
-```yaml
-steps:
-  - uses: actions/checkout@<sha40> # vX.Y.Z
-    with:
-      persist-credentials: false
-  - uses: <owner>/actions/wp-plugin-check@wp-plugin-check-v1
-    with:
-      target: php
-      php-version: "8.4"
-      composer-scripts: check:style, check:stan
+  check-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@<sha40> # vX.Y.Z
+        with:
+          persist-credentials: false
+      - uses: <owner>/actions/wp-plugin-check@wp-plugin-check-v1
+        with:
+          target: ui
+          npm-scripts: lint, build
 ```
 
 Reference the component by its major tag `wp-plugin-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # wp-plugin-check-vX.Y.Z`). Find the SHA of a release tag with `gh api repos/<owner>/actions/git/ref/tags/wp-plugin-check-vX.Y.Z`; when the object type is `tag`, dereference it with `gh api repos/<owner>/actions/git/tags/<object-sha>`.

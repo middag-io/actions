@@ -16,7 +16,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 COMPONENT = os.path.dirname(HERE)
 ROOT = os.path.dirname(COMPONENT)
 ACTION = os.path.join(COMPONENT, "action.yml")
-WORKFLOW = os.path.join(ROOT, ".github", "workflows", os.path.basename(COMPONENT) + ".yml")
 # Audit step name -> (scan action, expected working-directory, expected if)
 AUDITS = {
     'Audit the npm dependencies': ('node-npm-scan', '${{ inputs.path }}', ''),
@@ -87,11 +86,6 @@ class AuditStepTest(unittest.TestCase):
         self.assertFalse([name for name in inputs if name.startswith("audit") and name != "audit-blocking-severities"])
         with open(ACTION, encoding="utf-8") as handle:
             self.assertIn("  audit-blocking-severities:\n", handle.read())
-        with open(WORKFLOW, encoding="utf-8") as handle:
-            workflow = handle.read()
-        variable = os.path.basename(COMPONENT).upper().replace("-", "_") + "_AUDIT_BLOCKING_SEVERITIES"
-        self.assertIn("default: ${{ vars." + variable + " || 'critical' }}", workflow)
-        self.assertIn("audit-blocking-severities: ${{ inputs.audit-blocking-severities }}", workflow)
 
 
 if __name__ == "__main__":

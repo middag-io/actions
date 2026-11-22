@@ -1,10 +1,9 @@
-"""Tests of the wiring in action.yml and in the reusable workflow.
+"""Tests of the wiring in action.yml.
 
 Checks that the dry run skips every step that runs a tool and reaches
 php-composer-setup as a dry run, that the password reaches only the
-php-composer-setup step, that this step passes only inputs that
-php-composer-setup declares, and that the reusable workflow passes every input
-of the composite action.
+php-composer-setup step, and that this step passes only inputs that
+php-composer-setup declares.
 
 The files are read with small readers for their layout (two-space
 indentation), standard library only.
@@ -21,7 +20,6 @@ COMPONENT = os.path.dirname(HERE)
 ACTION = os.path.join(COMPONENT, "action.yml")
 SETUP_ACTION = os.path.join(os.path.dirname(COMPONENT), "php-composer-setup", "action.yml")
 SETUP_STEP = "Set up PHP and install the Composer dependencies"
-WORKFLOW = os.path.join(os.path.dirname(COMPONENT), ".github", "workflows", "wp-theme-check.yml")
 STEP_RE = re.compile(r"^    - name: (.+)$")
 KEY_RE = re.compile(r"^      ([a-z-]+):\s*(.*)$")
 INPUT_RE = re.compile(r"^  ([a-z-]+):$")
@@ -118,20 +116,6 @@ class ActionWiringTest(unittest.TestCase):
     def test_tools_run_read_only(self):
         self.assertEqual(self.steps["Run PHP CS Fixer"]["run"], "vendor/bin/php-cs-fixer fix --dry-run --diff")
         self.assertEqual(self.steps["Run Rector"]["run"], "vendor/bin/rector process --dry-run")
-
-
-class WorkflowWiringTest(unittest.TestCase):
-    def test_workflow_passes_every_action_input(self):
-        with open(WORKFLOW, encoding="utf-8") as handle:
-            text = handle.read()
-        step = text.split("uses: $/wp-theme-check", 1)[1]
-        passed = re.findall(r"^          ([a-z-]+):", step, flags=re.MULTILINE)
-        self.assertEqual(sorted(passed), sorted(action_inputs()))
-
-    def test_workflow_drops_the_password_in_a_dry_run(self):
-        with open(WORKFLOW, encoding="utf-8") as handle:
-            text = handle.read()
-        self.assertIn("composer-auth-password: ${{ !inputs.dry-run && secrets.composer-auth-password || '' }}", text)
 
 
 if __name__ == "__main__":

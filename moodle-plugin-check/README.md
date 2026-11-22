@@ -2,10 +2,7 @@
 
 Validates a Moodle plugin in a change. Publishes nothing.
 
-Two forms, one name:
-
-- reusable workflow `.github/workflows/moodle-plugin-check.yml`: checks out the calling repository and runs one job per PHP version;
-- composite action `moodle-plugin-check/action.yml`: checks one PHP version in a job of the caller, on a checkout the caller made.
+A composite action, `moodle-plugin-check/action.yml`: it checks one PHP version in a job of the caller, on a checkout the caller made. Several PHP versions are a job matrix of the caller.
 
 ## What it does
 
@@ -34,24 +31,21 @@ Nothing. The component writes no file in the repository and publishes nothing. `
 
 ## Inputs
 
-| Input | Workflow | Action | Default | Meaning |
-| --- | --- | --- | --- | --- |
-| `path` | yes | yes | `.` | Plugin directory (the one that holds `version.php`), relative to the checkout. A path that leaves the checkout fails. |
-| `component` | yes | yes | empty | Expected frankenstyle name. Empty skips the comparison with `version.php`. |
-| `php-versions` | yes | no | `["8.2", "8.3", "8.4"]` | JSON array of PHP versions; one job each. |
-| `php-version` | no | yes (required) | — | PHP version of this run (for example `8.3`). |
-| `php-extensions` | yes | yes | `soap, xml, curl, mbstring, bcmath, zip, gd, intl` | PHP extensions, separated by commas. |
-| `composer-validate` | yes (boolean) | yes (`true`/`false`) | `true` | Run `composer validate` when the plugin has a `composer.json`. |
-| `composer-options` | yes | yes | `--prefer-dist --optimize-autoloader` | Extra long options of `composer install`, separated by spaces. |
-| `composer-scripts` | yes | yes | empty | Composer scripts to run in order, separated by commas or new lines (for example `check:style, check:stan, test`). |
-| `app-client-id` | yes | yes | variable `MOODLE_PLUGIN_CHECK_APP_CLIENT_ID` (workflow); empty (action) | Client id of a GitHub App that reads private Composer dependencies on GitHub. Empty: public dependencies only. |
-| `app-repositories` | yes | yes | variable `MOODLE_PLUGIN_CHECK_APP_REPOSITORIES` (workflow); empty (action) | Repositories of the App owner that the token reaches (the private dependencies), names without owner, separated by commas or new lines. Required with `app-client-id`, so that the token never reaches every repository of the installation. |
-| `app-owner` | yes | yes | empty | Owner whose installation of the App mints the token. Empty: the owner of the calling repository. |
-| `app-private-key` | secret | input | empty | Private key of the App. Required with `app-client-id` outside a dry run. |
-| `audit-blocking-severities` | yes | yes | variable `MOODLE_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES`, else `critical` (workflow); `critical` (action) | Severities of a dependency advisory that fail the job, separated by commas: any of `critical`, `high`, `medium`, `low`. |
-| `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and plan only. |
-| `timeout-minutes` | yes | no | `20` | Timeout of each job. |
-| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `path` | `.` | Plugin directory (the one that holds `version.php`), relative to the checkout. A path that leaves the checkout fails. |
+| `component` | empty | Expected frankenstyle name. Empty skips the comparison with `version.php`. |
+| `php-version` | — | PHP version of this run (for example `8.3`). |
+| `php-extensions` | `soap, xml, curl, mbstring, bcmath, zip, gd, intl` | PHP extensions, separated by commas. |
+| `composer-validate` | `true` | Run `composer validate` when the plugin has a `composer.json`. |
+| `composer-options` | `--prefer-dist --optimize-autoloader` | Extra long options of `composer install`, separated by spaces. |
+| `composer-scripts` | empty | Composer scripts to run in order, separated by commas or new lines (for example `check:style, check:stan, test`). |
+| `app-client-id` | empty | Client id of a GitHub App that reads private Composer dependencies on GitHub. Empty: public dependencies only. |
+| `app-repositories` | empty | Repositories of the App owner that the token reaches (the private dependencies), names without owner, separated by commas or new lines. Required with `app-client-id`, so that the token never reaches every repository of the installation. |
+| `app-owner` | empty | Owner whose installation of the App mints the token. Empty: the owner of the calling repository. |
+| `app-private-key` | empty | Private key of the App. Required with `app-client-id` outside a dry run. |
+| `audit-blocking-severities` | `critical` | Severities of a dependency advisory that fail the job, separated by commas: any of `critical`, `high`, `medium`, `low`. |
+| `dry-run` | `false` | Validate and plan only. |
 
 ## Outputs
 
@@ -60,21 +54,19 @@ Nothing. The component writes no file in the repository and publishes nothing. `
 | `component` | Frankenstyle name read from `version.php`. |
 | `version` | `$plugin->version` read from `version.php`. |
 | `commands` | JSON array of the planned Composer commands, in order (empty array without `composer.json`). |
-| `release` | Action only: `$plugin->release`, empty when not set. |
-| `maturity` | Action only: `$plugin->maturity`, empty when not set. |
-
-Every job of the matrix reads the same `version.php` and plans the same commands, so the workflow outputs do not depend on the PHP version.
+| `release` | `$plugin->release`, empty when not set. |
+| `maturity` | `$plugin->maturity`, empty when not set. |
 
 ## Variables and secrets
 
-Most specific first: explicit input, then a variable of the calling repository, then a variable of the calling organization.
+The action reads no variable and no secret by itself. The caller passes them in `with:`, one explicit line each:
 
-| Name | Kind | Read by |
+| Name | Kind | Passed to |
 | --- | --- | --- |
-| `MOODLE_PLUGIN_CHECK_APP_CLIENT_ID` | variable | default of `app-client-id` in the reusable workflow |
-| `MOODLE_PLUGIN_CHECK_APP_REPOSITORIES` | variable | default of `app-repositories` in the reusable workflow |
-| `MOODLE_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES` | variable | default of `audit-blocking-severities` in the reusable workflow |
-| `MOODLE_PLUGIN_CHECK_APP_PRIVATE_KEY` | secret | passed by the caller to `app-private-key`, one explicit line |
+| `MOODLE_PLUGIN_CHECK_APP_CLIENT_ID` | variable | `app-client-id` |
+| `MOODLE_PLUGIN_CHECK_APP_REPOSITORIES` | variable | `app-repositories` |
+| `MOODLE_PLUGIN_CHECK_AUDIT_BLOCKING_SEVERITIES` | variable | `audit-blocking-severities` |
+| `MOODLE_PLUGIN_CHECK_APP_PRIVATE_KEY` | secret | `app-private-key` |
 
 The App needs only read access to the contents of the repositories of the private dependencies. The token it mints here asks for `contents: read` only, on the repositories of `app-repositories` only.
 
@@ -87,34 +79,6 @@ The caller grants `contents: read` to the calling job. The component asks for no
 Reference the component by its major tag `moodle-plugin-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # moodle-plugin-check-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/moodle-plugin-check-vX.Y.Z` (dereference an annotated tag).
 
 ```yaml
-name: CI
-
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-permissions: {}
-
-jobs:
-  moodle-plugin-check:
-    permissions:
-      contents: read
-    uses: <owner>/actions/.github/workflows/moodle-plugin-check.yml@moodle-plugin-check-v1
-    with:
-      component: local_example
-      php-versions: '["8.2", "8.3"]'
-      composer-scripts: |
-        check:style
-        check:stan
-        test
-    secrets:
-      app-private-key: ${{ secrets.MOODLE_PLUGIN_CHECK_APP_PRIVATE_KEY }}
-```
-
-The composite action in a job of the caller:
-
-```yaml
 steps:
   - uses: actions/checkout@<sha40> # vX.Y.Z
     with:
@@ -122,7 +86,14 @@ steps:
   - uses: <owner>/actions/moodle-plugin-check@moodle-plugin-check-v1
     with:
       php-version: "8.3"
-      composer-scripts: test
+      component: local_example
+      composer-scripts: |
+        check:style
+        check:stan
+        test
+      app-client-id: ${{ vars.MOODLE_PLUGIN_CHECK_APP_CLIENT_ID }}
+      app-repositories: ${{ vars.MOODLE_PLUGIN_CHECK_APP_REPOSITORIES }}
+      app-private-key: ${{ secrets.MOODLE_PLUGIN_CHECK_APP_PRIVATE_KEY }}
 ```
 
 A pull request from a fork gets no secrets: leave `app-client-id` empty there, or the check fails with a message that names `app-private-key`.

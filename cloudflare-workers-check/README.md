@@ -2,10 +2,7 @@
 
 Validates a Cloudflare Workers project in a change. Needs no Cloudflare credentials and publishes nothing.
 
-Two forms, one name:
-
-- reusable workflow `.github/workflows/cloudflare-workers-check.yml`: checks out the calling repository and runs one job;
-- composite action `cloudflare-workers-check/action.yml`: checks the project in a job of the caller, on a checkout the caller made.
+A composite action, `cloudflare-workers-check/action.yml`: it checks the project in a job of the caller, on a checkout the caller made.
 
 ## What it does
 
@@ -28,18 +25,16 @@ Nothing. The component publishes nothing and deploys nothing. `npm ci` deletes `
 
 ## Inputs
 
-| Input                       | Workflow      | Action               | Default                                                                                                        | Meaning                                                                                                                       |
-| --------------------------- | ------------- | -------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `path`                      | yes           | yes                  | `.`                                                                                                            | Project directory (the one that holds `package.json`), relative to the checkout. A path that leaves the checkout fails.       |
-| `node-version`              | yes           | yes                  | `22`                                                                                                           | Node.js version (`22`, `22.11` or `22.11.0`).                                                                                 |
-| `npm-scripts`               | yes           | yes                  | `build`                                                                                                        | npm scripts that must exist in `package.json`, run in order after `npm-scripts-if-present`, separated by commas or new lines. |
-| `npm-scripts-if-present`    | yes           | yes                  | `typecheck, lint`                                                                                              | npm scripts run in order after `npm ci` when `package.json` defines them, separated by commas or new lines.                   |
-| `wrangler-config`           | yes           | yes                  | empty                                                                                                          | Wrangler configuration file, relative to `path`. Empty: `wrangler.json`, `wrangler.jsonc` or `wrangler.toml` at `path`.       |
-| `wrangler-dry-run`          | yes (boolean) | yes (`true`/`false`) | `false`                                                                                                        | Run `wrangler deploy --dry-run` with the Wrangler of the lock file.                                                           |
-| `audit-blocking-severities` | yes           | yes                  | variable `CLOUDFLARE_WORKERS_CHECK_AUDIT_BLOCKING_SEVERITIES`, else `critical` (workflow); `critical` (action) | Severities of a dependency advisory that fail the job, separated by commas: any of `critical`, `high`, `medium`, `low`.       |
-| `dry-run`                   | yes (boolean) | yes (`true`/`false`) | `false`                                                                                                        | Validate and plan only.                                                                                                       |
-| `timeout-minutes`           | yes           | no                   | `20`                                                                                                           | Timeout of the job.                                                                                                           |
-| `runner`                    | yes           | no                   | `ubuntu-24.04`                                                                                                 | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner.                         |
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `path` | `.` | Project directory (the one that holds `package.json`), relative to the checkout. A path that leaves the checkout fails. |
+| `node-version` | `22` | Node.js version (`22`, `22.11` or `22.11.0`). |
+| `npm-scripts` | `build` | npm scripts that must exist in `package.json`, run in order after `npm-scripts-if-present`, separated by commas or new lines. |
+| `npm-scripts-if-present` | `typecheck, lint` | npm scripts run in order after `npm ci` when `package.json` defines them, separated by commas or new lines. |
+| `wrangler-config` | empty | Wrangler configuration file, relative to `path`. Empty: `wrangler.json`, `wrangler.jsonc` or `wrangler.toml` at `path`. |
+| `wrangler-dry-run` | `false` | Run `wrangler deploy --dry-run` with the Wrangler of the lock file. |
+| `audit-blocking-severities` | `critical` | Severities of a dependency advisory that fail the job, separated by commas: any of `critical`, `high`, `medium`, `low`. |
+| `dry-run` | `false` | Validate and plan only. |
 
 ## Outputs
 
@@ -51,7 +46,7 @@ Nothing. The component publishes nothing and deploys nothing. `npm ci` deletes `
 
 ## Variables and secrets
 
-No secret: a check needs no Cloudflare credentials. One variable: `CLOUDFLARE_WORKERS_CHECK_AUDIT_BLOCKING_SEVERITIES`, the default of `audit-blocking-severities` in the reusable workflow. A project whose npm scripts need a secret is out of scope for this component.
+No secret: a check needs no Cloudflare credentials. The action reads no variable: a caller that keeps the severities in `CLOUDFLARE_WORKERS_CHECK_AUDIT_BLOCKING_SEVERITIES` passes `audit-blocking-severities: ${{ vars.CLOUDFLARE_WORKERS_CHECK_AUDIT_BLOCKING_SEVERITIES || 'critical' }}`. A project whose npm scripts need a secret is out of scope for this component.
 
 ## Permissions
 
@@ -59,7 +54,7 @@ The caller grants `contents: read` to the calling job. The component asks for no
 
 ## Dependencies from GitHub Packages
 
-A project whose `package-lock.json` resolves a scope from GitHub Packages (`https://npm.pkg.github.com`) needs the job token with `packages: read`. The job of the reusable workflow declares `contents: read` only, and a caller cannot raise the permissions of a called workflow, so `npm ci` fails there with `403 Forbidden` on the first package of the scope. Run the composite action in a job of your own with `packages: read` instead. The project's `.npmrc` maps the scope to the registry and reads the token from the environment:
+A project whose `package-lock.json` resolves a scope from GitHub Packages (`https://npm.pkg.github.com`) needs the job token with `packages: read`; without it, `npm ci` fails with `403 Forbidden` on the first package of the scope. Grant it to the calling job. The project's `.npmrc` maps the scope to the registry and reads the token from the environment:
 
 ```ini
 @example:registry=https://npm.pkg.github.com
@@ -86,34 +81,11 @@ jobs:
           # the inputs of the component
 ```
 
-The component takes no registry input: the `env:` of the step reaches every step of the action, the npm scripts included, so the job token there must hold only `contents: read` and `packages: read`. Each package of the scope must grant the calling repository Read access (package settings, "Manage Actions access"). A GitHub App installation token is refused by that registry; the job token is the identity that works there. The reusable workflow keeps `contents: read` only, the least privilege for the projects that need no GitHub Packages scope.
+The component takes no registry input: the `env:` of the step reaches every step of the action, the npm scripts included, so the job token there must hold only `contents: read` and `packages: read`. Each package of the scope must grant the calling repository Read access (package settings, "Manage Actions access"). A GitHub App installation token is refused by that registry; the job token is the identity that works there. A project that needs no GitHub Packages scope keeps `contents: read` only.
 
 ## Example
 
 Reference the component by its major tag `cloudflare-workers-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # cloudflare-workers-check-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/cloudflare-workers-check-vX.Y.Z` (dereference an annotated tag).
-
-```yaml
-name: CI
-
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-permissions: {}
-
-jobs:
-  cloudflare-workers-check:
-    permissions:
-      contents: read
-    uses: <owner>/actions/.github/workflows/cloudflare-workers-check.yml@cloudflare-workers-check-v1
-    with:
-      npm-scripts-if-present: type-check, lint
-      npm-scripts: build
-      wrangler-dry-run: true
-```
-
-The composite action in a job of the caller:
 
 ```yaml
 steps:

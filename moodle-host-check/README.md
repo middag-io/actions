@@ -2,10 +2,7 @@
 
 Checks that code (a Composer package: a library or a plugin) loads and runs inside a real Moodle installation, on each Moodle version of a support matrix. Publishes nothing.
 
-Two forms, one name:
-
-- reusable workflow `.github/workflows/moodle-host-check.yml`: checks out the calling repository and runs one job per Moodle host (a Moodle branch and a PHP version), each with its own empty PostgreSQL service;
-- composite action `moodle-host-check/action.yml`: checks one host in a job of the caller, on a checkout the caller made, with a PostgreSQL database the caller provides.
+A composite action, `moodle-host-check/action.yml`: it checks one host (a Moodle branch and a PHP version) in a job of the caller, on a checkout the caller made, with an empty PostgreSQL database the caller provides. A support matrix is a job matrix of the caller, one host per job (see "Example").
 
 ## What it does
 
@@ -30,35 +27,32 @@ Nothing in the repository. The host lives in the temporary directory of the runn
 
 ## Inputs
 
-| Input | Workflow | Action | Default | Meaning |
-| --- | --- | --- | --- | --- |
-| `hosts` | yes (required) | no | — | JSON array of hosts, one job each, as objects with `moodle-branch` and `php-version`. |
-| `moodle-branch` | no | yes (required) | — | Moodle branch of this host, for example `MOODLE_405_STABLE` or `main`. |
-| `php-version` | no | yes (required) | — | PHP version of this host. It must be one that the Moodle branch accepts. |
-| `moodle-repository` | yes | yes | `moodle/moodle` | GitHub repository to clone Moodle from. |
-| `php-extensions` | yes | yes | `pgsql, intl, zip, gd, soap, xml, mbstring, curl, sodium, exif` | PHP extensions, separated by commas. |
-| `path` | yes | yes | `.` | Directory of the code under test (the one that holds `composer.json`), relative to the checkout. |
-| `probe-script` | yes | yes | empty | PHP script of the checkout to run against the host. Empty: the built-in probe. |
-| `db-host` | no | yes | `127.0.0.1` | Host of the PostgreSQL database. |
-| `db-port` | no | yes | `5432` | Port of the PostgreSQL database. |
-| `db-name` | no | yes | `moodle` | Empty database that receives the Moodle tables. |
-| `db-user` | no | yes | `postgres` | User that logs in without a password (trust authentication) and owns `db-name`. |
-| `composer-auth` | secret | input | empty | Composer credentials in the `COMPOSER_AUTH` JSON format, for private dependencies of the code under test. |
-| `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Validate and plan only: no database, no PHP set-up, no clone, no install, no probe. |
-| `timeout-minutes` | yes | no | `30` | Timeout of each job. |
-| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `moodle-branch` | — | Moodle branch of this host, for example `MOODLE_405_STABLE` or `main`. |
+| `php-version` | — | PHP version of this host. It must be one that the Moodle branch accepts. |
+| `moodle-repository` | `moodle/moodle` | GitHub repository to clone Moodle from. |
+| `php-extensions` | `pgsql, intl, zip, gd, soap, xml, mbstring, curl, sodium, exif` | PHP extensions, separated by commas. |
+| `path` | `.` | Directory of the code under test (the one that holds `composer.json`), relative to the checkout. |
+| `probe-script` | empty | PHP script of the checkout to run against the host. Empty: the built-in probe. |
+| `db-host` | `127.0.0.1` | Host of the PostgreSQL database. |
+| `db-port` | `5432` | Port of the PostgreSQL database. |
+| `db-name` | `moodle` | Empty database that receives the Moodle tables. |
+| `db-user` | `postgres` | User that logs in without a password (trust authentication) and owns `db-name`. |
+| `composer-auth` | empty | Composer credentials in the `COMPOSER_AUTH` JSON format, for private dependencies of the code under test. |
+| `dry-run` | `false` | Validate and plan only: no database, no PHP set-up, no clone, no install, no probe. |
 
-The reusable workflow runs PostgreSQL 17 as a service of each job, pinned by digest, with trust authentication; the service is reachable only from its job.
+Run PostgreSQL 17 as a service of the calling job, pinned by digest, with trust authentication; the service is reachable only from its job.
 
 ## Outputs
 
 | Output | Meaning |
 | --- | --- |
-| `commands` | JSON array of the planned commands, with `<moodle>` for the Moodle directory, `<generated>` for the administrator password and `<builtin-probe>` for the built-in probe. In the workflow, the value of the last host job that ended: pass one host for a stable value. |
+| `commands` | JSON array of the planned commands, with `<moodle>` for the Moodle directory, `<generated>` for the administrator password and `<builtin-probe>` for the built-in probe. |
 
 ## Variables and secrets
 
-No input reads a variable. The caller passes the secret with one explicit line:
+No input reads a variable. The caller passes the secret to `composer-auth` with one explicit line:
 
 | Name | Kind | Read by |
 | --- | --- | --- |
@@ -72,33 +66,6 @@ The caller grants `contents: read` to the calling job. The component asks for no
 
 Reference the component by its major tag `moodle-host-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # moodle-host-check-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/moodle-host-check-vX.Y.Z` (dereference an annotated tag).
 
-```yaml
-name: Moodle support matrix
-
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-permissions: {}
-
-jobs:
-  moodle-host-check:
-    permissions:
-      contents: read
-    uses: <owner>/actions/.github/workflows/moodle-host-check.yml@moodle-host-check-v1
-    with:
-      hosts: >-
-        [
-          {"moodle-branch": "MOODLE_405_STABLE", "php-version": "8.3"},
-          {"moodle-branch": "MOODLE_500_STABLE", "php-version": "8.4"},
-          {"moodle-branch": "MOODLE_501_STABLE", "php-version": "8.4"}
-        ]
-      probe-script: tests/host-probe.php
-    secrets:
-      composer-auth: ${{ secrets.MOODLE_HOST_CHECK_COMPOSER_AUTH }}
-```
-
 A probe of your own:
 
 ```php
@@ -111,14 +78,21 @@ require_once(getenv('MOODLE_HOST_CHECK_CODE_DIR') . '/vendor/autoload.php');
 echo \Example\Library\Version::moodleBranch(), "\n";
 ```
 
-The composite action in a job of the caller, with a database service of the caller:
+A job of the caller, one host per matrix entry, with a database service of the caller:
 
 ```yaml
 jobs:
   host:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { moodle-branch: MOODLE_405_STABLE, php-version: "8.3" }
+          - { moodle-branch: MOODLE_500_STABLE, php-version: "8.4" }
     services:
       postgres:
         image: postgres:17@sha256:<digest>
@@ -134,8 +108,10 @@ jobs:
           persist-credentials: false
       - uses: <owner>/actions/moodle-host-check@moodle-host-check-v1
         with:
-          moodle-branch: MOODLE_405_STABLE
-          php-version: "8.3"
+          moodle-branch: ${{ matrix.moodle-branch }}
+          php-version: ${{ matrix.php-version }}
+          probe-script: tests/host-probe.php
+          composer-auth: ${{ secrets.MOODLE_HOST_CHECK_COMPOSER_AUTH }}
 ```
 
 A pull request from a fork gets no secrets: a code under test with private dependencies cannot be installed there.

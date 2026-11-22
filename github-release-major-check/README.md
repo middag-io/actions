@@ -2,10 +2,7 @@
 
 Checks that a pull request asks for a new MAJOR version only explicitly. release-please cuts a MAJOR from a `!` in a Conventional Commits header or from a `BREAKING CHANGE:` footer; with this check, a breaking change marker passes only when the pull request also carries a `Release-As: X.0.0` footer, with `X` above the MAJOR of the package version in the release-please manifest of the base commit. Publishes nothing.
 
-Two forms, one name:
-
-- reusable workflow `.github/workflows/github-release-major-check.yml`: checks out the head of the pull request with its history and runs the check;
-- composite action `github-release-major-check/action.yml`: runs the check in a job of the caller, on a checkout the caller made (with the history of the base and head commits).
+A composite action, `github-release-major-check/action.yml`: it runs the check in a job of the caller, on a checkout the caller made (with the history of the base and head commits).
 
 ## What it does
 
@@ -35,16 +32,14 @@ Nothing. The component writes no file in the repository and publishes nothing.
 
 ## Inputs
 
-| Input | Workflow | Action | Default | Meaning |
-| --- | --- | --- | --- | --- |
-| `manifest-file` | yes | yes | `.release-please-manifest.json` | release-please manifest, read at the base commit. |
-| `package` | yes | yes | `.` | Key of the package in the manifest: `.` for a single package, the package folder in a monorepo. |
-| `title` | yes | yes (required) | the title of the pull request of the event (workflow) | Title to check. |
-| `base-sha` | no | yes | empty | Full SHA of the base commit; required unless `dry-run`. The workflow passes the one of the event. |
-| `head-sha` | no | yes | empty | Full SHA of the head commit; required unless `dry-run`. The workflow passes the one of the event. |
-| `dry-run` | yes (boolean) | yes (`true`/`false`) | `false` | Check the title against the manifest of the workspace; report only. |
-| `timeout-minutes` | yes | no | `5` | Timeout of the job. |
-| `runner` | yes | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `manifest-file` | `.release-please-manifest.json` | release-please manifest, read at the base commit. |
+| `package` | `.` | Key of the package in the manifest: `.` for a single package, the package folder in a monorepo. |
+| `title` | none (required) | Title to check. |
+| `base-sha` | empty | Full SHA of the base commit; required unless `dry-run`. |
+| `head-sha` | empty | Full SHA of the head commit; required unless `dry-run`. |
+| `dry-run` | `false` | Check the title against the manifest of the workspace; report only. |
 
 A monorepo with several packages calls the component once per package, each with its own `package`. The calling jobs run in parallel (see "Concurrency").
 
@@ -65,39 +60,19 @@ None.
 
 The caller grants `contents: read` to the calling job. The component asks for nothing more: the title and the SHAs come from the event, the commits and the manifest from the checkout.
 
-## Concurrency
+## Monorepo
 
-The job of the reusable workflow has one concurrency group per run attempt and package: `github-release-major-check-<run id>-<run attempt>-<package>`, with `root` for the package `.`. The component writes nothing outside the job, so the group only keeps two calls for the same package in one run from running together; it never cancels a job in progress.
-
-A monorepo caller that runs one job per package in the same run gets one group per job: every job runs in parallel, and none waits for or cancels another. Give each call a distinct `package`.
+A monorepo caller runs one step per package, each with a distinct `package` (and its own step `id` to read the outputs). The component writes nothing outside the job.
 
 ## Triggers
 
-The calling workflow runs on `pull_request` with the types `opened`, `edited` (a new title), `synchronize` (new commits) and `reopened`. Make the check required in the ruleset of the base branch, so that a pull request cannot merge while it fails. The status check context is `<caller job id> / check`: with the example below, `github-release-major-check / check`. The ruleset entry must match it exactly.
+The calling workflow runs on `pull_request` with the types `opened`, `edited` (a new title), `synchronize` (new commits) and `reopened`. Make the check required in the ruleset of the base branch, so that a pull request cannot merge while it fails. The status check context is the name of the calling job. The ruleset entry must match it exactly.
 
 The release pull request of release-please passes: its title and its one commit carry no breaking change marker and no footer.
 
 ## Example
 
 Reference the component by its major tag `github-release-major-check-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # github-release-major-check-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/github-release-major-check-vX.Y.Z` (dereference an annotated tag).
-
-```yaml
-name: Release major
-
-on:
-  pull_request:
-    types: [opened, edited, synchronize, reopened]
-
-permissions: {}
-
-jobs:
-  github-release-major-check:
-    permissions:
-      contents: read
-    uses: <owner>/actions/.github/workflows/github-release-major-check.yml@github-release-major-check-v1
-```
-
-The composite action in a job of the caller:
 
 ```yaml
 steps:
