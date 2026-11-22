@@ -71,11 +71,11 @@ expect_plan() {
   fi
 }
 
-# expect_gate <description> <expected-status> <needs-json> <components> <full>
+# expect_gate <description> <expected-status> <needs-json> <components>
 expect_gate() {
   local description="$1" expected="$2" status=0
   cases=$((cases + 1))
-  NEEDS_JSON="$3" COMPONENTS="$4" FULL="$5" bash "$GATE" >/dev/null 2>&1 || status=$?
+  NEEDS_JSON="$3" COMPONENTS="$4" bash "$GATE" >/dev/null 2>&1 || status=$?
   if [[ "$status" == "$expected" ]]; then
     printf 'ok   %s\n' "$description"
   else
@@ -105,19 +105,20 @@ expect_plan "release pull request with another file runs the checks" pull_reques
 expect_plan "changelog on another branch runs the checks" pull_request feature \
   'components=["alpha-check"] full=true' .release-please-manifest.json alpha-check/CHANGELOG.md
 
-all_ok='{"changes":{"result":"success"},"actionlint":{"result":"success"},"unit-tests":{"result":"success"},"dry-run-alpha-check":{"result":"success"},"dry-run-check-alpha-check":{"result":"success"}}'
-expect_gate "every job succeeded" 0 "$all_ok" '["alpha-check"]' true
-skipped_alpha='{"changes":{"result":"success"},"actionlint":{"result":"success"},"unit-tests":{"result":"success"},"dry-run-alpha-check":{"result":"skipped"},"dry-run-check-alpha-check":{"result":"skipped"},"dry-run-beta-check-monorepo-api":{"result":"success"}}'
-expect_gate "unplanned dry-run may be skipped" 0 "$skipped_alpha" '["beta-check"]' true
-expect_gate "planned dry-run may not be skipped" 1 "$skipped_alpha" '["alpha-check","beta-check"]' true
-release='{"changes":{"result":"success"},"actionlint":{"result":"success"},"check-genericity":{"result":"skipped"},"unit-tests":{"result":"skipped"},"dry-run-alpha-check":{"result":"skipped"}}'
-expect_gate "release pull request skips the heavy jobs" 0 "$release" '[]' false
-expect_gate "planned unit-tests may not be skipped" 1 "$release" '[]' true
-expect_gate "a light job may not be skipped" 1 '{"changes":{"result":"success"},"actionlint":{"result":"skipped"}}' '[]' false
-expect_gate "a failed plan fails the gate" 1 '{"changes":{"result":"failure"},"dry-run-alpha-check":{"result":"skipped"}}' '[]' false
-expect_gate "a skipped plan fails the gate" 1 '{"changes":{"result":"skipped"}}' '[]' false
-expect_gate "a failed dry-run fails the gate" 1 '{"changes":{"result":"success"},"dry-run-alpha-check":{"result":"failure"},"dry-run-check-alpha-check":{"result":"skipped"}}' '["alpha-check"]' true
-expect_gate "a cancelled job fails the gate" 1 '{"changes":{"result":"success"},"gitleaks":{"result":"cancelled"}}' '[]' false
+all_ok='{"changes":{"result":"success"},"lint":{"result":"success"},"dry-run-alpha-check":{"result":"success"},"dry-run-checks":{"result":"success"}}'
+expect_gate "every job succeeded" 0 "$all_ok" '["alpha-check"]'
+skipped_alpha='{"changes":{"result":"success"},"lint":{"result":"success"},"dry-run-alpha-check":{"result":"skipped"},"dry-run-beta-check-monorepo-api":{"result":"success"},"dry-run-checks":{"result":"success"}}'
+expect_gate "unplanned dry-run may be skipped" 0 "$skipped_alpha" '["beta-check"]'
+expect_gate "planned dry-run may not be skipped" 1 "$skipped_alpha" '["alpha-check","beta-check"]'
+release='{"changes":{"result":"success"},"lint":{"result":"success"},"dry-run-alpha-check":{"result":"skipped"},"dry-run-checks":{"result":"skipped"}}'
+expect_gate "a plan without components skips the dry-run checks" 0 "$release" '[]'
+expect_gate "planned dry-run checks may not be skipped" 1 '{"changes":{"result":"success"},"lint":{"result":"success"},"dry-run-alpha-check":{"result":"success"},"dry-run-checks":{"result":"skipped"}}' '["alpha-check"]'
+expect_gate "a failed dry-run check fails the gate" 1 '{"changes":{"result":"success"},"lint":{"result":"success"},"dry-run-alpha-check":{"result":"success"},"dry-run-checks":{"result":"failure"}}' '["alpha-check"]'
+expect_gate "lint may not be skipped" 1 '{"changes":{"result":"success"},"lint":{"result":"skipped"}}' '[]'
+expect_gate "a failed plan fails the gate" 1 '{"changes":{"result":"failure"},"dry-run-alpha-check":{"result":"skipped"}}' '[]'
+expect_gate "a skipped plan fails the gate" 1 '{"changes":{"result":"skipped"}}' '[]'
+expect_gate "a failed dry-run fails the gate" 1 '{"changes":{"result":"success"},"dry-run-alpha-check":{"result":"failure"},"dry-run-checks":{"result":"success"}}' '["alpha-check"]'
+expect_gate "a cancelled job fails the gate" 1 '{"changes":{"result":"success"},"lint":{"result":"cancelled"}}' '[]'
 
 printf '%d cases, %d failures\n' "$cases" "$failures"
 ((failures == 0))
