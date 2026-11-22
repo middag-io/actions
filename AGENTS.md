@@ -44,7 +44,7 @@ All files, comments, commit messages and pull requests are in English.
 - No automatic approval of pull requests.
 - Python code uses only the standard library, runs as `python3 -I` and is tested with `unittest` and fixtures.
 - Inputs are validated before any write.
-- A check or scan component (verb `check`, `lint` or `scan`) is a composite action only, with no reusable workflow: the caller runs it as a step of its own job. A reusable workflow is added only where the whole job is the product (release, deploy, publish, operate, setup).
+- A check or scan component (verb `check`, `lint` or `scan`) is a composite action only, with no reusable workflow: the caller runs it as a step of its own job. A reusable workflow is added only where the whole job is the product (release, deploy, publish, operate) and a caller runs it as a job of its own; a reusable workflow that no caller uses is removed.
 - Every reusable component workflow declares a boolean `dry-run` input: in dry-run mode the component validates and reports what it would do, without credentials and without writes.
 
 ## Gates

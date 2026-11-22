@@ -13,12 +13,7 @@ A dry run runs steps 1 and 4 only, and `php-composer-setup` as a dry run when `c
 
 The ZIP is deterministic: entries sorted by path, a fixed entry date, mode `0755` for executable files and `0644` for the others. It holds file entries only, no directory entries, so an empty directory does not ship. Symbolic links are replaced by the files they point to; a dangling link fails the run.
 
-Two forms, one name:
-
-| Form | Path | Use it when |
-| --- | --- | --- |
-| Reusable workflow | `.github/workflows/moodle-plugin-package.yml` | the ZIP goes to a workflow artifact only, and the dependencies are public or come from a Composer repository behind `composer-auth`; one job with `contents: read` |
-| Composite action | `moodle-plugin-package/action.yml` | the ZIP also goes to the GitHub release of the tag, or `npm-build-command` reads private packages from GitHub Packages: both need more than `contents: read`, which the reusable workflow does not grant |
+A composite action, `moodle-plugin-package/action.yml`: it packages in a job of the caller. The caller checks out the plugin tree before the step.
 
 ## Exclude rules
 
@@ -43,35 +38,27 @@ rsync semantics apply: a pattern without an inner `/` matches at any depth (`tes
 
 ## Inputs
 
-"Both" means the reusable workflow and the composite action.
+| Input | Required | Default | Rule |
+| --- | --- | --- | --- |
+| `zip-name` | yes | | Moodle frankenstyle name, `^[a-z][a-z0-9]*_[a-z][a-z0-9_]*$` (for example `local_example`); equals `$plugin->component` when that is set |
+| `tag-name` | no | empty | `^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`; names the archive |
+| `path` | no | `.` | plugin tree with `version.php` at its root, relative to the workspace; never absolute, never `..` |
+| `php-version` | no | `8.4` | PHP for the Composer install |
+| `php-extensions` | no | `soap, xml, curl, mbstring, bcmath, zip, gd, intl` | |
+| `composer-options` | no | `--no-dev --prefer-dist --optimize-autoloader --no-interaction` | split on spaces |
+| `dist-excludes-file` | no | `.distignore` | relative to `path`; see Exclude rules |
+| `npm-build-command` | no | empty | npm script name, `^[A-Za-z0-9][A-Za-z0-9:._/-]{0,127}$`; empty skips Node |
+| `npm-working-dir` | no | `.` | relative to `path`; must hold `package.json` |
+| `node-version` | no | `22` | |
+| `retention-days` | no | `30` | retention of the workflow artifact |
+| `dry-run` | no | `false` | validate and build the ZIP only |
+| `composer-auth` | no | empty | `COMPOSER_AUTH` JSON, passed from a secret; `php-composer-setup` writes it to the global Composer `auth.json`. A `COMPOSER_AUTH` that the job environment already sets still applies |
+| `github-token` | no | the job token | token for the GitHub Packages npm registry and for the release upload |
+| `upload-release-asset` | no | `false` | upload to the release of `tag-name`; needs `tag-name` |
 
-| Input | Form | Required | Default | Rule |
-| --- | --- | --- | --- | --- |
-| `zip-name` | both | yes | | Moodle frankenstyle name, `^[a-z][a-z0-9]*_[a-z][a-z0-9_]*$` (for example `local_example`); equals `$plugin->component` when that is set |
-| `tag-name` | both | no | empty | `^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`; names the archive. Reusable: also the ref it checks out (empty: the triggering ref) |
-| `path` | both | no | `.` | plugin tree with `version.php` at its root, relative to the workspace; never absolute, never `..` |
-| `php-version` | both | no | `8.4` | PHP for the Composer install |
-| `php-extensions` | both | no | `soap, xml, curl, mbstring, bcmath, zip, gd, intl` | |
-| `composer-options` | both | no | `--no-dev --prefer-dist --optimize-autoloader --no-interaction` | split on spaces |
-| `dist-excludes-file` | both | no | `.distignore` | relative to `path`; see Exclude rules |
-| `npm-build-command` | both | no | empty | npm script name, `^[A-Za-z0-9][A-Za-z0-9:._/-]{0,127}$`; empty skips Node |
-| `npm-working-dir` | both | no | `.` | relative to `path`; must hold `package.json` |
-| `node-version` | both | no | `22` | |
-| `retention-days` | both | no | `30` | retention of the workflow artifact |
-| `dry-run` | both | no | `false` | validate and build the ZIP only |
-| `timeout-minutes` | reusable | no | `20` | job timeout |
-| `runner` | reusable | no | `ubuntu-24.04` | Runner label for the jobs, for example the label of a self-hosted runner; the default keeps the GitHub-hosted runner. |
-| `composer-auth` | composite | no | empty | `COMPOSER_AUTH` JSON, passed from a secret; `php-composer-setup` writes it to the global Composer `auth.json`. A `COMPOSER_AUTH` that the job environment already sets still applies |
-| `github-token` | composite | no | the job token | token for the GitHub Packages npm registry and for the release upload |
-| `upload-release-asset` | composite | no | `false` | upload to the release of `tag-name`; needs `tag-name` |
+## Variables and secrets
 
-## Secrets (reusable workflow)
-
-| Secret | Required | Content |
-| --- | --- | --- |
-| `composer-auth` | no | `COMPOSER_AUTH` JSON for private Composer repositories |
-
-Store it as `MOODLE_PLUGIN_PACKAGE_COMPOSER_AUTH` and pass it with one explicit line (never `secrets: inherit`). A dry run does not pass it to the action.
+The action reads no variable and no secret. A caller with private Composer repositories stores the `COMPOSER_AUTH` JSON as the secret `MOODLE_PLUGIN_PACKAGE_COMPOSER_AUTH` and passes it in `composer-auth`.
 
 ## Outputs
 
@@ -82,34 +69,15 @@ Store it as `MOODLE_PLUGIN_PACKAGE_COMPOSER_AUTH` and pass it with one explicit 
 | `release` | `$plugin->release` from `version.php` |
 | `files` | number of files in the ZIP |
 | `listing-sha256` | SHA-256 of the listing `<sha256>  <zip-name>/<path>` (two spaces, one line per file, sorted by path). The run log prints the listing; `sha256sum` of a saved copy gives the same value |
-| `archive-path` | composite only: path of the ZIP on the runner |
+| `archive-path` | path of the ZIP on the runner |
 
 ## Permissions
 
-- Reusable workflow: `contents: read`. The caller's job grants at least that.
-- Composite action: `contents: read`, plus `contents: write` with `upload-release-asset: true`, plus `packages: read` when `npm-build-command` installs packages from GitHub Packages with the job token. Each such package must also grant the calling repository read access. Pass another token in `github-token` to use other credentials.
+`contents: read`, plus `contents: write` with `upload-release-asset: true`, plus `packages: read` when `npm-build-command` installs packages from GitHub Packages with the job token. Each such package must also grant the calling repository read access. Pass another token in `github-token` to use other credentials.
 
-## Calling the reusable workflow
+## Calling the component
 
 Reference the component by its major tag `moodle-plugin-package-v1`. A fork and a caller outside the maintainer organization pin the full commit SHA of a release tag instead, with the tag as a comment (`@<sha40> # moodle-plugin-package-vX.Y.Z`). Find the SHA with `gh api repos/<owner>/actions/git/ref/tags/moodle-plugin-package-vX.Y.Z` (dereference an annotated tag).
-
-```yaml
-jobs:
-  package:
-    permissions:
-      contents: read
-    uses: <owner>/actions/.github/workflows/moodle-plugin-package.yml@moodle-plugin-package-v1
-    with:
-      zip-name: local_example
-      tag-name: ${{ needs.release.outputs.tag_name }}
-      php-version: "8.3"
-    secrets:
-      composer-auth: ${{ secrets.MOODLE_PLUGIN_PACKAGE_COMPOSER_AUTH }}
-```
-
-The ZIP is in the workflow artifact named by the `archive-name` output.
-
-## Calling the composite action
 
 ```yaml
 jobs:
