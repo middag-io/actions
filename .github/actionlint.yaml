@@ -16,12 +16,6 @@ paths:
   .github/workflows/cloudflare-workers-deploy.yml:
     ignore:
       - 'specifying action "\$/cloudflare-workers-deploy" in invalid format because ref is missing'
-  .github/workflows/moodle-plugin-package.yml:
-    ignore:
-      - 'specifying action "\$/moodle-plugin-package" in invalid format because ref is missing'
-  .github/workflows/php-composer-setup.yml:
-    ignore:
-      - 'specifying action "\$/php-composer-setup" in invalid format because ref is missing'
   .github/workflows/release-please.yml:
     ignore:
       - 'specifying action "\$/release-please" in invalid format because ref is missing'

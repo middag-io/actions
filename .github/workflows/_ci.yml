@@ -209,23 +209,6 @@ jobs:
       dry-run: true
 
   # Calls the reusable workflow by a relative path, as a caller would by
-  # SHA, on a fixture plugin tree. A dry run: no credentials, no dependency
-  # install, no artifact and no release upload.
-  # zizmor self-repository: "./" is the documented form of this test job; in
-  # a job of this repository it resolves to the same commit as "$/".
-  dry-run-moodle-plugin-package:
-    name: dry-run-moodle-plugin-package
-    needs: changes
-    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'moodle-plugin-package') }}
-    permissions:
-      contents: read
-    uses: ./.github/workflows/moodle-plugin-package.yml # zizmor: ignore[self-repository]
-    with:
-      zip-name: local_example
-      path: moodle-plugin-package/tests/fixtures/basic
-      dry-run: true
-
-  # Calls the reusable workflow by a relative path, as a caller would by
   # SHA, on a fixture site. A dry run: no credentials, no fetch of the
   # deployed hash, no build and no deploy.
   # zizmor self-repository: "./" is the documented form of this test job; in
@@ -258,27 +241,6 @@ jobs:
       working-directory: cloudflare-workers-deploy/tests/fixtures/basic
       wrangler-environment: production
       account-id: ""
-      dry-run: true
-
-  # Calls the reusable workflow by a relative path, as a caller would by
-  # SHA, on a fixture tree. A dry run: no credentials, no PHP setup, no
-  # install.
-  # zizmor self-repository: "./" is the documented form of this test job; in
-  # a job of this repository it resolves to the same commit as "$/".
-  dry-run-php-composer-setup:
-    name: dry-run-php-composer-setup
-    needs: changes
-    if: ${{ contains(fromJSON(needs.changes.outputs.components), 'php-composer-setup') }}
-    permissions:
-      contents: read
-    uses: ./.github/workflows/php-composer-setup.yml # zizmor: ignore[self-repository]
-    with:
-      php-version: "8.4"
-      working-directory: php-composer-setup/tests/fixtures/basic
-      http-basic-host: repo.example.com
-      http-basic-username: example-user
-      no-dev: true
-      optimize-autoloader: true
       dry-run: true
 
   # Calls the reusable workflow by a relative path, as a caller would by SHA,
@@ -350,10 +312,8 @@ jobs:
     name: dry-run-checks
     needs:
       - dry-run-release-please
-      - dry-run-moodle-plugin-package
       - dry-run-cloudflare-pages-deploy
       - dry-run-cloudflare-workers-deploy
-      - dry-run-php-composer-setup
       - dry-run-wp-plugin-release
       - dry-run-cloudflare-r2-docs-publish
       - changes
@@ -381,25 +341,6 @@ jobs:
           echo "packages=$PACKAGES release-created=$RELEASE_CREATED tag-name=$TAG_NAME paths-released=$PATHS_RELEASED"
           if [ "$PACKAGES" != '["."]' ] || [ "$RELEASE_CREATED" != "false" ] || [ -n "$TAG_NAME" ] || [ "$PATHS_RELEASED" != '[]' ]; then
             echo '::error::dry-run outputs differ: expected packages=["."] release-created=false tag-name= paths-released=[]'
-            exit 1
-          fi
-
-      # The dry run must package exactly the files of the reference listing
-      # (tests/fixtures/expected/basic.sha256) and read version.php.
-      - name: moodle-plugin-package / Compare the dry-run outputs with the expected listing
-        if: ${{ !cancelled() && needs.dry-run-moodle-plugin-package.result == 'success' }}
-        env:
-          VERSION: ${{ needs.dry-run-moodle-plugin-package.outputs.version }}
-          RELEASE: ${{ needs.dry-run-moodle-plugin-package.outputs.release }}
-          FILES: ${{ needs.dry-run-moodle-plugin-package.outputs.files }}
-          LISTING_SHA256: ${{ needs.dry-run-moodle-plugin-package.outputs.listing-sha256 }}
-        run: |
-          expected="moodle-plugin-package/tests/fixtures/expected/basic.sha256"
-          expected_sha="$(sha256sum "$expected" | cut -d' ' -f1)"
-          expected_files="$(grep -c . "$expected")"
-          echo "version=$VERSION release=$RELEASE files=$FILES listing-sha256=$LISTING_SHA256"
-          if [ "$VERSION" != "2026110300" ] || [ "$RELEASE" != "1.2.0" ] || [ "$FILES" != "$expected_files" ] || [ "$LISTING_SHA256" != "$expected_sha" ]; then
-            echo "::error::dry-run outputs differ: expected version=2026110300 release=1.2.0 files=$expected_files listing-sha256=$expected_sha"
             exit 1
           fi
 
@@ -433,23 +374,6 @@ jobs:
           echo "wrangler-config=$WRANGLER_CONFIG version-id=$VERSION_ID"
           if [ "$WRANGLER_CONFIG" != "wrangler.toml" ] || [ -n "$VERSION_ID" ]; then
             echo "::error::dry-run outputs differ: expected wrangler-config=wrangler.toml and an empty version-id"
-            exit 1
-          fi
-
-      # The dry run must plan exactly the outputs of
-      # php-composer-setup/tests/fixtures/expected/basic.env.
-      - name: php-composer-setup / Compare the dry-run outputs with the expected values
-        if: ${{ !cancelled() && needs.dry-run-php-composer-setup.result == 'success' }}
-        env:
-          PHP_VERSION: ${{ needs.dry-run-php-composer-setup.outputs.php-version }}
-          AUTH_ENTRIES: ${{ needs.dry-run-php-composer-setup.outputs.auth-entries }}
-          INSTALL_COMMAND: ${{ needs.dry-run-php-composer-setup.outputs.install-command }}
-        run: |
-          expected="php-composer-setup/tests/fixtures/expected/basic.env"
-          actual="$(printf 'php-version=%s\nauth-entries=%s\ninstall-command=%s\n' "$PHP_VERSION" "$AUTH_ENTRIES" "$INSTALL_COMMAND")"
-          echo "$actual"
-          if ! diff -u "$expected" - <<<"$actual"; then
-            echo "::error::dry-run outputs differ from $expected"
             exit 1
           fi
 
@@ -495,10 +419,8 @@ jobs:
       - changes
       - lint
       - dry-run-release-please
-      - dry-run-moodle-plugin-package
       - dry-run-cloudflare-pages-deploy
       - dry-run-cloudflare-workers-deploy
-      - dry-run-php-composer-setup
       - dry-run-wp-plugin-release
       - dry-run-cloudflare-r2-docs-publish-package
       - dry-run-cloudflare-r2-docs-publish
