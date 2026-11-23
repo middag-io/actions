@@ -1,10 +1,12 @@
 """Tests of dedup_release_notes.py.
 
-The fixtures under fixtures/dedup come from real release history (the 1.10.3
-and 1.10.2 notes of a library, where release-please listed a merge commit and
-its original commit with one subject), with the repository name made generic.
-The merge flags of those shas are given by a fake lookup; the end-to-end
-cases build a real git history in a temporary repository.
+The shas and subjects of the fixtures under fixtures/dedup come from real
+release history (the 1.10.3 and 1.10.2 notes of a library, where
+release-please listed a merge commit and its original commit with one
+subject), with the repository name made generic. The exception is the
+monorepo body fixture, which uses placeholder shas. The merge flags of those
+shas are given by a fake lookup; the end-to-end cases build a real git
+history in a temporary repository.
 
 Run: python3 -I -B -m unittest discover -s tests -v (from the component folder).
 """
@@ -29,7 +31,7 @@ REAL_MERGES = {"60628e2", "9a17d05", "1111111", "3333333"}
 
 
 def fake_is_merge(sha):
-    return sha in REAL_MERGES
+    return sha[:7] in REAL_MERGES
 
 
 def fixture(name):
@@ -118,6 +120,35 @@ class DedupTextTest(unittest.TestCase):
         self.assertNotIn("### Bug Fixes", result)
         self.assertIn("### Documentation", result)
 
+    def test_the_full_sha_of_the_url_is_what_gets_looked_up(self):
+        looked_up = []
+
+        def is_merge(sha):
+            looked_up.append(sha)
+            return sha == "a" * 40
+
+        text = (
+            "## 1.0.0\n\n* fix x ([aaaaaaa](https://github.com/o/r/commit/" + "a" * 40 + "))\n"
+            "* fix x ([bbbbbbb](https://github.com/o/r/commit/" + "b" * 40 + "))\n"
+        )
+        _, dropped = dedup.dedup_text(text, is_merge, top_only=True)
+        self.assertEqual(looked_up, ["a" * 40, "b" * 40])
+        self.assertEqual(len(dropped), 1)
+
+    def test_the_link_text_is_the_fallback_when_the_url_has_no_full_sha(self):
+        looked_up = []
+        text = "## 1.0.0\n\n" + entry("fix x", "aaaaaaa") + "\n" + entry("fix x", "bbbbbbb") + "\n"
+        dedup.dedup_text(text, lambda sha: looked_up.append(sha) or False, top_only=True)
+        self.assertEqual(looked_up, ["aaaaaaa", "bbbbbbb"])
+
+    def test_a_merge_entry_is_kept_when_the_ordinary_commit_was_not_brought_in_by_it(self):
+        text = "## 1.0.0\n\n" + entry("fix x", "aaaaaaa") + "\n" + entry("fix x", "bbbbbbb") + "\n"
+        merge_only = lambda sha: sha == "aaaaaaa"  # noqa: E731
+        result, dropped = dedup.dedup_text(text, merge_only, True, lambda sha, merge: False)
+        self.assertEqual((result, dropped), (text, []))
+        _, dropped = dedup.dedup_text(text, merge_only, True, lambda sha, merge: (sha, merge) == ("bbbbbbb", "aaaaaaa"))
+        self.assertEqual(len(dropped), 1)
+
     def test_the_second_run_is_a_no_op(self):
         first, _ = dedup.dedup_text(fixture("pr-body-monorepo.md"), fake_is_merge, top_only=False)
         second, dropped = dedup.dedup_text(first, fake_is_merge, top_only=False)
@@ -201,6 +232,49 @@ class GitHistoryTest(unittest.TestCase):
         self.assertFalse(is_merge(self.original[:7]))
         self.assertFalse(is_merge(self.plain[0]))
 
+    def test_a_full_sha_url_wins_over_an_ambiguous_or_unknown_link_text(self):
+        # The link text is an abbreviation git cannot resolve; the URL carries the full sha.
+        lines = [
+            "## 1.1.0",
+            "",
+            f"* **block:** send the call-to-action as an object ([0000000](https://github.com/o/r/commit/{self.merge}))",
+            f"* **block:** send the call-to-action as an object ([0000001](https://github.com/o/r/commit/{self.original}))",
+            "",
+        ]
+        self.write("CHANGELOG.md", "\n".join(lines))
+        code, _ = run_main("--repo-dir", self.repo, "--changelog", "CHANGELOG.md")
+        self.assertEqual(code, 0)
+        after = self.read_changelog()
+        self.assertNotIn("0000000", after)
+        self.assertIn("0000001", after)
+
+    def test_a_merge_entry_survives_when_the_same_subject_commit_is_not_on_its_branch(self):
+        subject = "fix(block): send the call-to-action as an object"
+        git(self.repo, "checkout", "--quiet", "-b", "other", "main~2")
+        self.write("o.txt", "o\n")
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "--quiet", "-m", "chore: unrelated work")
+        git(
+            self.repo, "checkout", "--quiet", "main",
+        )
+        git(self.repo, "merge", "--no-ff", "--quiet", "other", "-m", "Merge pull request #10 from o/other", "-m", subject)
+        stray = git(self.repo, "rev-parse", "HEAD")
+        self.write("same.txt", "s\n")
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "--quiet", "-m", subject)
+        ordinary = git(self.repo, "rev-parse", "HEAD")
+        lines = [
+            "## 1.2.0", "",
+            f"* {subject[len('fix(block): '):]} ([{stray[:7]}](https://github.com/o/r/commit/{stray}))",
+            f"* {subject[len('fix(block): '):]} ([{ordinary[:7]}](https://github.com/o/r/commit/{ordinary}))",
+            "",
+        ]
+        self.write("CHANGELOG.md", "\n".join(lines))
+        before = self.read_changelog()
+        code, _ = run_main("--repo-dir", self.repo, "--changelog", "CHANGELOG.md")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.read_changelog(), before)
+
     def test_unknown_sha_fails_with_a_clear_message(self):
         with self.assertRaises(dedup.DedupError) as caught:
             dedup.git_is_merge(self.repo)("deadbeef")
@@ -254,6 +328,12 @@ class GitHistoryTest(unittest.TestCase):
         self.assertEqual(paths, ["CHANGELOG.md", "sub/NOTES.md"])
         paths = dedup.changelogs_from_config(self.repo, "release-please-config.json", "base")
         self.assertEqual(paths, ["CHANGELOG.md"])
+
+    def test_a_top_level_changelog_path_is_the_default_of_every_package(self):
+        config = {"changelog-path": "NOTES.md", "packages": {".": {}, "sub": {}, "own": {"changelog-path": "OWN.md"}}}
+        self.write("release-please-config.json", json.dumps(config))
+        paths = dedup.changelogs_from_config(self.repo, "release-please-config.json", "")
+        self.assertEqual(paths, ["NOTES.md", "sub/NOTES.md", "own/OWN.md"])
 
     def test_a_changelog_path_that_leaves_the_repository_is_refused(self):
         code, output = run_main("--repo-dir", self.repo, "--changelog", "../CHANGELOG.md")

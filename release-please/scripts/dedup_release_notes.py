@@ -8,8 +8,9 @@ original commit has the same subject, so the notes list the change twice.
 In the top version section of each CHANGELOG.md, and in each version
 section of a release pull request body, an entry is dropped only when both
 hold: its sha is a merge commit (two or more parents), and another entry of
-the same section with the same subject is not a merge commit. The entry of
-the original commit is kept. Two ordinary commits with the same subject are
+the same section with the same subject is an ordinary commit that the merge
+brought in (reachable from its second parent). The entry of the original
+commit is kept. Two ordinary commits with the same subject are
 both kept.
 
 Without --check the files are rewritten in place, and only when something
@@ -29,7 +30,11 @@ import sys
 
 # A changelog entry that ends with the link of one commit, as release-please
 # writes it: "* [**scope:** ]subject ([abc1234](https://host/o/r/commit/<sha>))".
-ENTRY_RE = re.compile(r"^(?P<lead>\s*[*-] )(?P<subject>.+?) \(\[(?P<sha>[0-9a-f]{7,40})\]\([^)\s]+\)\)\s*$")
+ENTRY_RE = re.compile(
+    r"^(?P<lead>\s*[*-] )(?P<subject>.+?) \(\[(?P<sha>[0-9a-f]{7,40})\]\((?P<url>[^)\s]+)\)\)\s*$"
+)
+# The full sha at the end of a commit URL; the 7-char link text can be ambiguous.
+URL_SHA_RE = re.compile(r"/commit/(?P<sha>[0-9a-f]{40})$")
 VERSION_HEADING_RE = re.compile(r"^## ")
 GROUP_HEADING_RE = re.compile(r"^###+ ")
 # What can follow the last entry of a group: the next heading or the end of a
@@ -43,6 +48,12 @@ DEFAULT_CHANGELOG = "CHANGELOG.md"
 
 class DedupError(Exception):
     """A problem in the inputs, or a commit that cannot be looked up."""
+
+
+def entry_sha(match):
+    """Returns the sha to look an entry up with: the full sha of its URL, else the link text."""
+    url_sha = URL_SHA_RE.search(match.group("url"))
+    return url_sha.group("sha") if url_sha else match.group("sha")
 
 
 def git_is_merge(repo_dir):
@@ -71,6 +82,33 @@ def git_is_merge(repo_dir):
     return is_merge
 
 
+def git_is_brought_in(repo_dir):
+    """Returns a function (sha, merge sha) -> bool: True when sha is reachable from the merge's second parent."""
+    cache = {}
+
+    def is_brought_in(sha, merge_sha):
+        key = (sha, merge_sha)
+        if key not in cache:
+            for value in key:
+                if not SHA_RE.match(value):
+                    raise DedupError(f"not a commit sha: {value!r}")
+            result = subprocess.run(
+                ["git", "-C", repo_dir, "merge-base", "--is-ancestor", sha, f"{merge_sha}^2"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode not in (0, 1):
+                raise DedupError(
+                    f"cannot compare {sha} with {merge_sha} in {repo_dir}: check out the full history"
+                    f" of the release branch ({result.stderr.strip()})"
+                )
+            cache[key] = result.returncode == 0
+        return cache[key]
+
+    return is_brought_in
+
+
 def split_sections(lines):
     """Splits lines into (head, [version section, ...]); a section starts at "## "."""
     starts = [index for index, line in enumerate(lines) if VERSION_HEADING_RE.match(line)]
@@ -80,18 +118,24 @@ def split_sections(lines):
     return lines[: starts[0]], [lines[bounds[i] : bounds[i + 1]] for i in range(len(starts))]
 
 
-def find_duplicates(section, is_merge):
-    """Returns the indexes of the merge-commit entries of a section to drop."""
+def find_duplicates(section, is_merge, is_brought_in=None):
+    """Returns the indexes of the merge-commit entries of a section to drop.
+
+    is_brought_in(sha, merge_sha) tells whether an ordinary commit is reachable
+    from the second parent of the merge; None accepts any ordinary commit.
+    """
     entries = {}
     for index, line in enumerate(section):
         match = ENTRY_RE.match(line)
         if match:
-            entries.setdefault(match.group("subject"), []).append((index, match.group("sha")))
+            entries.setdefault(match.group("subject"), []).append((index, entry_sha(match)))
     drop = []
     for shared in (group for group in entries.values() if len(group) > 1):
-        merge_flags = [(index, is_merge(sha)) for index, sha in shared]
-        if any(not merge for _, merge in merge_flags):
-            drop.extend(index for index, merge in merge_flags if merge)
+        flags = [(index, sha, is_merge(sha)) for index, sha in shared]
+        originals = [sha for _, sha, merge in flags if not merge]
+        for index, sha, merge in flags:
+            if merge and any(is_brought_in is None or is_brought_in(original, sha) for original in originals):
+                drop.append(index)
     return sorted(drop)
 
 
@@ -113,9 +157,9 @@ def remove_empty_groups(lines):
     return result
 
 
-def dedup_section(section, is_merge):
+def dedup_section(section, is_merge, is_brought_in=None):
     """Returns (new section lines, dropped entry lines)."""
-    drop = find_duplicates(section, is_merge)
+    drop = find_duplicates(section, is_merge, is_brought_in)
     if not drop:
         return section, []
     dropped_indexes = set(drop)
@@ -123,7 +167,7 @@ def dedup_section(section, is_merge):
     return remove_empty_groups(kept), [section[index] for index in drop]
 
 
-def dedup_text(text, is_merge, top_only):
+def dedup_text(text, is_merge, top_only, is_brought_in=None):
     """Returns (new text, dropped entry lines) for a changelog or a PR body."""
     lines = text.split("\n")
     head, sections = split_sections(lines)
@@ -133,7 +177,7 @@ def dedup_text(text, is_merge, top_only):
         if top_only and number > 0:
             result.extend(section)
             continue
-        new_section, gone = dedup_section(section, is_merge)
+        new_section, gone = dedup_section(section, is_merge, is_brought_in)
         result.extend(new_section)
         dropped.extend(gone)
     return "\n".join(result), dropped
@@ -169,9 +213,10 @@ def changelogs_from_config(repo_dir, config_file, base_ref):
     packages = config.get("packages") if isinstance(config, dict) else None
     if not isinstance(packages, dict):
         raise DedupError(f"{config_file} has no packages object")
+    default_name = config.get("changelog-path") or DEFAULT_CHANGELOG
     paths = []
     for package, options in packages.items():
-        name = (options or {}).get("changelog-path", DEFAULT_CHANGELOG)
+        name = (options or {}).get("changelog-path") or default_name
         path = name if package == "." else f"{package}/{name}"
         if not PATH_RE.match(path):
             raise DedupError(f"changelog path {path!r} of package {package!r} is not a relative path")
@@ -182,7 +227,7 @@ def changelogs_from_config(repo_dir, config_file, base_ref):
     return paths
 
 
-def plan(args, is_merge):
+def plan(args, is_merge, is_brought_in=None):
     """Returns [(path, new text, dropped lines)] for every input that changes."""
     paths = []
     for name in args.changelog:
@@ -200,14 +245,14 @@ def plan(args, is_merge):
     changes = []
     for path, top_only in work:
         text = read_text(path)
-        new_text, dropped = dedup_text(text, is_merge, top_only)
+        new_text, dropped = dedup_text(text, is_merge, top_only, is_brought_in)
         if dropped:
             changes.append((path, new_text, dropped))
     return changes
 
 
-def run(args, is_merge):
-    changes = plan(args, is_merge)
+def run(args, is_merge, is_brought_in=None):
+    changes = plan(args, is_merge, is_brought_in)
     for path, _, dropped in changes:
         for line in dropped:
             level = "error" if args.check else "notice"
@@ -236,10 +281,14 @@ def parse_args(argv):
     return parser.parse_args(argv)
 
 
-def main(argv=None, is_merge=None):
+def main(argv=None, is_merge=None, is_brought_in=None):
     args = parse_args(argv)
     try:
-        return run(args, is_merge or git_is_merge(args.repo_dir))
+        return run(
+            args,
+            is_merge or git_is_merge(args.repo_dir),
+            is_brought_in or git_is_brought_in(args.repo_dir),
+        )
     except DedupError as error:
         print(f"::error::{error}")
         return 1

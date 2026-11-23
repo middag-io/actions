@@ -26,7 +26,9 @@ release-please reads the body of a GitHub default merge commit (`Merge pull requ
 With `dedup-merge-commits: true` (the default), after release-please opens or updates the release pull request, `scripts/dedup_release_notes.py` removes an entry when both hold:
 
 1. its sha is a merge commit (two or more parents), and
-2. another entry of the same version section has the same subject (the line without its trailing `([sha](url))`) and is not a merge commit.
+2. another entry of the same version section has the same subject (the line without its trailing `([sha](url))`), is not a merge commit, and is reachable from the second parent of that merge (`git merge-base --is-ancestor <original> <merge>^2`), that is, the branch the merge brought in.
+
+Commits are looked up by the full sha in the commit URL of the entry (the abbreviated link text, which can be ambiguous, is used only when the URL has no full sha). A merge entry whose same-subject commit came from elsewhere is kept.
 
 The entry of the original commit stays. Two ordinary commits with the same subject both stay, and so does a merge-commit entry whose subject is unique. A group heading (`### Bug Fixes`) left empty is removed.
 
