@@ -85,7 +85,7 @@ The composite action reads no variable.
 | `source-paths` | both | no | empty | paths relative to `working-directory`, separated by commas or new lines; each must exist |
 | `config` | both | no | empty | file relative to `working-directory`; must exist |
 | `output-path` | both | no | `.docs-dist` | package directory, relative; absent or empty |
-| `node-version-file` | reusable | no | empty | `typedoc` only: file for `actions/setup-node` (for example `.node-version`); empty keeps the runner's Node.js |
+| `node-version-file` | reusable | no | empty | `typedoc` only: file for `actions/setup-node` (for example `.node-version`); empty sets up the latest Node.js LTS |
 | `bucket` | reusable | yes | variable | see "Values" |
 | `write-manifest` | reusable | no | `true` | write `<package-name>/manifest.json` after the version objects |
 | `dry-run` | reusable | no | `false` | generate and list only |

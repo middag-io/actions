@@ -60,7 +60,7 @@ on:
         required: false
         default: .docs-dist
       node-version-file:
-        description: typedoc only. File with the Node.js version for actions/setup-node (for example .node-version), relative to the repository root. Empty keeps the runner's Node.js.
+        description: typedoc only. File with the Node.js version for actions/setup-node (for example .node-version), relative to the repository root. Empty sets up the latest Node.js LTS.
         type: string
         required: false
         default: ""
@@ -129,11 +129,14 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
 
+      # A runner image without Node.js (a container runner, for example)
+      # still runs TypeDoc: without node-version-file, the latest LTS.
       - name: Set up Node.js
-        if: ${{ inputs.generator == 'typedoc' && inputs.node-version-file != '' }}
+        if: ${{ inputs.generator == 'typedoc' }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: ${{ inputs.node-version-file }}
+          node-version: ${{ inputs.node-version-file == '' && 'lts/*' || '' }}
 
       - name: Generate the reference
         id: generate
