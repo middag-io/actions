@@ -30,7 +30,7 @@ on:
         required: false
         default: ${{ github.event.repository.name }}
       version:
-        description: Version to publish, normalized to v<MAJOR>.<MINOR>.<PATCH>[-<pre>]. Empty reads it from ref, or from the tag that triggered the run.
+        description: Version to publish, normalized to <MAJOR>.<MINOR>.<PATCH>[-<pre>] without a v prefix (1.2.3, v1.2.3 and <component>-v1.2.3 all give 1.2.3). Empty reads it from ref, or from the tag that triggered the run.
         type: string
         required: false
         default: ""
@@ -70,10 +70,10 @@ on:
         required: false
         default: ${{ vars.CLOUDFLARE_R2_DOCS_PUBLISH_BUCKET }}
       write-manifest:
-        description: Write <package-name>/manifest.json after the version objects. False publishes the version objects only.
+        description: Replace <package-name>/manifest.json with a manifest that names this version only, after the version objects. It does not merge with the manifest already in the bucket; keep the default false when another publication writes the manifest.
         type: boolean
         required: false
-        default: true
+        default: false
       dry-run:
         description: Generate the reference and list the object keys only; no credentials, no endpoint and no upload.
         type: boolean

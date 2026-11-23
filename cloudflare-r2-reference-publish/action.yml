@@ -17,7 +17,7 @@ inputs:
     required: false
     default: ${{ github.event.repository.name }}
   version:
-    description: Version to generate, normalized to v<MAJOR>.<MINOR>.<PATCH>[-<pre>]. Empty reads it from ref-name.
+    description: Version to generate, normalized to <MAJOR>.<MINOR>.<PATCH>[-<pre>] without a v prefix (1.2.3, v1.2.3 and <component>-v1.2.3 all give 1.2.3). Empty reads it from ref-name.
     required: false
     default: ""
   ref-name:
@@ -43,7 +43,7 @@ inputs:
 
 outputs:
   version:
-    description: Normalized version (for example v1.2.0).
+    description: Normalized version, without a v prefix (for example 1.2.0).
     value: ${{ steps.plan.outputs.version }}
   package-path:
     description: Package directory relative to the workspace (manifest.json and xref/<version>/).
@@ -58,6 +58,19 @@ outputs:
 runs:
   using: composite
   steps:
+    # This variant publishes to a public bucket: a private or internal
+    # repository fails here, before any generation. It uses the private
+    # variant of the component instead.
+    - name: Require a public calling repository
+      shell: bash
+      env:
+        VISIBILITY: ${{ github.event.repository.visibility }}
+        PRIVATE: ${{ github.event.repository.private }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/generate.py" visibility \
+          --visibility="$VISIBILITY" \
+          --private="$PRIVATE"
+
     - name: Check the inputs and resolve the version
       id: plan
       shell: bash

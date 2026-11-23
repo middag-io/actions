@@ -3,6 +3,9 @@
 
 Subcommands, run in this order by action.yml:
 
+  visibility  fails unless the calling repository is public: this variant
+            publishes to a public bucket, so a private or internal
+            repository must use the private variant of the component.
   plan      validates the inputs, resolves the version and writes the step
             outputs (version, package path, xref path); writes nothing else.
   build     runs the generator: phpDocumentor from its pinned container image,
@@ -33,7 +36,6 @@ PHPDOC_IMAGE = (
     "@sha256:312ebf61ed88a6ea79aac768e43c9e9af0dd5bf3e710ed6d40ab8e53bfeeb121"
 )
 PACKAGE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
-VERSION_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$")
 # A release tag: "1.2.3", "v1.2.3" or "<component>-v1.2.3" (release-please).
 TAG_VERSION_RE = re.compile(r"^(?:[A-Za-z0-9._-]*-)?v?([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?)$")
 PATH_PART_RE = re.compile(r"^[A-Za-z0-9._@+-]+$")
@@ -85,8 +87,10 @@ def validate_package_name(value):
 def resolve_version(version, ref_name):
     """The explicit version wins; otherwise the version comes from the tag name.
 
-    Both forms are normalized to v<MAJOR>.<MINOR>.<PATCH>[-<pre>], the form of
-    the storage contract (for example v1.4.0).
+    Both forms are normalized to <MAJOR>.<MINOR>.<PATCH>[-<pre>], without a
+    "v" prefix, the version form that cloudflare-r2-docs-publish publishes
+    (for example 1.4.0): "1.4.0", "v1.4.0" and "<component>-v1.4.0" all give
+    1.4.0.
     """
     for label, value in (("version", version), ("ref", ref_name)):
         value = (value or "").strip()
@@ -98,8 +102,20 @@ def resolve_version(version, ref_name):
                 f"{label} {value!r} holds no release version: pass a tag such as v1.2.3 "
                 "or <component>-v1.2.3, or set the input version"
             )
-        return "v" + match.group(1)
+        return match.group(1)
     raise InputError("version is empty and the run is not on a tag: set the input version or ref")
+
+
+def check_visibility(visibility, private):
+    """Accepts only a public repository; anything else, empty included, fails."""
+    visibility = (visibility or "").strip().lower()
+    private = (private or "").strip().lower()
+    if visibility != "public" or private != "false":
+        raise InputError(
+            f"the calling repository is not public (visibility {visibility or 'unknown'!r}, "
+            f"private {private or 'unknown'!r}): this component publishes to a public bucket; "
+            "a private or internal repository must use the private variant"
+        )
 
 
 def plan(args):
@@ -231,6 +247,10 @@ def parse_args(argv):
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--workspace", default=os.environ.get("GITHUB_WORKSPACE", "."))
 
+    visibility_parser = sub.add_parser("visibility")
+    visibility_parser.add_argument("--visibility", default="")
+    visibility_parser.add_argument("--private", default="")
+
     plan_parser = sub.add_parser("plan", parents=[common])
     plan_parser.add_argument("--generator", required=True)
     plan_parser.add_argument("--package-name", required=True)
@@ -259,6 +279,9 @@ def parse_args(argv):
 def main(argv=None):
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
+        if args.command == "visibility":
+            check_visibility(args.visibility, args.private)
+            return 0
         if args.command == "plan":
             write_outputs(plan(args))
             return 0

@@ -2,9 +2,10 @@
 
 Generates the reference of a project with phpDocumentor (PHP) or TypeDoc (JavaScript and TypeScript) and publishes it to a Cloudflare R2 bucket, or to any bucket behind an S3-compatible API, as the immutable kind `xref` of a version. Each run:
 
-1. checks out the calling repository at the release ref and validates every input, resolving the version from the input `version` or from the tag;
-2. generates the reference into `<output-path>/xref/<version>/` and writes `<output-path>/manifest.json`, in a job that holds no secret: the generator runs the caller's code and dependencies;
-3. uploads that package with the composite action of [`cloudflare-r2-docs-publish`](../cloudflare-r2-docs-publish/README.md) (`kinds: xref`) in a second job, the only one that receives the secrets.
+1. fails unless the calling repository is public (`github.event.repository.visibility` is `public` and `private` is `false`): this variant writes to a public bucket, so a private or internal repository uses the private variant of the component;
+2. checks out the calling repository at the release ref and validates every input, resolving the version from the input `version` or from the tag;
+3. generates the reference into `<output-path>/xref/<version>/` and writes `<output-path>/manifest.json`, in a job that holds no secret: the generator runs the caller's code and dependencies;
+4. uploads that package with the composite action of [`cloudflare-r2-docs-publish`](../cloudflare-r2-docs-publish/README.md) (`kinds: xref`) in a second job, the only one that receives the secrets.
 
 A dry run generates the reference and lists the object keys; no credentials, no endpoint, no upload.
 
@@ -31,9 +32,9 @@ Two forms, one name:
 
 ## Version
 
-The version is normalized to `v<MAJOR>.<MINOR>.<PATCH>[-<pre>]`, the form of the storage key (`<package-name>/xref/v1.4.0/...`). It comes from, in order:
+The version is normalized to `<MAJOR>.<MINOR>.<PATCH>[-<pre>]`, without a `v` prefix: the version form that `cloudflare-r2-docs-publish` publishes, so the `xref` of a version sits next to its `docs` and `schemas` (`<package-name>/xref/1.4.0/...`). `1.4.0`, `v1.4.0` and `<component>-v1.4.0` all give `1.4.0`. It comes from, in order:
 
-1. the input `version` (`1.4.0` and `v1.4.0` both give `v1.4.0`);
+1. the input `version`;
 2. the input `ref`, when it is a tag;
 3. the tag that triggered the run.
 
@@ -47,7 +48,9 @@ A tag is read as `1.4.0`, `v1.4.0` or `<component>-v1.4.0` (the per-component ta
   xref/<version>/...   the generated reference
 ```
 
-With `write-manifest: true` (the default) the upload replaces `<package-name>/manifest.json` with that file, after every version object (the pointer to the latest version). Set `write-manifest: false` when another publication of the package writes a richer manifest.
+The run always writes that file into the package, because `cloudflare-r2-docs-publish` reads it; by default it is not uploaded.
+
+`write-manifest` is `false` by default: the run writes the immutable version objects only and leaves `<package-name>/manifest.json` in the bucket as it is. The component does not merge manifests. Generation runs in a job without credentials, and `cloudflare-r2-docs-publish` writes the caller's file as is, so the run cannot read the manifest already in the bucket. With `write-manifest: true`, the upload replaces `<package-name>/manifest.json` with the file above, after every version object: every other field and version of the earlier manifest is lost, and `latest` moves to this version even when it is an older line or has no `docs`. Set it to `true` only when the reference is the only publication of the package and a single-version manifest is what its readers expect. Otherwise keep `false` and let the publication that owns the manifest (the docs build) list the `xref` version.
 
 Every object gets its `Content-Type` from the file extension through `cloudflare-r2-docs-publish` (`text/html; charset=utf-8` for `.html`, `text/css`, `text/javascript`, `image/svg+xml`, `image/png`, `image/x-icon`, and so on): the extensions that both generators write are all in its table.
 
@@ -65,6 +68,8 @@ Each value comes from the most specific level that sets it: an explicit input, a
 | Input | Variable | Without input and variable |
 | --- | --- | --- |
 | `bucket` | `CLOUDFLARE_R2_DOCS_PUBLISH_BUCKET`, the variable of `cloudflare-r2-docs-publish` | the run fails before any write |
+
+Set `CLOUDFLARE_R2_DOCS_PUBLISH_BUCKET` as a variable of each calling repository, not of the organization: an organization variable would also reach the private and internal repositories of the organization, and this variant publishes to a public bucket. The visibility check fails those runs, but the bucket name must not be their default either.
 
 A repository that already publishes its docs with `cloudflare-r2-docs-publish` needs no new variable and no new secret. The endpoint is a secret, never an input or a variable, because it holds the account id. Store the three secrets as `CLOUDFLARE_R2_DOCS_PUBLISH_ENDPOINT`, `CLOUDFLARE_R2_DOCS_PUBLISH_ACCESS_KEY_ID` and `CLOUDFLARE_R2_DOCS_PUBLISH_SECRET_ACCESS_KEY` and pass each with one explicit line (never `secrets: inherit`).
 
@@ -87,7 +92,7 @@ The composite action reads no variable.
 | `output-path` | both | no | `.docs-dist` | package directory, relative; absent or empty |
 | `node-version-file` | reusable | no | empty | `typedoc` only: file for `actions/setup-node` (for example `.node-version`); empty sets up the latest Node.js LTS |
 | `bucket` | reusable | yes | variable | see "Values" |
-| `write-manifest` | reusable | no | `true` | write `<package-name>/manifest.json` after the version objects |
+| `write-manifest` | reusable | no | `false` | replace `<package-name>/manifest.json` with a single-version manifest after the version objects; no merge (see "Package and manifest") |
 | `dry-run` | reusable | no | `false` | generate and list only |
 | `timeout-minutes` | reusable | no | `20` | timeout of each job |
 | `runner` | reusable | no | `ubuntu-24.04` | runner label of both jobs; the runner needs Docker for `phpdocumentor` |

@@ -59,14 +59,14 @@ class WorkspaceTestCase(unittest.TestCase):
 
 class ResolveVersionTest(unittest.TestCase):
     def test_explicit_version_wins_over_the_tag(self):
-        self.assertEqual(generate.resolve_version("2.0.0", "v1.2.0"), "v2.0.0")
+        self.assertEqual(generate.resolve_version("v2.0.0", "v1.2.0"), "2.0.0")
 
     def test_reads_plain_v_and_component_tags(self):
         for ref, expected in (
-            ("1.2.3", "v1.2.3"),
-            ("v1.2.3", "v1.2.3"),
-            ("example-library-v1.2.3", "v1.2.3"),
-            ("v2.0.0-rc.1", "v2.0.0-rc.1"),
+            ("1.2.3", "1.2.3"),
+            ("v1.2.3", "1.2.3"),
+            ("example-library-v1.2.3", "1.2.3"),
+            ("v2.0.0-rc.1", "2.0.0-rc.1"),
         ):
             with self.subTest(ref=ref):
                 self.assertEqual(generate.resolve_version("", ref), expected)
@@ -78,6 +78,31 @@ class ResolveVersionTest(unittest.TestCase):
     def test_fails_on_a_branch_name(self):
         with self.assertRaisesRegex(generate.InputError, "no release version"):
             generate.resolve_version("", "main")
+
+
+class CheckVisibilityTest(unittest.TestCase):
+    def test_accepts_a_public_repository(self):
+        generate.check_visibility("public", "false")
+
+    def test_rejects_private_internal_and_unknown(self):
+        for visibility, private in (
+            ("private", "true"),
+            ("internal", "true"),
+            ("internal", "false"),
+            ("public", "true"),
+            ("public", ""),
+            ("", "false"),
+            ("", ""),
+        ):
+            with self.subTest(visibility=visibility, private=private), \
+                    self.assertRaisesRegex(generate.InputError, "not public"):
+                generate.check_visibility(visibility, private)
+
+    def test_main_fails_with_an_annotation(self):
+        argv = ["visibility", "--visibility=private", "--private=true"]
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(generate.main(argv), 1)
+        self.assertIn("::error::the calling repository is not public", out.getvalue())
 
 
 class ValidatePathTest(unittest.TestCase):
@@ -99,9 +124,9 @@ class ValidatePathTest(unittest.TestCase):
 class PlanTest(WorkspaceTestCase):
     def test_plans_a_phpdocumentor_package(self):
         outputs = generate.plan(plan_args(self.workspace))
-        self.assertEqual(outputs["version"], "v1.2.0")
+        self.assertEqual(outputs["version"], "1.2.0")
         self.assertEqual(outputs["package-path"], ".docs-dist")
-        self.assertEqual(outputs["xref-path"], ".docs-dist/xref/v1.2.0")
+        self.assertEqual(outputs["xref-path"], ".docs-dist/xref/1.2.0")
         self.assertEqual(outputs["source-paths"], "src")
 
     def test_typedoc_needs_the_lockfile(self):
@@ -127,7 +152,7 @@ class PlanTest(WorkspaceTestCase):
 
     def test_rejects_a_non_empty_output_path(self):
         os.makedirs(os.path.join(self.workspace, ".docs-dist"))
-        self.assertEqual(generate.plan(plan_args(self.workspace))["version"], "v1.2.0")
+        self.assertEqual(generate.plan(plan_args(self.workspace))["version"], "1.2.0")
         with open(os.path.join(self.workspace, ".docs-dist", "stale"), "w", encoding="utf-8"):
             pass
         with self.assertRaisesRegex(generate.InputError, "output-path"):
@@ -137,7 +162,7 @@ class PlanTest(WorkspaceTestCase):
 class CommandTest(unittest.TestCase):
     def test_phpdocumentor_runs_the_pinned_image_offline(self):
         command = generate.phpdocumentor_command(
-            "/w", "lib", ".docs-dist/xref/v1.2.0", "phpdoc.dist.xml", ["src", "inc"], 1001, 121
+            "/w", "lib", ".docs-dist/xref/1.2.0", "phpdoc.dist.xml", ["src", "inc"], 1001, 121
         )
         self.assertEqual(command[:4], ["docker", "run", "--rm", "--network=none"])
         self.assertIn("--user=1001:121", command)
@@ -145,26 +170,26 @@ class CommandTest(unittest.TestCase):
         self.assertIn("--workdir=/data/lib", command)
         self.assertIn(generate.PHPDOC_IMAGE, command)
         self.assertRegex(generate.PHPDOC_IMAGE, r"^phpdoc/phpdoc:[0-9.]+@sha256:[0-9a-f]{64}$")
-        self.assertIn("--target=/data/.docs-dist/xref/v1.2.0", command)
+        self.assertIn("--target=/data/.docs-dist/xref/1.2.0", command)
         self.assertIn("--config=phpdoc.dist.xml", command)
         self.assertEqual(command[-2:], ["--directory=src", "--directory=inc"])
 
     def test_phpdocumentor_at_the_workspace_root(self):
-        command = generate.phpdocumentor_command("/w", ".", "out/xref/v1.0.0", "", [], 1, 1)
+        command = generate.phpdocumentor_command("/w", ".", "out/xref/1.0.0", "", [], 1, 1)
         self.assertIn("--workdir=/data", command)
         self.assertFalse(any(item.startswith("--config") for item in command))
 
     def test_typedoc_installs_from_the_lockfile_and_never_downloads_typedoc(self):
-        install, run = generate.typedoc_commands("/w", ".docs-dist/xref/v1.2.0", "typedoc.json", ["src/index.ts"])
+        install, run = generate.typedoc_commands("/w", ".docs-dist/xref/1.2.0", "typedoc.json", ["src/index.ts"])
         self.assertEqual(install[:2], ["npm", "ci"])
         self.assertEqual(run[:3], ["npx", "--no-install", "typedoc"])
-        self.assertEqual(run[3:5], ["--out", "/w/.docs-dist/xref/v1.2.0"])
+        self.assertEqual(run[3:5], ["--out", "/w/.docs-dist/xref/1.2.0"])
         self.assertEqual(run[5:], ["--options", "typedoc.json", "src/index.ts"])
 
     def test_build_stops_at_the_first_failure(self):
         args = SimpleNamespace(
             workspace=tempfile.mkdtemp(), generator="typedoc", working_directory=".",
-            xref_path="out/xref/v1.0.0", config="", source_paths="",
+            xref_path="out/xref/1.0.0", config="", source_paths="",
         )
         self.addCleanup(shutil.rmtree, args.workspace)
         failed = SimpleNamespace(returncode=2)
@@ -178,12 +203,12 @@ class CommandTest(unittest.TestCase):
 class ManifestTest(WorkspaceTestCase):
     def args(self):
         return SimpleNamespace(
-            workspace=self.workspace, package_name="example-library", version="v1.2.0",
-            package_path=".docs-dist", xref_path=".docs-dist/xref/v1.2.0",
+            workspace=self.workspace, package_name="example-library", version="1.2.0",
+            package_path=".docs-dist", xref_path=".docs-dist/xref/1.2.0",
         )
 
     def test_writes_the_manifest_after_checking_the_entry_page(self):
-        xref = os.path.join(self.workspace, ".docs-dist", "xref", "v1.2.0")
+        xref = os.path.join(self.workspace, ".docs-dist", "xref", "1.2.0")
         os.makedirs(os.path.join(xref, "css"))
         for name in ("index.html", "css/base.css"):
             with open(os.path.join(xref, name), "w", encoding="utf-8") as handle:
@@ -193,12 +218,12 @@ class ManifestTest(WorkspaceTestCase):
             manifest = json.load(handle)
         self.assertEqual(manifest, {
             "package": "example-library",
-            "latest": "v1.2.0",
-            "versions": {"v1.2.0": {"has_reference": True}},
+            "latest": "1.2.0",
+            "versions": {"1.2.0": {"has_reference": True}},
         })
 
     def test_fails_without_an_entry_page(self):
-        os.makedirs(os.path.join(self.workspace, ".docs-dist", "xref", "v1.2.0"))
+        os.makedirs(os.path.join(self.workspace, ".docs-dist", "xref", "1.2.0"))
         with self.assertRaisesRegex(generate.InputError, "index.html"):
             generate.write_manifest(self.args())
 
@@ -215,8 +240,8 @@ class MainTest(WorkspaceTestCase):
             self.assertEqual(generate.main(argv), 0)
         with open(output, encoding="utf-8") as handle:
             text = handle.read()
-        self.assertIn("version=v1.2.0\n", text)
-        self.assertIn("xref-path=.docs-dist/xref/v1.2.0\n", text)
+        self.assertIn("version=1.2.0\n", text)
+        self.assertIn("xref-path=.docs-dist/xref/1.2.0\n", text)
 
     def test_input_error_is_an_annotation_and_exit_status_1(self):
         argv = ["plan", f"--workspace={self.workspace}", "--generator=sami", "--package-name=x"]
