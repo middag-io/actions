@@ -1,0 +1,113 @@
+# Composite action: generates the reference of a project (kind xref) with
+# phpDocumentor or TypeDoc and lays it out as a documentation package for
+# cloudflare-r2-docs-publish. It publishes nothing. See README.md next to this
+# file.
+name: Cloudflare R2 reference publish
+description: >-
+  Generates the reference of a project (phpDocumentor or TypeDoc) into
+  <output-path>/xref/<version>/ and writes <output-path>/manifest.json, the
+  package that cloudflare-r2-docs-publish uploads.
+
+inputs:
+  generator:
+    description: Reference generator, phpdocumentor or typedoc.
+    required: true
+  package-name:
+    description: Package name written to manifest.json (first segment of every object key). Defaults to the calling repository name.
+    required: false
+    default: ${{ github.event.repository.name }}
+  version:
+    description: Version to generate, normalized to v<MAJOR>.<MINOR>.<PATCH>[-<pre>]. Empty reads it from ref-name.
+    required: false
+    default: ""
+  ref-name:
+    description: Tag name the version is read from when version is empty (1.2.3, v1.2.3 or <component>-v1.2.3).
+    required: false
+    default: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+  working-directory:
+    description: Project directory, relative to the workspace. The generator runs there.
+    required: false
+    default: "."
+  source-paths:
+    description: Source paths relative to working-directory, separated by commas or new lines. phpdocumentor passes each as --directory; typedoc passes them as entry points. Empty keeps the generator's configuration.
+    required: false
+    default: ""
+  config:
+    description: Generator configuration file relative to working-directory (phpdoc.dist.xml, typedoc.json). Empty keeps the generator's own lookup.
+    required: false
+    default: ""
+  output-path:
+    description: Package directory relative to the workspace; must be absent or empty.
+    required: false
+    default: .docs-dist
+
+outputs:
+  version:
+    description: Normalized version (for example v1.2.0).
+    value: ${{ steps.plan.outputs.version }}
+  package-path:
+    description: Package directory relative to the workspace (manifest.json and xref/<version>/).
+    value: ${{ steps.plan.outputs.package-path }}
+  xref-path:
+    description: Directory of the generated reference relative to the workspace.
+    value: ${{ steps.plan.outputs.xref-path }}
+  files:
+    description: Number of files the generator wrote.
+    value: ${{ steps.manifest.outputs.files }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs and resolve the version
+      id: plan
+      shell: bash
+      env:
+        GENERATOR: ${{ inputs.generator }}
+        PACKAGE_NAME: ${{ inputs.package-name }}
+        VERSION: ${{ inputs.version }}
+        REF_NAME: ${{ inputs.ref-name }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        SOURCE_PATHS: ${{ inputs.source-paths }}
+        CONFIG: ${{ inputs.config }}
+        OUTPUT_PATH: ${{ inputs.output-path }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/generate.py" plan \
+          --generator="$GENERATOR" \
+          --package-name="$PACKAGE_NAME" \
+          --version="$VERSION" \
+          --ref-name="$REF_NAME" \
+          --working-directory="$WORKING_DIRECTORY" \
+          --source-paths="$SOURCE_PATHS" \
+          --config="$CONFIG" \
+          --output-path="$OUTPUT_PATH"
+
+    - name: Generate the reference
+      shell: bash
+      env:
+        GENERATOR: ${{ steps.plan.outputs.generator }}
+        WORKING_DIRECTORY: ${{ steps.plan.outputs.working-directory }}
+        XREF_PATH: ${{ steps.plan.outputs.xref-path }}
+        SOURCE_PATHS: ${{ steps.plan.outputs.source-paths }}
+        CONFIG: ${{ steps.plan.outputs.config }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/generate.py" build \
+          --generator="$GENERATOR" \
+          --working-directory="$WORKING_DIRECTORY" \
+          --xref-path="$XREF_PATH" \
+          --source-paths="$SOURCE_PATHS" \
+          --config="$CONFIG"
+
+    - name: Check the output and write manifest.json
+      id: manifest
+      shell: bash
+      env:
+        PACKAGE_NAME: ${{ steps.plan.outputs.package-name }}
+        VERSION: ${{ steps.plan.outputs.version }}
+        PACKAGE_PATH: ${{ steps.plan.outputs.package-path }}
+        XREF_PATH: ${{ steps.plan.outputs.xref-path }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/generate.py" manifest \
+          --package-name="$PACKAGE_NAME" \
+          --version="$VERSION" \
+          --package-path="$PACKAGE_PATH" \
+          --xref-path="$XREF_PATH"

@@ -21,6 +21,12 @@
       "versioning": "default",
       "prerelease": false
     },
+    "cloudflare-r2-reference-publish": {
+      "component": "cloudflare-r2-reference-publish",
+      "changelog-path": "CHANGELOG.md",
+      "versioning": "default",
+      "prerelease": false
+    },
     "cloudflare-workers-check": {
       "component": "cloudflare-workers-check",
       "changelog-path": "CHANGELOG.md",

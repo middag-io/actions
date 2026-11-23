@@ -1,0 +1,10 @@
+{
+  "name": "example-typedoc-library",
+  "version": "1.2.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "typedoc": "0.28.20",
+    "typescript": "5.9.3"
+  }
+}
