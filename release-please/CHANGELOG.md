@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.0](https://github.com/middag-io/actions/compare/release-please-v1.2.0...release-please-v1.3.0) (2026-11-23)
+
+
+### Features
+
+* **release-please:** drop merge-commit duplicates from the release notes ([2a5519f](https://github.com/middag-io/actions/commit/2a5519f192a17f639228f4930a76f4ca9244e938))
+
+
+### Bug Fixes
+
+* **release-please:** look up merge commits by full sha ([5d8a2c9](https://github.com/middag-io/actions/commit/5d8a2c953d8cb7858760cd1393872cf994f422a9))
+
 ## [1.2.0](https://github.com/middag-io/actions/compare/release-please-v1.1.0...release-please-v1.2.0) (2026-11-17)
 
 

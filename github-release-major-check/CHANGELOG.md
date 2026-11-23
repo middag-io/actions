@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/middag-io/actions/compare/github-release-major-check-v1.1.0...github-release-major-check-v1.2.0) (2026-11-23)
+
+
+### Features
+
+* **php-version-family-check:** accept Release-As release candidates of the window ([a436d15](https://github.com/middag-io/actions/commit/a436d15db2ff841a50848f910c793b5df8ae4715))
+
 ## [1.1.0](https://github.com/middag-io/actions/compare/github-release-major-check-v1.0.1...github-release-major-check-v1.1.0) (2026-11-17)
 
 

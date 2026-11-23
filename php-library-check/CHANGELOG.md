@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/middag-io/actions/compare/php-library-check-v1.3.0...php-library-check-v1.4.0) (2026-11-23)
+
+
+### Features
+
+* **php-composer-setup:** add the lowest dependency versions mode ([d0faf70](https://github.com/middag-io/actions/commit/d0faf70ca3ff6d1687ba30546456985849097883))
+
 ## [1.3.0](https://github.com/middag-io/actions/compare/php-library-check-v1.2.0...php-library-check-v1.3.0) (2026-11-17)
 
 
