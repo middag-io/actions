@@ -41,7 +41,7 @@ outputs:
     description: Version of the package in the manifest of the base commit.
     value: ${{ steps.check.outputs.version }}
   release-as-major:
-    description: The new MAJOR version named by a Release-As footer of the pull request (X.0.0), or empty.
+    description: The new MAJOR version named by a Release-As footer of the pull request (X.0.0 or X.0.0-rc.N), or empty.
     value: ${{ steps.check.outputs.release-as-major }}
   result:
     description: pass or fail.

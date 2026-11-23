@@ -1,6 +1,6 @@
 # github-release-major-check
 
-Checks that a pull request asks for a new MAJOR version only explicitly. release-please cuts a MAJOR from a `!` in a Conventional Commits header or from a `BREAKING CHANGE:` footer; with this check, a breaking change marker passes only when the pull request also carries a `Release-As: X.0.0` footer, with `X` above the MAJOR of the package version in the release-please manifest of the base commit. Publishes nothing.
+Checks that a pull request asks for a new MAJOR version only explicitly. release-please cuts a MAJOR from a `!` in a Conventional Commits header or from a `BREAKING CHANGE:` footer; with this check, a breaking change marker passes only when the pull request also carries a `Release-As: X.0.0` footer (or `Release-As: X.0.0-rc.N`, a release candidate of it), with `X` above the MAJOR of the package version in the release-please manifest of the base commit. Publishes nothing.
 
 A composite action, `github-release-major-check/action.yml`: it runs the check in a job of the caller, on a checkout the caller made (with the history of the base and head commits).
 
@@ -11,10 +11,12 @@ A composite action, `github-release-major-check/action.yml`: it runs the check i
 3. Reads the pull request title and every commit `base..head` that is not a merge commit (`git log`). A pull request kept current by merging the base branch into it is checked on its own commits only: the merge commits and the commits they bring from the base branch are skipped.
 4. Reads every `Release-As:` footer of those commits (any case) and fails when one:
    - is not a SemVer version (a leading `v` is accepted);
-   - raises the MAJOR to anything but `X.0.0` (for example `3.1.0` or `3.0.0-rc.1` on `2.4.1`);
+   - raises the MAJOR to anything but `X.0.0` or `X.0.0-rc.N` (for example `3.1.0`, `3.0.0-beta.1` or `3.0.0-rc.0` on `2.4.1`; `N` is a number from 1 with no leading zero);
    - is not above the base version (for example `2.4.1` or `1.9.0` on `2.4.1`).
 
-   A `Release-As:` of a MINOR or a PATCH above the base version passes. Two different `X.0.0` footers in one pull request fail.
+   A `Release-As:` of a MINOR or a PATCH above the base version passes. Two different MAJOR footers in one pull request fail (`3.0.0-rc.1` and `3.0.0` included).
+
+A release candidate of a new MAJOR is accepted exactly where `X.0.0` is: `Release-As: 3.0.0-rc.1` on `2.4.1` satisfies a breaking change marker, and `release-as-major` is then `3.0.0-rc.1`. With the package already at `3.0.0-rc.1`, `Release-As: 3.0.0-rc.2` and `Release-As: 3.0.0` are ordinary versions above the base (they pass); a further breaking change then needs `Release-As: 4.0.0`.
 5. Reads the Conventional Commits header of the title and of each commit (`!` before `:`) and its `BREAKING CHANGE:` or `BREAKING-CHANGE:` footer. When no commit carries a valid `Release-As: X.0.0` above the base MAJOR, each breaking change marker is a finding. The match is lenient, so that it recognises at least what the release tooling reads as a breaking change: the type in any case, white space around the scope, `!` and `:` (`feat (api) ! : x`), and white space before the colon of a footer (`BREAKING CHANGE : x`).
 6. Every other message passes, a message that is not a Conventional Commit included (`Revert "..."`, for example): this component gates the MAJOR, not the commit format.
 
@@ -48,7 +50,7 @@ A monorepo with several packages calls the component once per package, each with
 | Output | Meaning |
 | --- | --- |
 | `version` | Version of the package in the manifest of the base commit. |
-| `release-as-major` | The new MAJOR named by a `Release-As:` footer of the pull request (`X.0.0`), or empty. |
+| `release-as-major` | The new MAJOR named by a `Release-As:` footer of the pull request (`X.0.0` or `X.0.0-rc.N`), or empty. |
 | `result` | `pass` or `fail`. |
 | `findings` | Number of findings. |
 

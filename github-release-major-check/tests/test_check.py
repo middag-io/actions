@@ -135,6 +135,11 @@ class ClassifyTest(unittest.TestCase):
             ("2.5.0", "2.4.1", "minor-patch"),
             ("2.4.2", "2.4.1", "minor-patch"),
             ("1.0.0", "1.0.0-rc.3", "minor-patch"),
+            ("3.0.0-rc.1", "2.4.1", "major"),
+            ("v3.0.0-rc.12", "2.4.1", "major"),
+            ("1.0.0-rc.1", "0.9.3", "major"),
+            ("3.0.0-rc.2", "3.0.0-rc.1", "minor-patch"),  # same MAJOR: next candidate
+            ("3.0.0", "3.0.0-rc.2", "minor-patch"),  # promotion to the final
         ]
         for text, base, expected in cases:
             with self.subTest(text=text, base=base):
@@ -144,7 +149,16 @@ class ClassifyTest(unittest.TestCase):
         cases = [
             ("3.1.0", "2.4.1", "a new MAJOR is released as exactly 3.0.0"),
             ("3.0.1", "2.4.1", "exactly 3.0.0"),
-            ("3.0.0-rc.1", "2.4.1", "exactly 3.0.0"),
+            ("3.0.0-rc.0", "2.4.1", "exactly 3.0.0"),
+            ("3.0.0-rc.01", "2.4.1", "exactly 3.0.0"),
+            ("3.0.0-rc", "2.4.1", "exactly 3.0.0"),
+            ("3.0.0-rc.1.2", "2.4.1", "exactly 3.0.0"),
+            ("3.0.0-beta.1", "2.4.1", "exactly 3.0.0"),
+            ("3.0.0-alpha.1", "2.4.1", "exactly 3.0.0"),
+            ("3.1.0-rc.1", "2.4.1", "exactly 3.0.0"),
+            ("3.0.1-rc.1", "2.4.1", "exactly 3.0.0"),
+            ("3.0.0-rc.1", "3.0.0-rc.1", "not above the base version"),
+            ("3.0.0-rc.1", "3.0.0", "not above the base version"),
             ("2.4.1", "2.4.1", "not above the base version 2.4.1"),
             ("2.3.0", "2.4.1", "not above"),
             ("1.9.0", "2.4.1", "not above"),
@@ -210,11 +224,27 @@ class CheckTest(unittest.TestCase):
                 self.assertEqual((status, outputs["release-as-major"]), (0, ""))
 
     def test_release_as_raising_the_major_another_way_fails(self):
-        for footer in ("Release-As: 3.1.0", "Release-As: 3.0.0-rc.1"):
+        for footer in ("Release-As: 3.1.0", "Release-As: 3.0.0-beta.1", "Release-As: 3.0.0-rc.0"):
             with self.subTest(footer=footer):
                 status, out, _ = run("2.4.1", commits=[commit(sha(1), f"fix: x\n\n{footer}")])
                 self.assertEqual(status, 1)
                 self.assertIn("exactly 3.0.0", out)
+
+    def test_rc_release_as_satisfies_a_breaking_change(self):
+        commits = [commit(sha(1), "feat!: drop a thing"), commit(sha(2), "chore: first candidate\n\nRelease-As: 3.0.0-rc.1")]
+        status, _, outputs = run("2.4.1", commits=commits)
+        self.assertEqual((status, outputs["release-as-major"]), (0, "3.0.0-rc.1"))
+
+    def test_breaking_change_still_needs_a_major_when_the_base_is_a_candidate(self):
+        status, out, _ = run("3.0.0-rc.1", commits=[commit(sha(1), "fix!: x")])
+        self.assertEqual(status, 1)
+        self.assertIn('"Release-As: 4.0.0"', out)
+
+    def test_a_stable_and_a_candidate_major_in_one_pull_request_fail(self):
+        commits = [commit(sha(1), "chore: a\n\nRelease-As: 3.0.0-rc.1"), commit(sha(2), "chore: b\n\nRelease-As: 3.0.0")]
+        status, out, _ = run("2.4.1", commits=commits)
+        self.assertEqual(status, 1)
+        self.assertIn("more than one MAJOR", out)
 
     def test_release_as_going_back_fails(self):
         status, out, _ = run("2.4.1", commits=[commit(sha(1), "fix: x\n\nRelease-As: 1.9.0")])

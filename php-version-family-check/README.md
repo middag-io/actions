@@ -23,6 +23,30 @@ A window counts as open for a pull request only when both hold, and as closed ot
 
 The annotation says why a set window counts as closed.
 
+## Release candidates
+
+A family can cut its first version as release candidates, `X.Y.0-rc.1`, `X.Y.0-rc.2`, and promote the last one to `X.Y.0`.
+
+- **Cut.** While the window is open, a `Release-As: X.Y.0-rc.N` footer passes, exactly where `Release-As: X.Y.0` passes: `X.Y.0` must be the first version of the window, and `N` is a number from 1 with no leading zero. Everything else stays rejected: another version (`Release-As: 3.0.0-rc.1` in window `2.0`), `rc.0`, `rc.01`, any other prerelease label (`beta`, `alpha`), build metadata, and any `Release-As` rc while the window is closed.
+- **Self-closing.** A package at `X.Y.0-rc.N` in the manifest is still below `X.Y.0`, so the window `X.Y` stays open (ahead) until the final `X.Y.0` is released, then it closes by itself.
+- **Freeze.** `family-from` may be a prerelease. With `family-from: 2.0.0-rc.1` and the window cleared, a `feat` and a breaking change fail from the first candidate on (manifest `2.0.0-rc.1` or above), while a `fix` passes and, on a package below `2.0.0-rc.1`, a `feat` still passes. A `fix` then bumps only the candidate counter (`2.0.0-rc.2`).
+
+Cut and promotion, as the footers a pull request carries (the window set to `2.0`, then cleared for the freeze):
+
+```text
+chore: cut the first candidate
+
+Release-As: 2.0.0-rc.1
+```
+
+```text
+chore: promote the candidate
+
+Release-As: 2.0.0
+```
+
+The step-by-step procedure for a family cut is in [RUNBOOK-rc-cut.md](RUNBOOK-rc-cut.md).
+
 ## What it does
 
 1. Validates the inputs before anything else: the window, `family-from` (SemVer), `manifest-file` and `package` (relative paths), the title, and outside a dry run the full SHAs of the base and head commits.
@@ -31,7 +55,7 @@ The annotation says why a set window counts as closed.
 4. Reads the Conventional Commits header of each message (type, optional scope, optional `!`), its `BREAKING CHANGE:` or `BREAKING-CHANGE:` footer and its `Release-As:` footer, and fails when:
    - a header has `!` before `:`, or a message has a breaking change footer, unless a family MAJOR window is open;
    - a header has the type `feat` while the window is closed, but only when the version of step 2 is at least `family-from` (empty `family-from`: at every version). Below it, a `feat` passes, so a package still on its pre-family line keeps cutting MINOR versions;
-   - a message has a `Release-As:` footer (any case, at any version), unless a window is open and the footer names its first version `X.Y.0`. A family version is one coordinated version, never the choice of one pull request.
+   - a message has a `Release-As:` footer (any case, at any version), unless a window is open and the footer names its first version `X.Y.0` or a release candidate of it, `X.Y.0-rc.N` (see "Release candidates"). A family version is one coordinated version, never the choice of one pull request.
 
    The match is lenient, so that it recognises at least what the release tooling reads as a feature or a breaking change: the type in any case, white space around the scope, `!` and `:`, no space after `:` (`feat:x`, `Feat (api) :x`), and white space before the colon of a footer (`BREAKING CHANGE : x`).
 5. Every other message passes, a message that is not a Conventional Commit included (`Revert "..."`, for example): this component enforces the window, not the commit format.
@@ -49,7 +73,7 @@ Nothing. The component writes no file in the repository and publishes nothing.
 | Input | Default | Meaning |
 | --- | --- | --- |
 | `window` | empty | The family window: empty, `X.Y` or `X.0`. Surrounding white space is ignored. |
-| `family-from` | empty | Package version from which a `feat` needs an open window. |
+| `family-from` | empty | Package version from which a `feat` needs an open window. May be a prerelease (`2.0.0-rc.1`): the family is frozen from its first candidate. |
 | `manifest-file` | `.release-please-manifest.json` | release-please manifest, read at the base commit. |
 | `package` | `.` | Key of the package in the manifest. |
 | `title` | none (required) | Title to check. |
@@ -96,7 +120,7 @@ steps:
   - uses: <owner>/actions/php-version-family-check@php-version-family-check-v1
     with:
       window: ${{ vars.PHP_VERSION_FAMILY_CHECK_WINDOW }}
-      family-from: 2.0.0
+      family-from: 2.0.0-rc.1 # or 2.0.0 once the family is final; see "Release candidates"
       title: ${{ github.event.pull_request.title }}
       base-sha: ${{ github.event.pull_request.base.sha }}
       head-sha: ${{ github.event.pull_request.head.sha }}

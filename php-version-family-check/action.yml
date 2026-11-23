@@ -16,7 +16,7 @@ inputs:
     required: false
     default: ""
   family-from:
-    description: Package version from which a feat needs an open window (SemVer); below it, feat passes. Empty gates feat at every version.
+    description: Package version from which a feat needs an open window (SemVer, a prerelease such as 2.0.0-rc.1 is allowed); below it, feat passes. Empty gates feat at every version.
     required: false
     default: ""
   manifest-file:
