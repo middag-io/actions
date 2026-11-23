@@ -2,11 +2,25 @@
 
 A version family is a set of packages that share MAJOR.MINOR. A feature
 waits for a family MINOR window, and a breaking change for a family MAJOR
-window. The window comes from one input (usually an organization variable):
+window. The window comes from one input (usually a repository variable):
 
 - empty: closed;
 - "X.Y" with Y > 0: a family MINOR window;
 - "X.0": a family MAJOR window.
+
+Per-lib mode (opt-in, input per-lib-from): once the package version is at
+least per-lib-from and is not a prerelease, the packages share only the
+MAJOR and each one bumps its own MINOR. A MINOR window is then a per-lib
+MINOR window of that package: it opens only when Y is the MINOR of the
+package version plus one (same MAJOR), a feature passes in it, a breaking
+change still needs a MAJOR window, and every Release-As footer is refused
+(release-please derives the MINOR from the feat commits). A MAJOR window
+is unchanged. With per-lib-from empty, the behaviour is the family one.
+
+A MINOR window never opens while the package version is a prerelease
+(X.Y.Z-rc.N): the freeze of a candidate is real from its first candidate
+on, in family mode as well. A MAJOR window stays open on a candidate, so
+that the final version can be named.
 
 A window counts as open only for a pull request into the window branch
 (window-branch, given with base-ref), and only when it is ahead of the
@@ -25,10 +39,11 @@ a merge commit (commits base..head), and fails when:
 - a header has the type feat while no window is open, but only when the
   version of the package in the release-please manifest of the base commit
   is at least family-from (empty: always);
-- a message has a "Release-As:" footer, unless a window is open and the
-  footer names its first version X.Y.0 or a release candidate of it,
-  X.Y.0-rc.N (N a number from 1, no leading zero): a family MINOR or MAJOR
-  is one coordinated version, never one package's own.
+- a message has a "Release-As:" footer, unless a family MINOR or MAJOR
+  window is open and the footer names its first version X.Y.0 or a release
+  candidate of it, X.Y.0-rc.N (N a number from 1, no leading zero): a
+  family MINOR or MAJOR is one coordinated version, never one package's
+  own. In a per-lib MINOR window every Release-As footer fails.
 
 family-from may be a prerelease (2.0.0-rc.1): feat is then gated from the
 first release candidate on, which freezes the family during its candidates.
@@ -77,7 +92,7 @@ RC_VERSION_RE = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-rc\.[1-9]\
 # Release-As footer, at the start of a line after the header, any case.
 RELEASE_AS_RE = re.compile(r"^[ \t]*release[ -]as[ \t]*:[ \t]*(?P<version>\S*)", re.MULTILINE | re.IGNORECASE)
 
-CLOSED, MINOR, MAJOR = "closed", "minor", "major"
+CLOSED, MINOR, MAJOR, PER_LIB_MINOR = "closed", "minor", "major", "per-lib-minor"
 # Separators of the git log records, and the git format escapes that print them
 # (an argument of a process cannot hold a NUL byte).
 COMMIT_SEPARATOR, COMMIT_SEPARATOR_FORMAT = "\x1e", "%x1e"
@@ -85,12 +100,14 @@ FIELD_SEPARATOR, FIELD_SEPARATOR_FORMAT = "\x00", "%x00"
 SHORT_SHA = 7
 
 GUIDANCE = (
-    "How to proceed: a feature waits on its pull request for a family MINOR window, and a breaking "
+    "How to proceed: a feature waits on its pull request for an open MINOR window (a family MINOR "
+    "window, or, in per-lib mode, the window of this package: its next minor), and a breaking "
     "change for a family MAJOR window. Keep this pull request open and keep it current by merging the "
     "base branch into it (never rebase or force-push). When the window opens, re-run this check, or "
     "push a merge of the base branch (a re-run reads the title and the commits of the original event). "
     "A family version (Release-As) is set by whoever coordinates the family release, not by one "
-    "pull request. A removal is first a deprecation in a family MINOR and leaves in the next family MAJOR. If a commit "
+    "pull request; in per-lib mode no Release-As is allowed, because release-please derives the minor "
+    "from the feat commits. A removal is first a deprecation in a MINOR and leaves in the next family MAJOR. If a commit "
     "carries the wrong type (for example a fix typed as feat), do not rewrite this branch: open a new "
     "pull request whose commits carry the right type."
 )
@@ -122,13 +139,16 @@ def parse_window(value):
     return kind, f"{kind} window {value}", (int(match.group(1)), int(match.group(2)), 0, ())
 
 
-def effective_window(kind, label, target, version, base_ref="", window_branch=""):
+def effective_window(kind, label, target, version, base_ref="", window_branch="", per_lib=False):
     """Returns (kind, label) of the window for this pull request: closed when it does not apply.
 
     The window applies to a pull request into window_branch (when both names
     are given), and when it is ahead of the base version: a MINOR window X.Y
     is ahead of a version of MAJOR X and MINOR below Y; a MAJOR window X.0 is
-    ahead of a version below X.0.0.
+    ahead of a version below X.0.0. A MINOR window never opens on a
+    prerelease version (the freeze of a candidate). With per_lib, a MINOR
+    window opens only for Y equal to the MINOR of the version plus one, and
+    its kind is PER_LIB_MINOR.
     """
     if kind == CLOSED:
         return kind, label
@@ -136,16 +156,28 @@ def effective_window(kind, label, target, version, base_ref="", window_branch=""
         return CLOSED, (
             f"closed ({label} applies to pull requests into {window_branch}; this one is into {base_ref})"
         )
+    base = format_version(version)
+    if kind == MINOR and version[3]:
+        return CLOSED, (
+            f"closed ({label} never opens while the base version {base} is a prerelease: "
+            f"the candidates of a release are frozen)"
+        )
     ahead = not version_at_least(version, target)
     if kind == MINOR:
         ahead = ahead and target[0] == version[0]
-    if ahead:
-        return kind, label
-    base = format_version(version)
-    return CLOSED, (
-        f"closed ({label} is not ahead of version {base} of the base branch: the window was left set after "
-        f"its release, or the base branch is on another line)"
-    )
+    if not ahead:
+        return CLOSED, (
+            f"closed ({label} is not ahead of version {base} of the base branch: the window was left set after "
+            f"its release, or the base branch is on another line)"
+        )
+    if kind == MINOR and per_lib:
+        if target[1] != version[1] + 1:
+            return CLOSED, (
+                f"closed ({label} is not the next minor of version {base} of the base branch: a per-lib "
+                f"window opens only for {version[0]}.{version[1] + 1})"
+            )
+        return PER_LIB_MINOR, f"per-lib {label}"
+    return kind, label
 
 
 def format_version(version):
@@ -211,7 +243,7 @@ def evaluate(window_kind, feat_gated, messages, window_label=None, window_target
     the base version); window_target is its first version, or None.
     """
     window_label = window_label or window_kind
-    allowed_release = format_version(window_target) if window_kind != CLOSED and window_target else None
+    allowed_release = format_version(window_target) if window_kind in (MINOR, MAJOR) and window_target else None
     findings = []
     for label, message in messages:
         commit_type, breaking = parse_message(message)
@@ -221,9 +253,14 @@ def evaluate(window_kind, feat_gated, messages, window_label=None, window_target
                 f"(window X.0); the window is {window_label}"
             )
         elif commit_type == "feat" and feat_gated and window_kind == CLOSED:
-            findings.append(f"{label}: type feat needs an open family window (MINOR X.Y or MAJOR X.0); the window is {window_label}")
+            findings.append(f"{label}: type feat needs an open family window (MINOR X.Y or MAJOR X.0; in per-lib mode the minor must be the manifest minor + 1); the window is {window_label}")
         for version in release_as_versions(message):
-            if allowed_release is None or not is_allowed_release(version, allowed_release):
+            if window_kind == PER_LIB_MINOR:
+                findings.append(
+                    f"{label}: a Release-As footer ({version or 'empty'}) is refused in per-lib mode; "
+                    f"the window is {window_label}: release-please derives the minor from the feat commits"
+                )
+            elif allowed_release is None or not is_allowed_release(version, allowed_release):
                 expected = f"only Release-As: {allowed_release} or {allowed_release}-rc.N" if allowed_release else "no Release-As"
                 findings.append(
                     f"{label}: a Release-As footer ({version or 'empty'}) cuts a version outside the family; "
@@ -306,13 +343,14 @@ def load_inputs(args):
         for name, value in (("base-sha", args.base_sha), ("head-sha", args.head_sha)):
             if not SHA_RE.match(value):
                 raise CheckError(f"input {name} must be a full commit SHA; run this check on a pull_request event")
-    return dry_run, window, family_from
+    per_lib_from = parse_version("input per-lib-from", args.per_lib_from) if args.per_lib_from else None
+    return dry_run, window, family_from, per_lib_from
 
 
 def check(args, git=None):
     """Runs the check; returns the exit status."""
     git = git or (lambda *a: run_git(args.workspace, *a))
-    dry_run, (window_kind, window_label, window_target), family_from = load_inputs(args)
+    dry_run, (window_kind, window_label, window_target), family_from, per_lib_from = load_inputs(args)
     if dry_run:
         path = os.path.join(args.workspace, args.manifest_file)
         if not os.path.isfile(path):
@@ -324,10 +362,11 @@ def check(args, git=None):
     version_text = manifest_version(text, args.manifest_file, args.package)
     version = parse_version(f"version of {args.package!r} in {args.manifest_file}", version_text)
     feat_gated = family_from is None or version_at_least(version, family_from)
+    per_lib = per_lib_from is not None and not version[3] and version_at_least(version, per_lib_from)
     window_kind, window_label = effective_window(
-        window_kind, window_label, window_target, version, args.base_ref, args.window_branch
+        window_kind, window_label, window_target, version, args.base_ref, args.window_branch, per_lib
     )
-    print(f"version {version_text} of {args.package!r}; {window_label}; feat {'needs a window' if feat_gated else 'passes (below family-from)'}")
+    print(f"version {version_text} of {args.package!r}; {'per-lib mode; ' if per_lib else ''}{window_label}; feat {'needs a window' if feat_gated else 'passes (below family-from)'}")
 
     messages = [("pull request title", args.title)]
     if dry_run:
@@ -356,6 +395,7 @@ def build_parser():
     parser.add_argument("--manifest-file", default=".release-please-manifest.json")
     parser.add_argument("--package", default=".")
     parser.add_argument("--family-from", default="")
+    parser.add_argument("--per-lib-from", default="")
     parser.add_argument("--title", default="")
     parser.add_argument("--base-sha", default="")
     parser.add_argument("--head-sha", default="")

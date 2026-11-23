@@ -47,7 +47,7 @@ def fake_git(version, commits=()):
 def args(**overrides):
     values = {
         "window": "", "manifest_file": ".release-please-manifest.json", "package": ".",
-        "family_from": "2.0.0", "title": "fix: correct a typo", "base_sha": BASE, "head_sha": HEAD,
+        "family_from": "2.0.0", "per_lib_from": "", "title": "fix: correct a typo", "base_sha": BASE, "head_sha": HEAD,
         "base_ref": "main", "window_branch": "main",
         "dry_run": "false", "workspace": ".", "github_output": "",
     }
@@ -396,6 +396,111 @@ class RcFreezeTest(unittest.TestCase):
         status, _, outputs = run("2.0.0", window="2.0", family_from="2.0.0-rc.1",
                                  commits=[commit("1" * 40, "feat: x")])
         self.assertEqual((status, outputs["window-kind"]), (1, "closed"))
+
+
+class PerLibTest(unittest.TestCase):
+    """per-lib-from: after it, a MINOR window is the next minor of one package."""
+
+    def per_lib(self, version, message="feat: x", window="2.4", **overrides):
+        overrides.setdefault("per_lib_from", "2.0.0")
+        return run(version, commits=[commit("1" * 40, message)], window=window, **overrides)
+
+    def test_window_of_the_next_minor_opens_and_passes_feat(self):
+        status, out, outputs = self.per_lib("2.3.0")
+        self.assertEqual((status, outputs["window-kind"], outputs["result"]), (0, "per-lib-minor", "pass"))
+        self.assertIn("per-lib mode", out)
+
+    def test_window_opens_on_a_patch_of_the_previous_minor(self):
+        self.assertEqual(self.per_lib("2.3.7")[2]["window-kind"], "per-lib-minor")
+
+    def test_window_that_is_not_the_next_minor_is_closed_with_the_reason(self):
+        status, out, outputs = self.per_lib("2.3.0", window="2.6")
+        self.assertEqual((status, outputs["window-kind"]), (1, "closed"))
+        self.assertIn("not the next minor of version 2.3.0", out)
+        self.assertIn("opens only for 2.4", out)
+
+    def test_window_of_an_already_released_minor_is_closed(self):
+        for version in ("2.4.0", "2.4.2", "2.5.0"):
+            with self.subTest(version=version):
+                status, _, outputs = self.per_lib(version)
+                self.assertEqual((status, outputs["window-kind"]), (1, "closed"))
+
+    def test_window_of_another_major_is_closed(self):
+        self.assertEqual(self.per_lib("3.3.0")[2]["window-kind"], "closed")
+
+    def test_matrix_over_three_manifests(self):
+        cases = [("2.3.0", "per-lib-minor"), ("2.4.2", "closed"), ("2.0.0-rc.2", "closed")]
+        for version, expected in cases:
+            with self.subTest(version=version):
+                window = "2.1" if version.startswith("2.0.0-rc") else "2.4"
+                self.assertEqual(self.per_lib(version, window=window)[2]["window-kind"], expected)
+
+    def test_breaking_still_fails_in_a_per_lib_window(self):
+        for message in ("feat!: x", "fix: x\n\nBREAKING CHANGE: y"):
+            with self.subTest(message=message):
+                status, out, _ = self.per_lib("2.3.0", message)
+                self.assertEqual(status, 1)
+                self.assertIn("needs a family MAJOR window", out)
+
+    def test_every_release_as_is_refused(self):
+        for footer in ("2.4.0", "2.4.0-rc.1", "2.6.0", "3.0.0"):
+            with self.subTest(footer=footer):
+                status, out, _ = self.per_lib("2.3.0", f"chore: x\n\nRelease-As: {footer}")
+                self.assertEqual(status, 1)
+                self.assertIn("refused in per-lib mode", out)
+                self.assertIn("derives the minor from the feat commits", out)
+
+    def test_major_window_is_unchanged_in_per_lib_mode(self):
+        status, _, outputs = self.per_lib("2.3.0", "feat!: x\n\nRelease-As: 3.0.0", window="3.0")
+        self.assertEqual((status, outputs["window-kind"]), (0, "major"))
+        self.assertEqual(self.per_lib("2.3.0", "chore: x\n\nRelease-As: 3.0.0-rc.1", window="3.0")[0], 0)
+        self.assertEqual(self.per_lib("2.3.0", "chore: x\n\nRelease-As: 4.0.0", window="3.0")[0], 1)
+
+    def test_below_per_lib_from_the_family_behaviour_stays(self):
+        status, _, outputs = self.per_lib("1.9.0", window="2.1", per_lib_from="2.0.0", family_from="2.0.0")
+        self.assertEqual((status, outputs["window-kind"]), (0, "closed"))
+        status, _, outputs = self.per_lib("2.0.0-rc.2", window="2.1", per_lib_from="2.0.0-rc.1")
+        self.assertEqual(outputs["window-kind"], "closed")
+
+    def test_empty_per_lib_from_keeps_the_family_behaviour(self):
+        status, _, outputs = self.per_lib("2.3.0", window="2.6", per_lib_from="")
+        self.assertEqual((status, outputs["window-kind"]), (0, "minor"))
+        status, _, _ = self.per_lib("2.3.0", "chore: x\n\nRelease-As: 2.6.0", window="2.6", per_lib_from="")
+        self.assertEqual(status, 0)
+        status, _, _ = self.per_lib("2.3.0", "chore: x\n\nRelease-As: 2.4.0", window="2.6", per_lib_from="")
+        self.assertEqual(status, 1)
+
+    def test_per_lib_from_is_validated(self):
+        with self.assertRaises(check.CheckError):
+            self.per_lib("2.3.0", per_lib_from="next")
+
+    def test_closed_window_still_gates_feat_in_per_lib_mode(self):
+        status, out, _ = self.per_lib("2.3.0", window="")
+        self.assertEqual(status, 1)
+        self.assertIn("type feat needs an open family window", out)
+
+
+class PrereleaseClosesMinorTest(unittest.TestCase):
+    """A manifest in prerelease closes a MINOR window, in family mode too."""
+
+    def test_family_mode_minor_window_is_closed_on_a_candidate(self):
+        for version in ("2.0.0-rc.1", "2.0.0-rc.7"):
+            with self.subTest(version=version):
+                status, out, outputs = run(version, window="2.1", family_from="2.0.0-rc.1",
+                                           commits=[commit("1" * 40, "feat: x")])
+                self.assertEqual((status, outputs["window-kind"]), (1, "closed"))
+                self.assertIn("is a prerelease", out)
+
+    def test_release_as_is_refused_on_a_candidate_in_a_minor_window(self):
+        status, _, _ = run("2.0.0-rc.1", window="2.1", family_from="2.0.0-rc.1",
+                           commits=[commit("1" * 40, "chore: x\n\nRelease-As: 2.1.0")])
+        self.assertEqual(status, 1)
+
+    def test_major_window_stays_open_on_a_candidate(self):
+        self.assertEqual(run("2.0.0-rc.2", window="2.0")[2]["window-kind"], "major")
+
+    def test_minor_window_on_a_stable_version_is_unchanged(self):
+        self.assertEqual(run("2.0.0", window="2.1")[2]["window-kind"], "minor")
 
 
 class InputTest(unittest.TestCase):
