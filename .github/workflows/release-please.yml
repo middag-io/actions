@@ -35,6 +35,11 @@ on:
         type: string
         required: false
         default: ${{ vars.RELEASE_PLEASE_APP_CLIENT_ID }}
+      dedup-merge-commits:
+        description: Drop the merge-commit duplicates from the release notes of the release pull request (CHANGELOG.md files and body). Set false to keep release-please's notes as they are.
+        type: boolean
+        required: false
+        default: true
       dry-run:
         description: Check the inputs, the configuration and the manifest only; no token and no writes.
         type: boolean
@@ -119,5 +124,6 @@ jobs:
           manifest-file: ${{ inputs.manifest-file }}
           target-branch: ${{ inputs.target-branch }}
           app-client-id: ${{ inputs.app-client-id }}
+          dedup-merge-commits: ${{ inputs.dedup-merge-commits }}
           dry-run: ${{ inputs.dry-run }}
           app-private-key: ${{ !inputs.dry-run && secrets.app-private-key || '' }}

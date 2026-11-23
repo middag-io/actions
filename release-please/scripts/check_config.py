@@ -119,6 +119,7 @@ def write_outputs(path, outputs):
 def run(args):
     """Runs every check; returns the outputs."""
     dry_run = parse_bool("dry-run", args.dry_run)
+    parse_bool("dedup-merge-commits", args.dedup_merge_commits)
     has_client_id = parse_bool("has-app-client-id", args.has_app_client_id)
     has_private_key = parse_bool("has-app-private-key", args.has_app_private_key)
     config_file = check_path("config-file", args.config_file)
@@ -136,6 +137,7 @@ def parse_args(argv):
     parser.add_argument("--config-file", required=True)
     parser.add_argument("--manifest-file", required=True)
     parser.add_argument("--target-branch", default="")
+    parser.add_argument("--dedup-merge-commits", default="true")
     parser.add_argument("--dry-run", default="false")
     parser.add_argument("--has-app-client-id", default="false")
     parser.add_argument("--has-app-private-key", default="false")
