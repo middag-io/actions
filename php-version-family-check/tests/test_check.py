@@ -338,6 +338,11 @@ class ReleaseCandidateTest(unittest.TestCase):
             with self.subTest(release=release):
                 self.assertEqual(self.release_as("1.31.3", "2.0", release)[0], 1)
 
+    def test_trailing_whitespace_in_rc_release_as_is_rejected(self):
+        self.assertFalse(check.is_allowed_release("2.0.0-rc.1\n", "2.0.0"))
+        self.assertFalse(check.is_allowed_release("2.0.0-rc.1 ", "2.0.0"))
+        self.assertTrue(check.is_allowed_release("2.0.0-rc.1", "2.0.0"))
+
     def test_rc_fails_while_the_window_is_closed(self):
         for version in ("1.31.3", "2.0.0-rc.1", "2.0.3"):
             with self.subTest(version=version):

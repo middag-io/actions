@@ -73,7 +73,7 @@ HEADER_RE = re.compile(r"^\s*(?P<type>[A-Za-z]+)\s*(?:\([^()\r\n]*\)\s*)?(?P<ban
 # Breaking change footer, at the start of a line after the header.
 BREAKING_FOOTER_RE = re.compile(r"^[ \t]*BREAKING[ -]CHANGE[ \t]*:", re.MULTILINE)
 # A release candidate version: X.Y.Z-rc.N, N from 1 with no leading zero.
-RC_VERSION_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-rc\.[1-9]\d*$")
+RC_VERSION_RE = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-rc\.[1-9]\d*")
 # Release-As footer, at the start of a line after the header, any case.
 RELEASE_AS_RE = re.compile(r"^[ \t]*release[ -]as[ \t]*:[ \t]*(?P<version>\S*)", re.MULTILINE | re.IGNORECASE)
 
@@ -201,7 +201,7 @@ def is_allowed_release(version, allowed_release):
     version = version.lstrip("vV")
     if version == allowed_release:
         return True
-    return bool(RC_VERSION_RE.match(version)) and version.split("-", 1)[0] == allowed_release
+    return bool(RC_VERSION_RE.fullmatch(version)) and version.split("-", 1)[0] == allowed_release
 
 
 def evaluate(window_kind, feat_gated, messages, window_label=None, window_target=None):

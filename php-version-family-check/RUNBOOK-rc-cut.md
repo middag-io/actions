@@ -14,7 +14,7 @@ The procedure never opens the window on the whole organization. It opens it per 
 ## Rules that hold throughout
 
 1. Set the window variable **per repository**, only on the repositories of the family. Never set it on the organization: repositories outside the family read the same variable name and would open a window they do not own.
-2. Sibling constraints are `^2.0.0-rc.1`, never a dual range such as `^1.x || ^2.x`. Stability flags (`minimum-stability`, `prefer-stable`) count only in the root `composer.json` of the project that installs the packages, never in a dependency. The roots of this family are already `minimum-stability: dev` with `prefer-stable: true`, so a constraint that names `-rc.1` resolves without further change.
+2. Sibling constraints are `^2.0.0-rc.1`, never a dual range such as `^1.x || ^2.x`. Stability flags (`minimum-stability`, `prefer-stable`) count only in the root `composer.json` of the project that installs the packages, never in a dependency. Verify that the roots of the family are `minimum-stability: dev` with `prefer-stable: true` (or otherwise allow release candidates); only then does a constraint that names `-rc.1` resolve without further change.
 3. Merge only with a merge commit, so that the `Release-As:` footer reaches the base branch as written. Update a branch by merging the base branch into it, never by rebasing or force-pushing.
 4. Never edit `CHANGELOG.md`, the manifest or a tag by hand. release-please writes them.
 5. A lock refresh (`composer update <vendor>/<sibling>`) happens only after the sibling's tag is visible on Packagist, and its commit is `chore(deps): ...`.
@@ -73,8 +73,8 @@ Do this when every candidate is accepted.
 
 ## Side effects of a release candidate
 
-- A container image tagged `latest` is published only for stable tags. A candidate tag publishes its own tag and never moves `latest`.
-- A mirror that copies the contracts of the libraries is not triggered by candidate tags. It runs on the final tag.
+- Verify that your image publishing skips the `latest` tag for candidate tags: a candidate should publish only its own tag and never move `latest`.
+- Verify whether any mirror that copies the contracts of the libraries is triggered by candidate tags. Decide whether it should run on the candidate tag or only on the final tag.
 - Consumers that do not allow prereleases never resolve a candidate: they stay on the last `1.x` until the final version.
 
 ## Rehearsal
