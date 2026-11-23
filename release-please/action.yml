@@ -30,6 +30,14 @@ inputs:
     description: Private key of the GitHub App, passed from a secret. Required unless dry-run is true.
     required: false
     default: ""
+  dedup-merge-commits:
+    description: >-
+      Drop the merge-commit duplicates that release-please writes into the release notes: after release-please opens or
+      updates the release pull request, remove from its CHANGELOG.md files and its body each merge-commit entry whose
+      subject another, ordinary commit entry repeats (true or false). A change to a CHANGELOG.md is pushed to the release
+      branch as one commit.
+    required: false
+    default: "true"
   dry-run:
     description: Check the inputs, the configuration and the manifest only; no token, no network, no writes (true or false).
     required: false
@@ -62,6 +70,7 @@ runs:
         CONFIG_FILE: ${{ inputs.config-file }}
         MANIFEST_FILE: ${{ inputs.manifest-file }}
         TARGET_BRANCH: ${{ inputs.target-branch }}
+        DEDUP_MERGE_COMMITS: ${{ inputs.dedup-merge-commits }}
         DRY_RUN: ${{ inputs.dry-run }}
         HAS_APP_CLIENT_ID: ${{ inputs.app-client-id != '' }}
         HAS_APP_PRIVATE_KEY: ${{ inputs.app-private-key != '' }}
@@ -70,6 +79,7 @@ runs:
           --config-file="$CONFIG_FILE" \
           --manifest-file="$MANIFEST_FILE" \
           --target-branch="$TARGET_BRANCH" \
+          --dedup-merge-commits="$DEDUP_MERGE_COMMITS" \
           --dry-run="$DRY_RUN" \
           --has-app-client-id="$HAS_APP_CLIENT_ID" \
           --has-app-private-key="$HAS_APP_PRIVATE_KEY"
@@ -97,3 +107,17 @@ runs:
         config-file: ${{ inputs.config-file }}
         manifest-file: ${{ inputs.manifest-file }}
         target-branch: ${{ inputs.target-branch }}
+
+    # release-please-action sets prs_created and prs only when it created or
+    # updated a release pull request in this run. The script reads the
+    # CHANGELOG.md files from the release branch, so it clones that branch
+    # itself and leaves the caller's workspace alone.
+    - name: Drop merge-commit duplicates from the release notes
+      id: dedup
+      if: ${{ inputs.dry-run != 'true' && inputs.dedup-merge-commits == 'true' && steps.release.outputs.prs_created == 'true' }}
+      shell: bash
+      env:
+        PRS_JSON: ${{ steps.release.outputs.prs }}
+        CONFIG_FILE: ${{ inputs.config-file }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/dedup-release-pr.sh"
