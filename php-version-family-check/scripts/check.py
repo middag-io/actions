@@ -253,7 +253,7 @@ def evaluate(window_kind, feat_gated, messages, window_label=None, window_target
                 f"(window X.0); the window is {window_label}"
             )
         elif commit_type == "feat" and feat_gated and window_kind == CLOSED:
-            findings.append(f"{label}: type feat needs an open family window (MINOR X.Y or MAJOR X.0); the window is {window_label}")
+            findings.append(f"{label}: type feat needs an open family window (MINOR X.Y or MAJOR X.0; in per-lib mode the minor must be the manifest minor + 1); the window is {window_label}")
         for version in release_as_versions(message):
             if window_kind == PER_LIB_MINOR:
                 findings.append(

@@ -26,10 +26,10 @@ The annotation says why a set window counts as closed.
 
 ## Release candidates
 
-A family can cut its first version as release candidates, `X.Y.0-rc.1`, `X.Y.0-rc.2`, and promote the last one to `X.Y.0`.
+A family can cut a new MAJOR as release candidates, `X.0.0-rc.1`, `X.0.0-rc.2`, and promote the last one to `X.0.0`. A MINOR window never opens while the manifest is a prerelease, so release candidates of a MINOR are not supported.
 
 - **Cut.** While the window is open, a `Release-As: X.Y.0-rc.N` footer passes, exactly where `Release-As: X.Y.0` passes: `X.Y.0` must be the first version of the window, and `N` is a number from 1 with no leading zero. Everything else stays rejected: another version (`Release-As: 3.0.0-rc.1` in window `2.0`), `rc.0`, `rc.01`, any other prerelease label (`beta`, `alpha`), build metadata, and any `Release-As` rc while the window is closed.
-- **Self-closing.** A package at `X.Y.0-rc.N` in the manifest is still below `X.Y.0`, so the window `X.Y` stays open (ahead) until the final `X.Y.0` is released, then it closes by itself.
+- **Self-closing.** A package at `X.0.0-rc.N` in the manifest is still below `X.0.0`, so the MAJOR window `X.0` stays open (ahead) until the final `X.0.0` is released, then it closes by itself. A MINOR window `X.Y` closes as soon as the manifest is a prerelease.
 - **Freeze.** `family-from` may be a prerelease. With `family-from: 2.0.0-rc.1` and the window cleared, a `feat` and a breaking change fail from the first candidate on (manifest `2.0.0-rc.1` or above), while a `fix` passes and, on a package below `2.0.0-rc.1`, a `feat` still passes. A `fix` then bumps only the candidate counter (`2.0.0-rc.2`).
 
 Cut and promotion, as the footers a pull request carries (the window set to `2.0`, then cleared for the freeze):
