@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/middag-io/actions/compare/php-version-family-check-v1.2.0...php-version-family-check-v1.3.0) (2026-11-23)
+
+
+### Features
+
+* **php-version-family-check:** add opt-in per-lib minor windows and freeze minor windows on prereleases ([beeedd1](https://github.com/middag-io/actions/commit/beeedd19184cff7d56b4017705ea4c33928eb396))
+
 ## [1.2.0](https://github.com/middag-io/actions/compare/php-version-family-check-v1.1.0...php-version-family-check-v1.2.0) (2026-11-23)
 
 
