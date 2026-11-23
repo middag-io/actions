@@ -208,6 +208,19 @@ other_variable() {
   replace_in "$WORKFLOW" "vars.GITHUB_EXAMPLE_CHECK_TARGET" "vars.OTHER_VAR"
 }
 
+called_component_variable() {
+  add_component
+  replace_in "$WORKFLOW" "vars.GITHUB_EXAMPLE_CHECK_TARGET" "vars.GITHUB_OTHER_PUBLISH_TARGET"
+  replace_in "$WORKFLOW" "    - name: Run the example check" "    - name: Run the other component
+      uses: \$/github-other-publish
+    - name: Run the example check"
+}
+
+uncalled_component_variable() {
+  add_component
+  replace_in "$WORKFLOW" "vars.GITHUB_EXAMPLE_CHECK_TARGET" "vars.GITHUB_OTHER_PUBLISH_TARGET"
+}
+
 bracket_access() {
   add_component
   replace_in "$WORKFLOW" "vars.GITHUB_EXAMPLE_CHECK_TARGET" "vars['GCP_BUCKET_ORG']"
@@ -378,6 +391,8 @@ run_case "URL of a GitHub-owned action passes" pass "" github_actions_url
 run_case "reference to owner/actions-private" fail "refers to a private repository" private_reference
 run_case "reference to owner/.github-private" fail "refers to a private repository" private_profile_reference
 run_case "variable outside the component prefix" fail "outside the component convention" other_variable
+run_case "variable of a component called by \$/" pass "" called_component_variable
+run_case "variable of a component not called" fail "outside the component convention" uncalled_component_variable
 run_case "bracket access to vars" fail "dynamic or bulk access" bracket_access
 run_case "spaced bracket access to vars" fail "dynamic or bulk access" spaced_bracket_access
 run_case "toJSON(vars)" fail "dynamic or bulk access" bulk_access

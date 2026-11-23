@@ -1,0 +1,217 @@
+# Reusable workflow of the cloudflare-r2-reference-publish component. Two
+# jobs:
+#
+#   generate  checks out the calling repository at the release ref and runs
+#             the composite action of this component (phpDocumentor or
+#             TypeDoc) into a package; no secret reaches this job, because
+#             the generator runs the caller's code and dependencies.
+#   publish   uploads the package as kind xref with the composite action of
+#             cloudflare-r2-docs-publish; the only job that holds a secret.
+#
+# Values, most specific first: explicit input > variable of the calling
+# repository > variable of the calling organization. The bucket default reads
+# the variable of cloudflare-r2-docs-publish, CLOUDFLARE_R2_DOCS_PUBLISH_BUCKET,
+# so that a caller that already publishes docs needs no new variable. The
+# endpoint is a secret, never an input or a variable (it carries the account
+# id). The secrets come from one explicit line each in the caller.
+# Reference it by full commit SHA with a version comment (see the README).
+name: Cloudflare R2 reference publish
+
+on:
+  workflow_call:
+    inputs:
+      generator:
+        description: Reference generator, phpdocumentor or typedoc.
+        type: string
+        required: true
+      package-name:
+        description: First segment of every object key. Defaults to the calling repository name.
+        type: string
+        required: false
+        default: ${{ github.event.repository.name }}
+      version:
+        description: Version to publish, normalized to <MAJOR>.<MINOR>.<PATCH>[-<pre>] without a v prefix (1.2.3, v1.2.3 and <component>-v1.2.3 all give 1.2.3). Empty reads it from ref, or from the tag that triggered the run.
+        type: string
+        required: false
+        default: ""
+      ref:
+        description: Tag (or other ref) of the calling repository to check out and document. Empty checks out the ref of the run.
+        type: string
+        required: false
+        default: ""
+      working-directory:
+        description: Project directory relative to the repository root.
+        type: string
+        required: false
+        default: "."
+      source-paths:
+        description: Source paths relative to working-directory, separated by commas or new lines. Empty keeps the generator's configuration.
+        type: string
+        required: false
+        default: ""
+      config:
+        description: Generator configuration file relative to working-directory (phpdoc.dist.xml, typedoc.json). Empty keeps the generator's own lookup.
+        type: string
+        required: false
+        default: ""
+      output-path:
+        description: Package directory relative to the repository root; must be absent or empty after checkout.
+        type: string
+        required: false
+        default: .docs-dist
+      node-version-file:
+        description: typedoc only. File with the Node.js version for actions/setup-node (for example .node-version), relative to the repository root. Empty sets up the latest Node.js LTS.
+        type: string
+        required: false
+        default: ""
+      bucket:
+        description: Bucket name. Default from the variable CLOUDFLARE_R2_DOCS_PUBLISH_BUCKET; the run fails when both are empty.
+        type: string
+        required: false
+        default: ${{ vars.CLOUDFLARE_R2_DOCS_PUBLISH_BUCKET }}
+      write-manifest:
+        description: Replace <package-name>/manifest.json with a manifest that names this version only, after the version objects. It does not merge with the manifest already in the bucket; keep the default false when another publication writes the manifest.
+        type: boolean
+        required: false
+        default: false
+      dry-run:
+        description: Generate the reference and list the object keys only; no credentials, no endpoint and no upload.
+        type: boolean
+        required: false
+        default: false
+      timeout-minutes:
+        description: Timeout of each job, in minutes.
+        type: number
+        required: false
+        default: 20
+      runner:
+        description: Runner label for the jobs, for example the label of a self-hosted runner. Default keeps the GitHub-hosted runner.
+        type: string
+        required: false
+        default: ubuntu-24.04
+    secrets:
+      endpoint:
+        description: S3 API endpoint (https://<host>; for R2 it holds the account id). Required unless dry-run is true.
+        required: false
+      access-key-id:
+        description: S3 access key id with read and write access to the bucket. Required unless dry-run is true.
+        required: false
+      secret-access-key:
+        description: S3 secret access key. Required unless dry-run is true.
+        required: false
+    outputs:
+      version:
+        description: Published (or, in a dry run, planned) version.
+        value: ${{ jobs.publish.outputs.version }}
+      objects:
+        description: Number of version objects, manifest.json excluded.
+        value: ${{ jobs.publish.outputs.objects }}
+      payload-sha256:
+        description: SHA-256 of the sorted "<sha256>  <key>" listing of every object, manifest.json included when written.
+        value: ${{ jobs.publish.outputs.payload-sha256 }}
+
+permissions: {}
+
+jobs:
+  generate:
+    name: generate
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.generate.outputs.version }}
+      package-path: ${{ steps.generate.outputs.package-path }}
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      # A runner image without Node.js (a container runner, for example)
+      # still runs TypeDoc: without node-version-file, the latest LTS.
+      - name: Set up Node.js
+        if: ${{ inputs.generator == 'typedoc' }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: ${{ inputs.node-version-file }}
+          node-version: ${{ inputs.node-version-file == '' && 'lts/*' || '' }}
+
+      - name: Generate the reference
+        id: generate
+        uses: $/cloudflare-r2-reference-publish
+        with:
+          generator: ${{ inputs.generator }}
+          package-name: ${{ inputs.package-name }}
+          version: ${{ inputs.version }}
+          ref-name: ${{ inputs.ref || (github.ref_type == 'tag' && github.ref_name || '') }}
+          working-directory: ${{ inputs.working-directory }}
+          source-paths: ${{ inputs.source-paths }}
+          config: ${{ inputs.config }}
+          output-path: ${{ inputs.output-path }}
+
+      - name: Upload the package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cloudflare-r2-reference-publish-${{ inputs.package-name }}
+          path: ${{ steps.generate.outputs.package-path }}
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
+  publish:
+    name: publish
+    needs: generate
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    # The group of cloudflare-r2-docs-publish: a reference and a docs
+    # publication of the same package never write manifest.json at the same
+    # time. A dry run gets its own group per run. A running publication is
+    # never cancelled.
+    concurrency:
+      group: cloudflare-r2-docs-publish-${{ inputs.package-name || github.repository }}-${{ inputs.dry-run && github.run_id || 'publish' }}
+      cancel-in-progress: false
+    outputs:
+      version: ${{ steps.publish.outputs.version }}
+      objects: ${{ steps.publish.outputs.objects }}
+      payload-sha256: ${{ steps.publish.outputs.payload-sha256 }}
+    steps:
+      - name: Require the endpoint and the credentials outside a dry run
+        if: ${{ !inputs.dry-run }}
+        env:
+          HAS_ENDPOINT: ${{ secrets.endpoint != '' }}
+          HAS_ACCESS_KEY_ID: ${{ secrets.access-key-id != '' }}
+          HAS_SECRET_ACCESS_KEY: ${{ secrets.secret-access-key != '' }}
+        run: |
+          if [ "$HAS_ENDPOINT" != "true" ]; then
+            echo "::error::the secret endpoint is empty: pass it with one line in the caller's secrets block (from the secret CLOUDFLARE_R2_DOCS_PUBLISH_ENDPOINT) or set dry-run: true"
+            exit 1
+          fi
+          if [ "$HAS_ACCESS_KEY_ID" != "true" ] || [ "$HAS_SECRET_ACCESS_KEY" != "true" ]; then
+            echo "::error::the secret access-key-id or secret-access-key is empty: pass each with one line in the caller's secrets block (from the secrets CLOUDFLARE_R2_DOCS_PUBLISH_ACCESS_KEY_ID and CLOUDFLARE_R2_DOCS_PUBLISH_SECRET_ACCESS_KEY) or set dry-run: true"
+            exit 1
+          fi
+
+      - name: Download the package
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cloudflare-r2-reference-publish-${{ inputs.package-name }}
+          path: cloudflare-r2-reference-publish-package
+
+      - name: Publish the reference to Cloudflare R2
+        id: publish
+        uses: $/cloudflare-r2-docs-publish
+        with:
+          path: cloudflare-r2-reference-publish-package
+          package-name: ${{ inputs.package-name }}
+          version: ${{ needs.generate.outputs.version }}
+          kinds: xref
+          bucket: ${{ inputs.bucket }}
+          endpoint: ${{ !inputs.dry-run && secrets.endpoint || '' }}
+          write-manifest: ${{ inputs.write-manifest }}
+          dry-run: ${{ inputs.dry-run }}
+          access-key-id: ${{ !inputs.dry-run && secrets.access-key-id || '' }}
+          secret-access-key: ${{ !inputs.dry-run && secrets.secret-access-key || '' }}

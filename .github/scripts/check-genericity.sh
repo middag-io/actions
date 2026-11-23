@@ -144,16 +144,35 @@ check_private_reference() {
     < <(grep -H -n -E -- '[A-Za-z0-9_.-]+/(actions-private|\.github-private)([^A-Za-z0-9_.-]|$)' "$@" 2>/dev/null || true)
 }
 
+# Prints the variable prefixes a component file may read, one per line: its
+# own component, and each component that the component's reusable workflow
+# calls by "$/<component>" (it hands an input of the called component the
+# default that component documents, so that a caller sets one variable; the
+# README of the component shows the same names).
+allowed_prefixes() {
+  local component workflow called
+  component="$(component_of "$1")"
+  printf '%s\n' "$component" | tr '[:lower:]-' '[:upper:]_'
+  for workflow in "$WORKFLOW_DIR/$component.yml" "$WORKFLOW_DIR/$component.yaml"; do
+    [[ -f "$workflow" ]] || continue
+    while IFS= read -r called; do
+      printf '%s\n' "$called" | tr '[:lower:]-' '[:upper:]_'
+    done < <(grep -o -E 'uses:[[:space:]]*\$/[a-z0-9-]+' "$workflow" | sed 's|^.*\$/||' | sort -u || true)
+  done
+}
+
 # Item 13 and the variable rule: a component reads only variables and
-# secrets named <COMPONENT_IN_UPPER_SNAKE>_<INPUT>, its own kebab-case
-# secrets, or GITHUB_TOKEN, and always by name.
+# secrets named <COMPONENT_IN_UPPER_SNAKE>_<INPUT> (its own component, or a
+# component that its reusable workflow calls by "$/"), its own kebab-case secrets, or GITHUB_TOKEN,
+# and always by name.
 check_context_names() {
-  local file prefix
+  local file prefix prefixes
   for file in "$@"; do
     prefix="$(component_of "$file" | tr '[:lower:]-' '[:upper:]_')_"
+    prefixes="$(allowed_prefixes "$file" | sort -u | paste -s -d '|' -)"
     report_matches "variable or secret name outside the component convention (${prefix}<INPUT>)" < <(
       grep -n -o -E '(vars|secrets)\.[A-Za-z0-9_-]+' "$file" 2>/dev/null \
-        | grep -v -E ":(vars|secrets)\.${prefix}[A-Z0-9_]+$" \
+        | grep -v -E ":(vars|secrets)\.(${prefixes})_[A-Z0-9_]+$" \
         | grep -v -E ':secrets\.([a-z0-9-]+|GITHUB_TOKEN)$' \
         | sed "s|^|${file}:|" || true
     )
@@ -399,7 +418,7 @@ END {
 
 # Inputs of the reusable workflow that only the workflow uses: a bare name
 # applies to every component, <component>:<input> to that component only.
-readonly WORKFLOW_ONLY_INPUTS=" timeout-minutes runner cloudflare-r2-docs-publish:artifact-name cloudflare-workers-deploy:github-environment "
+readonly WORKFLOW_ONLY_INPUTS=" timeout-minutes runner cloudflare-r2-docs-publish:artifact-name cloudflare-workers-deploy:github-environment cloudflare-r2-reference-publish:ref cloudflare-r2-reference-publish:node-version-file cloudflare-r2-reference-publish:bucket cloudflare-r2-reference-publish:write-manifest cloudflare-r2-reference-publish:dry-run "
 
 check_component_wiring() {
   local file component action file_name line message

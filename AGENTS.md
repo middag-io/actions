@@ -17,7 +17,7 @@ All files, comments, commit messages and pull requests are in English.
 ## Only generic components
 
 - A component works unchanged in a fork owned by another organization. It never contains an organization name, project id, bucket, data store, client name, price, personal e-mail, `owner:` value or organization-specific default.
-- Configuration reaches a component through inputs, and through caller variables named `<COMPONENT_IN_UPPER_SNAKE>_<INPUT_IN_UPPER_SNAKE>` (README, "Variables and secrets"). A component never reads another variable name.
+- Configuration reaches a component through inputs, and through caller variables named `<COMPONENT_IN_UPPER_SNAKE>_<INPUT_IN_UPPER_SNAKE>` (README, "Variables and secrets"). A component never reads another variable name, except the variables of a component that its reusable workflow calls by `$/<component>`, for the input of that component they configure (so that a caller sets one variable; `check-genericity` allows them).
 - A secret reaches a reusable workflow through a secret declared in `on.workflow_call.secrets` (kebab-case, with `description` and `required`). The caller passes it with one explicit line. Never `secrets: inherit`.
 - Component paths: every file under a top-level directory that holds an `action.yml` (`<component>/**`), and `.github/workflows/<component>.yml` when the component has a reusable workflow. Internal workflows (`.github/workflows/_*.yml`) are the only files allowed to refer to the maintainer organization. Each such reference is guarded by `github.repository_owner`.
 - A component reads each variable and secret by name (`vars.<NAME>`, `secrets.<name>`). Never index (`vars['<NAME>']`) or pass a whole context (`toJSON(vars)`, `toJSON(secrets)`).
