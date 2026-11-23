@@ -300,6 +300,99 @@ class ReleaseAsTest(unittest.TestCase):
         self.assertEqual(status, 1)
 
 
+class ReleaseCandidateTest(unittest.TestCase):
+    def release_as(self, version, window, release):
+        return run(version, window=window, commits=[commit("1" * 40, f"chore: x\n\nRelease-As: {release}")])
+
+    def test_rc_of_the_window_passes(self):
+        cases = [
+            ("1.31.3", "2.0", "2.0.0-rc.1"),
+            ("1.31.3", "2.0", "v2.0.0-rc.12"),
+            ("0.4.0", "2.0", "2.0.0-rc.1"),
+            ("2.0.3", "2.1", "2.1.0-rc.1"),
+            ("2.0.0-rc.1", "2.0", "2.0.0-rc.2"),
+            ("2.0.0-rc.2", "2.0", "2.0.0"),
+        ]
+        for version, window, release in cases:
+            with self.subTest(version=version, window=window, release=release):
+                status, _, _ = self.release_as(version, window, release)
+                self.assertEqual(status, 0)
+
+    def test_stable_release_as_is_unchanged(self):
+        for version, window, release in (("1.31.3", "2.0", "2.0.0"), ("2.0.3", "2.1", "2.1.0")):
+            with self.subTest(window=window):
+                self.assertEqual(self.release_as(version, window, release)[0], 0)
+
+    def test_rc_of_another_version_fails(self):
+        cases = [("1.31.3", "2.0", "3.0.0-rc.1"), ("1.31.3", "2.0", "2.1.0-rc.1"), ("2.0.3", "2.1", "2.2.0-rc.1"),
+                 ("2.0.3", "2.1", "2.1.1-rc.1")]
+        for version, window, release in cases:
+            with self.subTest(window=window, release=release):
+                status, out, _ = self.release_as(version, window, release)
+                self.assertEqual(status, 1)
+                self.assertIn("a Release-As footer", out)
+
+    def test_malformed_or_other_prereleases_fail(self):
+        for release in ("2.0.0-rc.0", "2.0.0-rc.01", "2.0.0-rc", "2.0.0-rc.", "2.0.0-rc.1.2", "2.0.0-beta.1",
+                        "2.0.0-alpha.1", "2.0.0-rc1", "2.0.0-RC.1", "2.0.0-rc.1+build"):
+            with self.subTest(release=release):
+                self.assertEqual(self.release_as("1.31.3", "2.0", release)[0], 1)
+
+    def test_rc_fails_while_the_window_is_closed(self):
+        for version in ("1.31.3", "2.0.0-rc.1", "2.0.3"):
+            with self.subTest(version=version):
+                status, out, _ = run(version, commits=[commit("1" * 40, "fix: x\n\nRelease-As: 2.0.0-rc.2")])
+                self.assertEqual(status, 1)
+                self.assertIn("allows no Release-As", out)
+
+    def test_rc_fails_when_the_window_is_stale(self):
+        status, _, _ = self.release_as("2.0.0", "2.0", "2.0.0-rc.3")
+        self.assertEqual(status, 1)
+
+    def test_the_message_names_the_rc_form(self):
+        _, out, _ = self.release_as("2.0.3", "2.1", "3.0.0")
+        self.assertIn("only Release-As: 2.1.0 or 2.1.0-rc.N", out)
+
+
+class RcFreezeTest(unittest.TestCase):
+    """family-from 2.0.0-rc.1: feat is gated from the first candidate on."""
+
+    def freeze(self, version, message, **overrides):
+        return run(version, commits=[commit("1" * 40, message)], family_from="2.0.0-rc.1", **overrides)
+
+    def test_feat_is_blocked_on_a_candidate_while_closed(self):
+        for version in ("2.0.0-rc.1", "2.0.0-rc.2", "2.0.0", "2.0.1"):
+            with self.subTest(version=version):
+                status, out, _ = self.freeze(version, "feat: x")
+                self.assertEqual(status, 1)
+                self.assertIn("type feat needs an open family window", out)
+
+    def test_fix_passes_during_the_freeze(self):
+        for version in ("2.0.0-rc.1", "2.0.0-rc.2"):
+            with self.subTest(version=version):
+                self.assertEqual(self.freeze(version, "fix: x")[0], 0)
+
+    def test_breaking_is_blocked_during_the_freeze(self):
+        self.assertEqual(self.freeze("2.0.0-rc.1", "fix!: x")[0], 1)
+
+    def test_feat_before_the_first_candidate_passes(self):
+        for version in ("1.31.3", "0.4.0"):
+            with self.subTest(version=version):
+                self.assertEqual(self.freeze(version, "feat: x")[0], 0)
+
+    def test_a_candidate_manifest_keeps_the_window_ahead(self):
+        for version in ("2.0.0-rc.1", "2.0.0-rc.7"):
+            with self.subTest(version=version):
+                status, _, outputs = run(version, window="2.0", family_from="2.0.0-rc.1",
+                                         commits=[commit("1" * 40, "feat!: x")])
+                self.assertEqual((status, outputs["window-kind"]), (0, "major"))
+
+    def test_the_window_closes_itself_once_the_final_is_released(self):
+        status, _, outputs = run("2.0.0", window="2.0", family_from="2.0.0-rc.1",
+                                 commits=[commit("1" * 40, "feat: x")])
+        self.assertEqual((status, outputs["window-kind"]), (1, "closed"))
+
+
 class InputTest(unittest.TestCase):
     def test_rejects_bad_inputs(self):
         cases = {

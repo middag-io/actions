@@ -26,8 +26,12 @@ a merge commit (commits base..head), and fails when:
   version of the package in the release-please manifest of the base commit
   is at least family-from (empty: always);
 - a message has a "Release-As:" footer, unless a window is open and the
-  footer names its first version X.Y.0: a family MINOR or MAJOR is one
-  coordinated version, never one package's own.
+  footer names its first version X.Y.0 or a release candidate of it,
+  X.Y.0-rc.N (N a number from 1, no leading zero): a family MINOR or MAJOR
+  is one coordinated version, never one package's own.
+
+family-from may be a prerelease (2.0.0-rc.1): feat is then gated from the
+first release candidate on, which freezes the family during its candidates.
 
 The header match is lenient (any case, white space around "(scope)", "!"
 and ":"), so that it recognises at least what the release tooling reads as
@@ -68,6 +72,8 @@ BRANCH_RE = re.compile(r"^(?![/-])(?!.*\.\.)[A-Za-z0-9._/-]+$")
 HEADER_RE = re.compile(r"^\s*(?P<type>[A-Za-z]+)\s*(?:\([^()\r\n]*\)\s*)?(?P<bang>!)?\s*:")
 # Breaking change footer, at the start of a line after the header.
 BREAKING_FOOTER_RE = re.compile(r"^[ \t]*BREAKING[ -]CHANGE[ \t]*:", re.MULTILINE)
+# A release candidate version: X.Y.Z-rc.N, N from 1 with no leading zero.
+RC_VERSION_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-rc\.[1-9]\d*$")
 # Release-As footer, at the start of a line after the header, any case.
 RELEASE_AS_RE = re.compile(r"^[ \t]*release[ -]as[ \t]*:[ \t]*(?P<version>\S*)", re.MULTILINE | re.IGNORECASE)
 
@@ -190,6 +196,14 @@ def release_as_versions(message):
     return [match.group("version") for match in RELEASE_AS_RE.finditer(body)]
 
 
+def is_allowed_release(version, allowed_release):
+    """True when a Release-As value is allowed_release (X.Y.0) or X.Y.0-rc.N of it."""
+    version = version.lstrip("vV")
+    if version == allowed_release:
+        return True
+    return bool(RC_VERSION_RE.match(version)) and version.split("-", 1)[0] == allowed_release
+
+
 def evaluate(window_kind, feat_gated, messages, window_label=None, window_target=None):
     """Returns the findings of (label, message) pairs, one string each.
 
@@ -209,8 +223,8 @@ def evaluate(window_kind, feat_gated, messages, window_label=None, window_target
         elif commit_type == "feat" and feat_gated and window_kind == CLOSED:
             findings.append(f"{label}: type feat needs an open family window (MINOR X.Y or MAJOR X.0); the window is {window_label}")
         for version in release_as_versions(message):
-            if allowed_release is None or version.lstrip("vV") != allowed_release:
-                expected = f"only Release-As: {allowed_release}" if allowed_release else "no Release-As"
+            if allowed_release is None or not is_allowed_release(version, allowed_release):
+                expected = f"only Release-As: {allowed_release} or {allowed_release}-rc.N" if allowed_release else "no Release-As"
                 findings.append(
                     f"{label}: a Release-As footer ({version or 'empty'}) cuts a version outside the family; "
                     f"the window is {window_label}, which allows {expected}"

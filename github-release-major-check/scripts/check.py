@@ -3,8 +3,9 @@
 release-please cuts a MAJOR version from a "!" in a Conventional Commits
 header or from a "BREAKING CHANGE:" footer. This check makes a MAJOR an
 explicit decision instead: a pull request that carries a breaking change
-marker must also carry a "Release-As: X.0.0" footer, with X above the MAJOR
-of the package version in the release-please manifest of the base commit.
+marker must also carry a "Release-As: X.0.0" footer (or a release candidate
+of it, "Release-As: X.0.0-rc.N"), with X above the MAJOR of the package
+version in the release-please manifest of the base commit.
 
 The check reads the Conventional Commits header of the pull request title
 and the header and footers of every commit of the pull request that is not
@@ -12,9 +13,11 @@ a merge commit (commits base..head), and fails when:
 
 - a header has "!" before ":" or a message has a "BREAKING CHANGE:" or
   "BREAKING-CHANGE:" footer, and no commit of the pull request has a
-  "Release-As: X.0.0" footer with X above the base MAJOR;
+  "Release-As: X.0.0" or "Release-As: X.0.0-rc.N" footer with X above the
+  base MAJOR;
 - a "Release-As:" footer names a version that is not SemVer, that raises
-  the MAJOR to anything but X.0.0, or that is not above the base version.
+  the MAJOR to anything but X.0.0 or X.0.0-rc.N (N a number from 1, no
+  leading zero), or that is not above the base version.
 
 A "Release-As:" footer of a MINOR or a PATCH above the base version passes.
 The title carries no footer: release-please reads footers from commits.
@@ -53,6 +56,8 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 HEADER_RE = re.compile(r"^\s*(?P<type>[A-Za-z]+)\s*(?:\([^()\r\n]*\)\s*)?(?P<bang>!)?\s*:")
 # Breaking change footer, at the start of a line after the header.
 BREAKING_FOOTER_RE = re.compile(r"^[ \t]*BREAKING[ -]CHANGE[ \t]*:", re.MULTILINE)
+# A release candidate prerelease: rc.N, N from 1 with no leading zero.
+RC_PRERELEASE_RE = re.compile(r"^rc\.[1-9]\d*$")
 # Release-As footer, at the start of a line after the header, any case.
 RELEASE_AS_RE = re.compile(r"^[ \t]*release[ -]as[ \t]*:[ \t]*(?P<version>\S*)", re.MULTILINE | re.IGNORECASE)
 
@@ -134,8 +139,12 @@ def classify_release_as(text, base):
     version = parse_version("Release-As", text.lstrip("vV"))
     shown = format_version(version)
     if version[0] > base[0]:
-        if version[1:] != (0, 0, ()):
-            return None, f"raises the MAJOR to {shown}; a new MAJOR is released as exactly {version[0]}.0.0"
+        is_rc = RC_PRERELEASE_RE.match(".".join(version[3]))
+        if version[1:3] != (0, 0) or (version[3] and not is_rc):
+            return None, (
+                f"raises the MAJOR to {shown}; a new MAJOR is released as exactly {version[0]}.0.0 "
+                f"or {version[0]}.0.0-rc.N"
+            )
         return "major", None
     if not version_above(version, base):
         return None, f"names {shown}, which is not above the base version {format_version(base)}"
