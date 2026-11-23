@@ -163,6 +163,19 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(commands, EXPECTED_HIGHEST["commands"])
         self.assertEqual(json.loads(record["outputs"]["expect-majors"]), EXPECTED_HIGHEST["expect-majors"])
 
+    def test_lowest_is_accepted_and_does_not_need_expect_majors(self):
+        _, commands, record = plan(dependency_versions="lowest")
+        self.assertEqual(commands, EXPECTED["commands"])
+        self.assertEqual(record["expect-majors"], {})
+
+    def test_lowest_keeps_expect_majors_semantics(self):
+        _, _, record = plan(dependency_versions="lowest", expect_majors="symfony/console:7")
+        self.assertEqual(record["expect-majors"], {"symfony/console": 7})
+
+    def test_unknown_dependency_versions_is_rejected(self):
+        with self.assertRaisesRegex(check.CheckError, "locked, highest or lowest"):
+            plan(dependency_versions="newest")
+
     def test_strict_validate_adds_the_flag(self):
         _, commands, _ = plan(composer_validate_strict="true")
         self.assertEqual(commands[0], "composer validate --no-interaction --no-check-publish --no-check-lock --strict")
@@ -241,7 +254,7 @@ class ToolCacheTest(unittest.TestCase):
             plan(tool_cache_paths=".cache, ./.cache")
 
     def test_rejects_bad_dependency_versions_runner_os_and_commit(self):
-        cases = {"dependency-versions": {"dependency_versions": "lowest"}, "runner OS": {"runner_os": "Linux x"},
+        cases = {"dependency-versions": {"dependency_versions": "newest"}, "runner OS": {"runner_os": "Linux x"},
                  "commit": {"commit": "main"}}
         for message, override in cases.items():
             with self.subTest(case=message), self.assertRaisesRegex(check.CheckError, message):

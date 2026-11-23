@@ -55,7 +55,7 @@ SHOW_COMMAND = ("composer", "show", "--format=json", "--no-interaction")
 VENDOR_DIR_COMMAND = ("composer", "config", "--no-interaction", "--absolute", "vendor-dir")
 # Inputs that name one Composer script each, in the order they run.
 STATIC_SCRIPTS = ("lint-script", "phpstan-script", "cs-fixer-script", "rector-script")
-DEPENDENCY_VERSIONS = ("locked", "highest")
+DEPENDENCY_VERSIONS = ("locked", "highest", "lowest")
 RUNNER_OS_RE = re.compile(r"[A-Za-z0-9]+")
 COMMIT_RE = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 # A tool-cache-paths item is a plain relative path: no glob, negation, home,
@@ -158,7 +158,7 @@ def parse_options(args: argparse.Namespace) -> Options:
 
 def check_dependency_versions(value: str) -> str:
     if value not in DEPENDENCY_VERSIONS:
-        raise CheckError(f"input dependency-versions must be locked or highest, got {value!r}")
+        raise CheckError(f"input dependency-versions must be locked, highest or lowest, got {value!r}")
     return value
 
 

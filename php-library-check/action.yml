@@ -6,7 +6,7 @@
 # the checkout) and the permissions it needs.
 name: PHP library check
 description: >-
-  Installs a Composer package on one PHP version (the locked or the highest
+  Installs a Composer package on one PHP version (the locked, the highest or the lowest
   dependency versions), audits its dependencies, checks the major version of
   named packages, and runs composer validate, the PSR-4 autoload check, the
   lint, PHPStan, PHP-CS-Fixer and Rector scripts (static checks) and the
@@ -68,7 +68,9 @@ inputs:
     description: >-
       locked installs with composer install (from composer.lock when there is
       one); highest runs composer update, for the highest versions that the
-      constraints and the PHP version allow.
+      constraints and the PHP version allow; lowest runs composer update
+      --prefer-lowest --prefer-stable, for the lowest stable versions that the
+      constraints allow. highest and lowest ignore composer.lock.
     required: false
     default: locked
   unset-platform-php:

@@ -81,6 +81,17 @@ class BuildPlanTest(unittest.TestCase):
         plan = composer_setup.build_plan(check_args(dependency_versions="highest", no_dev="true"), FIXTURE)
         self.assertEqual(plan["install-command"], "composer update --no-interaction --prefer-dist --no-dev")
 
+    def test_lowest_plans_composer_update_prefer_lowest(self):
+        plan = composer_setup.build_plan(check_args(dependency_versions="lowest", no_dev="true"), FIXTURE)
+        self.assertEqual(
+            plan["install-command"],
+            "composer update --no-interaction --prefer-dist --prefer-lowest --prefer-stable --no-dev",
+        )
+
+    def test_unknown_dependency_versions_is_rejected(self):
+        with self.assertRaisesRegex(composer_setup.InputError, "locked, highest, lowest"):
+            composer_setup.build_plan(check_args(dependency_versions="newest"), FIXTURE)
+
     def test_unset_platform_php_plans_the_config_command(self):
         plan = composer_setup.build_plan(check_args(unset_platform_php="true"), FIXTURE)
         self.assertEqual(plan["platform-command"], "composer config --no-interaction --unset platform.php")
@@ -89,6 +100,7 @@ class BuildPlanTest(unittest.TestCase):
     def test_highest_and_unset_platform_php_need_install(self):
         for args in (
             check_args(install="false", dependency_versions="highest"),
+            check_args(install="false", dependency_versions="lowest"),
             check_args(install="false", unset_platform_php="true"),
         ):
             with self.subTest(args=args), self.assertRaisesRegex(composer_setup.InputError, "need install: true"):
@@ -115,7 +127,7 @@ class BuildPlanTest(unittest.TestCase):
             "coverage": check_args(coverage="phpdbg"),
             "dry-run": check_args(dry_run="yes"),
             "no-dev": check_args(no_dev="1"),
-            "dependency-versions": check_args(dependency_versions="lowest"),
+            "dependency-versions": check_args(dependency_versions="newest"),
             "unset-platform-php": check_args(unset_platform_php="yes"),
         }
         for name, args in cases.items():
@@ -354,6 +366,16 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(code, 0)
         run.assert_called_once_with(
             ["composer", "update", "--no-interaction", "--prefer-dist"], cwd=".", check=False
+        )
+
+    def test_lowest_runs_composer_update_prefer_lowest(self):
+        with mock.patch.object(composer_setup.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
+            code, _ = run_quietly(composer_setup.main, ["install", "--dependency-versions=lowest"])
+        self.assertEqual(code, 0)
+        run.assert_called_once_with(
+            ["composer", "update", "--no-interaction", "--prefer-dist", "--prefer-lowest", "--prefer-stable"],
+            cwd=".",
+            check=False,
         )
 
     def test_unset_platform_php_runs_before_the_install(self):

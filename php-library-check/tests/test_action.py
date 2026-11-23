@@ -104,6 +104,12 @@ class ActionWiringTest(unittest.TestCase):
         self.assertEqual(step["with"]["dependency-versions"], "${{ inputs.dependency-versions }}")
         self.assertEqual(step["with"]["unset-platform-php"], "${{ inputs.unset-platform-php }}")
 
+    def test_both_actions_document_the_lowest_dependency_versions(self):
+        for path in (ACTION, SETUP_ACTION):
+            with self.subTest(action=path), open(path, encoding="utf-8") as handle:
+                text = handle.read()
+                self.assertIn("--prefer-lowest --prefer-stable", text)
+
     def test_expect_majors_reaches_only_the_plan_step(self):
         plan = self.steps["Check the inputs and plan the checks"]
         self.assertEqual(plan["env"]["EXPECT_MAJORS"], "${{ inputs.expect-majors }}")
