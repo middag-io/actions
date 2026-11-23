@@ -12,6 +12,10 @@
 
 * **php-version-family-check:** reject trailing whitespace in rc Release-As ([6762fee](https://github.com/middag-io/actions/commit/6762fee0a8694a4b452145732fd19c76a1d86f4f))
 
+### Consumer impact
+
+* Additive: release candidates of the window set with Release-As are now accepted, and trailing whitespace in an rc Release-As is rejected. Existing callers are unaffected by default.
+
 ## [1.1.0](https://github.com/middag-io/actions/compare/php-version-family-check-v1.0.0...php-version-family-check-v1.1.0) (2026-11-17)
 
 

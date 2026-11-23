@@ -12,6 +12,10 @@
 
 * **release-please:** look up merge commits by full sha ([5d8a2c9](https://github.com/middag-io/actions/commit/5d8a2c953d8cb7858760cd1393872cf994f422a9))
 
+### Consumer impact
+
+* The new merge-commit dedup step runs by default and drops duplicate merge-commit entries from the release notes. It can be disabled with the dedup-merge-commits input.
+
 ## [1.2.0](https://github.com/middag-io/actions/compare/release-please-v1.1.0...release-please-v1.2.0) (2026-11-17)
 
 
