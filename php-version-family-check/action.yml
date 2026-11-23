@@ -1,5 +1,5 @@
 # Composite action: checks a pull request against the window of a version
-# family (packages that share MAJOR.MINOR). Reads the pull request title and
+# family (packages that share MAJOR, and MINOR until per-lib-from). Reads the pull request title and
 # the commits base..head of a checkout with history. See README.md next to
 # this file for the inputs, what the action deletes (nothing) and the
 # permissions it needs.
@@ -7,7 +7,7 @@ name: PHP version family check
 description: >-
   Fails a pull request whose title or commits carry a feature while the
   version family window is closed, a breaking change outside a family
-  MAJOR window, or a Release-As footer other than the open window's. Reads the package version from the release-please manifest
+  MAJOR window, or a Release-As footer other than the open window's (none in per-lib mode). Reads the package version from the release-please manifest
   of the base commit. Publishes nothing.
 
 inputs:
@@ -17,6 +17,10 @@ inputs:
     default: ""
   family-from:
     description: Package version from which a feat needs an open window (SemVer, a prerelease such as 2.0.0-rc.1 is allowed); below it, feat passes. Empty gates feat at every version.
+    required: false
+    default: ""
+  per-lib-from:
+    description: Opt-in per-lib mode. From this package version (SemVer, never a prerelease in effect) a MINOR window is per package - open only for the next minor of the package, features pass, no Release-As - and only the MAJOR is shared. Empty keeps the family behaviour.
     required: false
     default: ""
   manifest-file:
@@ -56,7 +60,7 @@ outputs:
     description: Version of the package in the manifest.
     value: ${{ steps.check.outputs.version }}
   window-kind:
-    description: closed, minor or major.
+    description: closed, minor, per-lib-minor or major.
     value: ${{ steps.check.outputs.window-kind }}
   result:
     description: pass or fail.
@@ -74,6 +78,7 @@ runs:
       env:
         WINDOW: ${{ inputs.window }}
         FAMILY_FROM: ${{ inputs.family-from }}
+        PER_LIB_FROM: ${{ inputs.per-lib-from }}
         MANIFEST_FILE: ${{ inputs.manifest-file }}
         PACKAGE: ${{ inputs.package }}
         PR_TITLE: ${{ inputs.title }}
@@ -86,6 +91,7 @@ runs:
         python3 -I "$GITHUB_ACTION_PATH/scripts/check.py" \
           --window="$WINDOW" \
           --family-from="$FAMILY_FROM" \
+          --per-lib-from="$PER_LIB_FROM" \
           --manifest-file="$MANIFEST_FILE" \
           --package="$PACKAGE" \
           --title="$PR_TITLE" \

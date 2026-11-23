@@ -40,6 +40,12 @@ class ActionWiringTest(unittest.TestCase):
         self.assertEqual(sorted(env.values()), sorted(self.inputs))
         self.assertEqual(env["PR_TITLE"], "title")
 
+    def test_per_lib_input_is_wired_and_its_output_kind_documented(self):
+        env = dict(ENV_RE.findall(self.text))
+        self.assertEqual(env["PER_LIB_FROM"], "per-lib-from")
+        self.assertIn('--per-lib-from="$PER_LIB_FROM"', self.text)
+        self.assertIn("per-lib-minor", self.text)
+
 
 if __name__ == "__main__":
     unittest.main()

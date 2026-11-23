@@ -1,6 +1,6 @@
 # Runbook: cutting a family MAJOR as release candidates
 
-How a family of libraries (packages that share MAJOR.MINOR, each in its own repository, each released by release-please) cuts its next MAJOR as release candidates, freezes it, and promotes it to the final version, using [`php-version-family-check`](README.md). The example is the family MAJOR `2.0`; replace it with your own.
+How a family of libraries (packages that share the MAJOR, each in its own repository, each released by release-please) cuts its next MAJOR as release candidates, freezes it, and promotes it to the final version, using [`php-version-family-check`](README.md). The example is the family MAJOR `2.0`; replace it with your own.
 
 The procedure never opens the window on the whole organization. It opens it per repository.
 
@@ -13,7 +13,7 @@ The procedure never opens the window on the whole organization. It opens it per 
 
 ## Rules that hold throughout
 
-1. Set the window variable **per repository**, only on the repositories of the family. Never set it on the organization: repositories outside the family read the same variable name and would open a window they do not own.
+1. Set the window variable **per repository**, only on the repositories of the family. Never set it on the organization: repositories outside the family read the same variable name and would open a window they do not own. After the 2.0 promotion the organization variable must not exist at all: a repository variable shadows it, but a leftover organization value opens a window on every repository without a variable of its own.
 2. Sibling constraints are `^2.0.0-rc.1`, never a dual range such as `^1.x || ^2.x`. Stability flags (`minimum-stability`, `prefer-stable`) count only in the root `composer.json` of the project that installs the packages, never in a dependency. Verify that the roots of the family are `minimum-stability: dev` with `prefer-stable: true` (or otherwise allow release candidates); only then does a constraint that names `-rc.1` resolve without further change.
 3. Merge only with a merge commit, so that the `Release-As:` footer reaches the base branch as written. Update a branch by merging the base branch into it, never by rebasing or force-pushing.
 4. Never edit `CHANGELOG.md`, the manifest or a tag by hand. release-please writes them.
@@ -66,10 +66,20 @@ Do this when every candidate is accepted.
    - commit footer `Release-As: 2.0.0`;
    - revert the three release-please keys (`versioning`, `prerelease-type`, `prerelease`) to what they were before the cut;
    - sibling constraints back to `^2.0`;
-   - `family-from: 2.0.0`.
+   - `family-from: 2.0.0`, and `per-lib-from: 2.0.0` next to it (the opt-in of "Per-lib minor"). Set `per-lib-from` only here, in the promotion PR of the library, never in a cut PR: during the candidates the family freeze applies.
 3. **Merge, run the release workflow, merge the release pull request.** Verify the tag `v2.0.0`, that the GitHub release is **not** flagged prerelease, and that Packagist lists `2.0.0`.
 4. **Delete the window variable** of the repository. With the manifest at `2.0.0`, the `2.0` window is no longer ahead and counts as closed in any case; deleting the variable keeps the configuration honest.
-5. **After the promotion**, a `feat` needs a family MINOR window (`2.1`), and a breaking change needs the next family MAJOR window (`3.0`).
+5. **After the promotion**, a `feat` needs the per-repository window with the next minor of that library (a library at `2.0.x` takes `2.1`, a library at `2.3.x` takes `2.4`), and a breaking change needs the next family MAJOR window (`3.0`). Confirm that the organization variable does not exist.
+
+## Per-lib minor
+
+From `per-lib-from` on, the libraries share only the MAJOR: each one cuts its own minor, when it has a `feat` to ship.
+
+- The product owner opens the window on one repository: `gh variable set PHP_LIBS_OPEN_RELEASE --repo <owner>/<library> --body 2.4`, where `2.4` is the minor of that library plus one. Other values (`2.6` on a library at `2.3.x`) leave the window closed, and the check says why.
+- A `Release-As` footer is refused in a per-lib window: release-please derives the minor from the `feat` commits.
+- The release closes the window by itself (`2.4.0` in the manifest). Delete the repository variable afterwards.
+- A breaking change still waits for a family MAJOR window (`3.0`), set per repository, layer by layer, as in the cut above.
+- A library that needs a new API of a sibling raises its constraint to `^2.N` after the sibling's tag is on Packagist.
 
 ## Side effects of a release candidate
 
@@ -85,7 +95,8 @@ Rehearse the whole procedure before the real cut, on throwaway repositories (or 
 2. Confirm for each library: the tag, the prerelease flag, the package listing, the freeze (a `feat` pull request fails, a `fix` pull request passes and bumps `rc.2`).
 3. Promote with `Release-As: 2.0.0` and confirm the release is not flagged prerelease.
 4. Confirm that a pull request with `Release-As: 3.0.0-rc.1` in window `2.0`, a `rc.0` footer and a `beta` footer all fail.
-5. Delete the throwaway repositories and variables.
+5. With `per-lib-from: 2.0.0` set, open a per-lib minor on one throwaway repository (`--body 2.1`), cut `2.1.0` with a `feat`, and check that the window closes by itself and that `Release-As` and a window of another minor (`2.5`) are refused.
+6. Delete the throwaway repositories and variables.
 
 ## Rollback
 
