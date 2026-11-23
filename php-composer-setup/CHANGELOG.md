@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.4.0](https://github.com/middag-io/actions/compare/php-composer-setup-v1.3.0...php-composer-setup-v1.4.0) (2026-11-23)
+
+
+### Features
+
+* **php-composer-setup:** add the lowest dependency versions mode ([d0faf70](https://github.com/middag-io/actions/commit/d0faf70ca3ff6d1687ba30546456985849097883))
+
+### Consumer impact
+
+* Additive: a new opt-in lowest dependency versions mode. It is off by default, so existing callers are unaffected.
+
 ## [1.3.0](https://github.com/middag-io/actions/compare/php-composer-setup-v1.2.0...php-composer-setup-v1.3.0) (2026-11-17)
 
 
