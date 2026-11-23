@@ -75,7 +75,7 @@ A workflow in this repository runs only on `pull_request`, `push` to `main`, `wo
 
 A component reads configuration through inputs. A reusable workflow can also fill an input from a variable of the caller.
 
-- **Names.** A variable or secret read by a component is named `<COMPONENT_IN_UPPER_SNAKE>_<INPUT_IN_UPPER_SNAKE>`. The prefix is the component, not the organization and not the provider. Example for a component `cloudflare-pages-deploy` with the input `project-name`: the variable `CLOUDFLARE_PAGES_DEPLOY_PROJECT_NAME`. A generic name such as `CLOUDFLARE_PROJECT_NAME` would collide with other uses of the same provider.
+- **Names.** A variable or secret read by a component is named `<COMPONENT_IN_UPPER_SNAKE>_<INPUT_IN_UPPER_SNAKE>`. The prefix is the component, not the organization and not the provider. Example for a component `cloudflare-pages-deploy` with the input `project-name`: the variable `CLOUDFLARE_PAGES_DEPLOY_PROJECT_NAME`. A generic name such as `CLOUDFLARE_PROJECT_NAME` would collide with other uses of the same provider. A reusable workflow that calls another component of this repository may read that component's variable for the input it hands to it (`cloudflare-r2-reference-publish` reads `CLOUDFLARE_R2_DOCS_PUBLISH_BUCKET`), so that a caller sets the value once.
 - **Three levels, most specific first.**
   1. An explicit input in the caller's `with:`.
   2. A variable of the caller's repository.
