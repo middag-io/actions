@@ -6,8 +6,8 @@ name: PHP Composer setup
 description: >-
   Sets up PHP with shivammathur/setup-php, writes HTTP Basic and GitHub
   credentials to the global Composer auth.json, and runs composer install in
-  the working directory (composer update for the highest versions, when
-  asked).
+  the working directory (composer update for the highest or the lowest
+  versions, when asked).
 
 inputs:
   php-version:
@@ -78,7 +78,10 @@ inputs:
     description: >-
       locked runs composer install (from composer.lock when there is one);
       highest runs composer update, for the highest versions that the
-      constraints and the PHP of the job allow. Needs install true.
+      constraints and the PHP of the job allow; lowest runs composer update
+      --prefer-lowest --prefer-stable, for the lowest stable versions that the
+      constraints allow. highest and lowest ignore composer.lock. Needs
+      install true.
     required: false
     default: locked
   unset-platform-php:

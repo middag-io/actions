@@ -11,7 +11,8 @@ only; run as ``python3 -I``. Subcommands:
   the environment, never from the command line.
 - ``install``: removes ``config.platform.php`` from ``composer.json`` when
   asked, then runs ``composer install`` (or ``composer update`` for the
-  highest dependency versions) in the working directory.
+  highest dependency versions, or ``composer update --prefer-lowest
+  --prefer-stable`` for the lowest ones) in the working directory.
 
 Secrets are never printed. ``action.yml`` masks them before the ``auth``
 subcommand runs, including each credential inside ``composer-auth``.
@@ -35,7 +36,8 @@ GITHUB_HOST = "github.com"
 AUTH_FILE_MODE = 0o600
 MERGED_AUTH_KEYS = ("http-basic", "github-oauth")
 COMPOSER_AUTH_ENTRY = "composer-auth"
-DEPENDENCY_VERSIONS = ("locked", "highest")
+DEPENDENCY_VERSIONS = ("locked", "highest", "lowest")
+LOWEST_FLAGS = ("--prefer-lowest", "--prefer-stable")
 PLATFORM_COMMAND = ("composer", "config", "--no-interaction", "--unset", "platform.php")
 
 
@@ -87,9 +89,12 @@ def parse_dependency_versions(value):
 
 def install_command(no_dev, optimize_autoloader, dependency_versions="locked"):
     """composer install (the lock file, when there is one), or composer
-    update for the highest versions that the constraints and PHP allow."""
-    verb = "update" if dependency_versions == "highest" else "install"
+    update for the highest versions that the constraints and PHP allow, or
+    for the lowest stable ones (never from composer.lock)."""
+    verb = "install" if dependency_versions == "locked" else "update"
     command = ["composer", verb, "--no-interaction", "--prefer-dist"]
+    if dependency_versions == "lowest":
+        command.extend(LOWEST_FLAGS)
     if no_dev:
         command.append("--no-dev")
     if optimize_autoloader:
@@ -127,7 +132,7 @@ def build_plan(args, root):
     dependency_versions = parse_dependency_versions(args.dependency_versions)
     unset_platform_php = parse_boolean("unset-platform-php", args.unset_platform_php)
     if not install and (dependency_versions != "locked" or unset_platform_php):
-        raise InputError("dependency-versions: highest and unset-platform-php: true need install: true")
+        raise InputError("dependency-versions: highest or lowest and unset-platform-php: true need install: true")
     check_working_directory(args.working_directory, root)
     host = check_http_basic(args.http_basic_host, args.http_basic_username, has_password, dry_run)
     command = install_command(no_dev, optimize, dependency_versions) if install else []

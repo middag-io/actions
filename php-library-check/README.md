@@ -8,7 +8,7 @@ A composite action, `php-library-check/action.yml`: it checks one PHP version in
 
 1. Validates the inputs before anything else: `path` stays inside the checkout and holds a `composer.json`; each script input is a Composer script name; booleans are `true` or `false`; each `tool-cache-paths` item is a plain path inside `path`, other than `path` itself and `vendor`.
 2. Plans the Composer commands and prints them. A dry run stops here, after the dry runs of the two actions below.
-3. Sets up PHP and Composer and runs `composer install` in `path` through [`php-composer-setup`](../php-composer-setup/README.md). Without a `composer.lock`, Composer resolves the dependencies for the PHP version of the job, or for the `config.platform.php` of `composer.json` when it sets one. With `unset-platform-php: true`, that entry is removed first; with `dependency-versions: highest`, `composer update` runs in place of `composer install` (see "Highest dependency versions").
+3. Sets up PHP and Composer and runs `composer install` in `path` through [`php-composer-setup`](../php-composer-setup/README.md). Without a `composer.lock`, Composer resolves the dependencies for the PHP version of the job, or for the `config.platform.php` of `composer.json` when it sets one. With `unset-platform-php: true`, that entry is removed first; with `dependency-versions: highest`, `composer update` runs in place of `composer install` (see "Highest dependency versions"); with `dependency-versions: lowest`, `composer update --prefer-lowest --prefer-stable` runs (see "Lowest dependency versions").
 4. Audits the installed dependencies through [`php-composer-scan`](../php-composer-scan/README.md): an advisory whose severity is in `audit-blocking-severities` fails the job; lower severities and abandoned packages are warnings. There is no input to turn the audit off; an advisory that a project does not remediate goes to `config.audit.ignore` of its `composer.json`, with the reason.
 5. With `expect-majors`, reads the installed versions (`composer show --format=json`) and fails the job when a named package is missing or at another major version, before any check runs.
 6. With `tool-cache-paths`, in the job of the static checks, builds the cache key from the installed dependencies and restores the caches of PHPStan, Rector and PHP-CS-Fixer with [`actions/cache`](https://github.com/actions/cache) (see "Tool caches").
@@ -20,7 +20,7 @@ The tools themselves (PHPStan, PHP-CS-Fixer, Rector, PHPUnit) come from the libr
 
 ## What it deletes
 
-Nothing. The component publishes nothing and commits nothing. `composer install` writes `vendor/` in the checkout of the job, which ends with the job. With `unset-platform-php: true` it rewrites `composer.json` there without `config.platform.php`, and `composer update` (`dependency-versions: highest`) writes `composer.lock` there; both changes end with the job. With `tool-cache-paths`, the cache step replaces those paths in the checkout with the restored entry, and saves a new cache entry in the calling repository at the end of a successful job. With `composer-auth`, `php-composer-setup` writes the global Composer `auth.json` of the runner, outside the checkout.
+Nothing. The component publishes nothing and commits nothing. `composer install` writes `vendor/` in the checkout of the job, which ends with the job. With `unset-platform-php: true` it rewrites `composer.json` there without `config.platform.php`, and `composer update` (`dependency-versions: highest` or `lowest`) writes `composer.lock` there; both changes end with the job. With `tool-cache-paths`, the cache step replaces those paths in the checkout with the restored entry, and saves a new cache entry in the calling repository at the end of a successful job. With `composer-auth`, `php-composer-setup` writes the global Composer `auth.json` of the runner, outside the checkout.
 
 ## Inputs
 
@@ -39,7 +39,7 @@ Nothing. The component publishes nothing and commits nothing. `composer install`
 | `rector-script` | `check:rector` | Composer script that runs Rector in dry-run mode. |
 | `composer-scripts` | empty | More Composer scripts, static checks too, separated by commas or new lines. |
 | `test-script` | `test` | Composer script that runs the tests, in every job. |
-| `dependency-versions` | `locked` | `locked` runs `composer install` (from `composer.lock` when there is one); `highest` runs `composer update`. |
+| `dependency-versions` | `locked` | `locked` runs `composer install` (from `composer.lock` when there is one); `highest` runs `composer update`; `lowest` runs `composer update --prefer-lowest --prefer-stable`. Both ignore `composer.lock`. |
 | `unset-platform-php` | `false` | Remove `config.platform.php` from `composer.json` before the install, so that the PHP version of the job constrains the resolution. |
 | `expect-majors` | empty | Installed packages and their major version, `<vendor>/<package>:<major>`, separated by commas or new lines. A package that is missing or at another major fails the job. |
 | `tool-cache-paths` | empty | Cache directories or files of PHPStan, Rector and PHP-CS-Fixer, relative to `path`, separated by commas or new lines (for example `.cache`). Restored and saved in the job of the static checks only. Empty caches nothing (see "Tool caches"). |
@@ -136,6 +136,36 @@ jobs:
             symfony/http-kernel:8
 ```
 
+### Lowest dependency versions
+
+A library that declares `^7.0 || ^8.0` for a package should work with the oldest release that its constraint allows, not only with the newest one. A job with `dependency-versions: lowest` runs `composer update --prefer-lowest --prefer-stable`: the lowest stable version of every dependency that the constraints allow, then the library's own static checks and tests against it. A constraint that is wider than what the code supports then fails in the job, not in a user's project.
+
+- `lowest` never installs from `composer.lock`: `composer update` ignores the versions that the lock holds. Do not confuse it with `locked`, which without a `composer.lock` resolves the highest versions.
+- `--prefer-stable` keeps the result on stable releases when a constraint admits a dev or pre-release version.
+- `unset-platform-php` works as with `highest`: set it to `true` when `config.platform.php` pins the lowest supported PHP, so that the PHP version of the job constrains the resolution.
+- `expect-majors` is optional here. The check is the same in every mode (the installed major version of each named package must match) and it runs in a `lowest` job too, so a library can pin the major that its lower bound must resolve to (for example `symfony/console:7` for a `^7.0 || ^8.0` constraint, to prove the job tested the old major). Leave it empty when the lowest bound spans no major boundary you want to prove.
+- Run the static checks in the `locked` job (`static-checks: "false"` in the `lowest` job), as in the `highest` example.
+
+```yaml
+jobs:
+  php-library-check-lowest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@<sha40> # vX.Y.Z
+        with:
+          persist-credentials: false
+      - uses: <owner>/actions/php-library-check@php-library-check-v1
+        with:
+          php-version: "8.3"
+          # The static checks already run in the locked job.
+          static-checks: "false"
+          dependency-versions: lowest
+          unset-platform-php: "true"
+```
+
 ### Tool caches
 
 PHPStan, Rector and PHP-CS-Fixer keep a cache of their results and skip the files that did not change. On a fresh runner that cache is empty, so each run analyses the whole library. `tool-cache-paths` keeps it between runs. It is off by default: a caller that does not pass it gets no cache step and the same job as before.
@@ -157,7 +187,7 @@ Point each tool at a cache path inside the library, then pass those paths. For e
 - The cache steps run only in the job of the static checks (`static-checks: true`), after the install and the audit, before the checks. A dry run only prints the paths and the key, with a placeholder for the dependencies part, which is known only after the install.
 - The key is `php-library-check-tools-<runner OS>-php<version>-<dependency-versions>-<hash of path>-<hash of the Composer and tool files>-<hash of the installed dependencies>-<commit>`:
   - the Composer and tool files are those at the library root: `composer.json`, `composer.lock`, `*.neon`, `*.neon.dist`, `*rector*.php`, `*php-cs-fixer*.php`, `.php_cs` and `.php_cs.dist`;
-  - the installed dependencies are the name, version and source reference of each package in `vendor/composer/installed.json` (in the vendor directory that Composer reports), read after `composer install` or `composer update`. The key therefore follows what Composer resolved: with `dependency-versions: locked` and a committed `composer.lock`, with `locked` without one (Composer resolves afresh on every run), and with `highest`.
+  - the installed dependencies are the name, version and source reference of each package in `vendor/composer/installed.json` (in the vendor directory that Composer reports), read after `composer install` or `composer update`. The key therefore follows what Composer resolved: with `dependency-versions: locked` and a committed `composer.lock`, with `locked` without one (Composer resolves afresh on every run), and with `highest` or `lowest`.
 - The one restore key falls back to the latest entry with every part but the commit. A change to `composer.json`, `composer.lock`, a tool configuration or any installed dependency version starts from an empty cache: not every tool checks its cache against the installed dependencies.
 - When the installed dependencies cannot be read, the job prints a warning and runs without the tool cache; it never falls back to a key without them.
 - Only the files at the library root are hashed. A file that a configuration includes from a subdirectory (for example a PHPStan bootstrap or stub file) is not part of the key: PHPStan checks those files against its own result cache. Each tool checks its cache against the source files, so an older entry costs only the files that changed.

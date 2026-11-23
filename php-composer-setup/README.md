@@ -11,7 +11,7 @@ A composite action, `php-composer-setup/action.yml`, used as a step in your job.
 3. Restores the Composer download cache (`composer config --global cache-files-dir`), keyed by the runner OS, the PHP version and the hash of `composer.lock` in the working directory, when `cache` and `install` are `true`. A run without an exact hit restores the latest cache of the same OS and PHP version, and the job saves a new one at its end.
 4. Writes the `composer-auth` entries, the HTTP Basic credentials of one Composer repository and a GitHub token, when given, to the global Composer `auth.json` (`$COMPOSER_HOME/auth.json`, mode `0600`), outside the checkout. Each string of `composer-auth` other than a `username` is masked in the log before anything is written.
 5. With `unset-platform-php: true`, runs `composer config --no-interaction --unset platform.php` in the working directory, so that Composer resolves for the PHP version of the job instead of the `config.platform.php` of `composer.json`.
-6. Runs `composer install --no-interaction --prefer-dist` in the working directory, with `--no-dev` and `--optimize-autoloader` when asked. With `dependency-versions: highest` it runs `composer update` with the same options instead: the highest versions that the constraints and the PHP version allow, whatever `composer.lock` holds.
+6. Runs `composer install --no-interaction --prefer-dist` in the working directory, with `--no-dev` and `--optimize-autoloader` when asked. With `dependency-versions: highest` it runs `composer update` with the same options instead: the highest versions that the constraints and the PHP version allow, whatever `composer.lock` holds. With `dependency-versions: lowest` it runs `composer update --prefer-lowest --prefer-stable` with the same options: the lowest stable versions that the constraints allow, whatever `composer.lock` holds. `lowest` never installs from a lock file; `locked` without a `composer.lock` resolves the highest versions, so it is not a way to get the lowest ones.
 
 In a dry run it only validates the inputs and reports the plan: no PHP setup, no credentials written, no install.
 
@@ -21,7 +21,7 @@ In a dry run it only validates the inputs and reports the plan: no PHP setup, no
 - Overwrites, in the global Composer `auth.json` of the runner, each host entry that `composer-auth` names, then the `http-basic` entry of `http-basic-host` and the `github-oauth` entry of `github.com`: for the same entry, `http-basic-host` and `github-token` win over `composer-auth`. Other entries stay.
 - With `cache: true`, the cache step of [`actions/cache`](https://github.com/actions/cache) replaces the Composer download cache of the runner with the restored one, and saves a new cache entry in the calling repository at the end of the job when the key had no exact hit. A repository without `composer.lock` gets one fixed key per OS and PHP version, saved once; set `cache: false` there, or commit the lock file. Without `github-token`, the `github-oauth` entry that `shivammathur/setup-php` writes (the job token) stays.
 - `shivammathur/setup-php` changes the runner for the rest of the job: it switches the default `php` and `composer`, installs the extensions and writes their `php.ini` settings.
-- `composer install` creates or replaces `vendor/` in the working directory, and writes `composer.lock` there when the repository has none. `composer update` (`dependency-versions: highest`) rewrites `composer.lock` there.
+- `composer install` creates or replaces `vendor/` in the working directory, and writes `composer.lock` there when the repository has none. `composer update` (`dependency-versions: highest` or `lowest`) rewrites `composer.lock` there.
 - With `unset-platform-php: true`, `composer.json` in the working directory loses its `config.platform.php` entry. The change stays in the checkout of the job. It runs the install scripts of the calling repository (`post-install-cmd` and the others), which can change more files.
 
 The credentials stay in the runner's Composer home until the job ends. They are never written inside the checkout, so a later step that archives the checkout does not pick them up.
@@ -43,7 +43,7 @@ The credentials stay in the runner's Composer home until the job ends. They are 
 | `install` | no | `true` | run `composer install` |
 | `no-dev` | no | `false` | pass `--no-dev` |
 | `optimize-autoloader` | no | `false` | pass `--optimize-autoloader` |
-| `dependency-versions` | no | `locked` | `locked` runs `composer install`; `highest` runs `composer update`. Needs `install: true` |
+| `dependency-versions` | no | `locked` | `locked` runs `composer install`; `highest` runs `composer update`; `lowest` runs `composer update --prefer-lowest --prefer-stable`. Needs `install: true` for `highest` and `lowest` |
 | `unset-platform-php` | no | `false` | remove `config.platform.php` from `composer.json` before the install, so that the PHP version of the job constrains the resolution. Needs `install: true` |
 | `dry-run` | no | `false` | validate and report only |
 
