@@ -24,6 +24,7 @@ SHA_PIN_RE = re.compile(r"^[a-z0-9-]+/[a-z0-9-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$"
 CHECK = "Check the inputs, the configuration and the manifest"
 TOKEN = "Create the GitHub App token"
 RELEASE = "Run release-please"
+OUTPUTS = "Report the releases and the release pull requests"
 DEDUP = "Drop merge-commit duplicates from the release notes"
 SKIP_IN_DRY_RUN = "${{ inputs.dry-run != 'true' }}"
 
@@ -63,8 +64,8 @@ class WiringTest(unittest.TestCase):
     def setUpClass(cls):
         cls.steps = read_steps(ACTION)
 
-    def test_four_steps_in_order(self):
-        self.assertEqual(list(self.steps), [CHECK, TOKEN, RELEASE, DEDUP])
+    def test_five_steps_in_order(self):
+        self.assertEqual(list(self.steps), [CHECK, TOKEN, RELEASE, OUTPUTS, DEDUP])
         self.assertEqual(self.steps[CHECK]["id"], "check")
 
     def test_check_runs_in_every_mode_without_secrets(self):
@@ -81,7 +82,7 @@ class WiringTest(unittest.TestCase):
 
     def test_only_the_token_step_reads_the_private_key(self):
         self.assertEqual(self.steps[TOKEN]["with"]["private-key"], "${{ inputs.app-private-key }}")
-        for name in (CHECK, RELEASE):
+        for name in (CHECK, RELEASE, OUTPUTS):
             with self.subTest(step=name):
                 step = self.steps[name]
                 values = list(step["env"].values()) + list(step["with"].values())
@@ -108,6 +109,24 @@ class WiringTest(unittest.TestCase):
             text = handle.read()
         self.assertRegex(text, r'  dedup-merge-commits:\n(?:    .*\n)*?    default: "true"')
         self.assertEqual(self.steps[CHECK]["env"]["DEDUP_MERGE_COMMITS"], "${{ inputs.dedup-merge-commits }}")
+
+    def test_outputs_step_reads_the_release_outputs_from_env_and_is_skipped_in_a_dry_run(self):
+        step = self.steps[OUTPUTS]
+        self.assertEqual(step["id"], "outputs")
+        self.assertEqual(step["if"], SKIP_IN_DRY_RUN)
+        self.assertEqual(step["env"]["RELEASE_OUTPUTS"], "${{ toJSON(steps.release.outputs) }}")
+        self.assertNotIn("${{", step["run"])
+        self.assertIn("scripts/release_outputs.py", step["run"])
+
+    def test_new_outputs_have_dry_run_defaults(self):
+        with open(ACTION, encoding="utf-8") as handle:
+            text = handle.read()
+        for name, default in (("releases", "'[]'"), ("release-pr-created", "'false'"), ("release-prs", "'[]'")):
+            with self.subTest(output=name):
+                self.assertIn(f"value: ${{{{ steps.outputs.outputs.{name} || {default} }}}}", text)
+        for name in ("release-pr-branch", "release-pr-number"):
+            with self.subTest(output=name):
+                self.assertIn(f"value: ${{{{ steps.outputs.outputs.{name} }}}}", text)
 
     def test_third_party_actions_are_pinned_by_sha(self):
         for name in (TOKEN, RELEASE):

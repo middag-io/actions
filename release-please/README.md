@@ -11,7 +11,7 @@ Forms:
 
 1. Checks the inputs, the release-please configuration (`release-please-config.json` by default) and the manifest (`.release-please-manifest.json` by default) of the calling repository: both files exist and hold JSON objects, the configuration has at least one package, every manifest entry is a configured package with a SemVer version, and the paths and the target branch are valid. Outside a dry run, it also requires the GitHub App client id and private key. Any problem fails the run before a token is created.
 2. Creates a GitHub App installation token limited to the calling repository, with write access to contents and pull requests ([`actions/create-github-app-token`](https://github.com/actions/create-github-app-token)).
-3. Runs [`googleapis/release-please-action`](https://github.com/googleapis/release-please-action) with that token, the configuration and the manifest: it opens or updates the release pull request, and when that pull request merges, it creates the tag and the GitHub release.
+3. Runs [`googleapis/release-please-action`](https://github.com/googleapis/release-please-action) with that token, the configuration and the manifest: it opens or updates the release pull request, and when that pull request merges, it creates the tag and the GitHub release. The component then turns the outputs of release-please-action, whose names depend on the package path, into the fixed-name outputs `releases` and `release-pr-*` (see "Outputs").
 
 4. Unless `dedup-merge-commits` is `false`, and only when step 3 created or updated a release pull request (the `prs_created` output of release-please-action), drops the merge-commit duplicates from the release notes. See "Merge-commit duplicates" below.
 
@@ -90,8 +90,30 @@ The composite action takes the private key as the input `app-private-key`; the r
 | `version` | Version of the release of the root package created by this run; empty when none. |
 | `packages` | Package paths of the configuration, as a sorted JSON array (for example `["."]`). |
 | `paths-released` | Paths of the packages released by this run, as a JSON array; `[]` when none. Use it to publish a package of a monorepo. |
+| `releases` | Releases created by this run, as a JSON array of `{"path", "tag-name", "version"}` objects, root package (`.`) included; `[]` when none. |
+| `release-pr-created` | `true` when this run created or updated a release pull request, `false` otherwise (always `false` in a dry run). |
+| `release-pr-branch` | Head branch of the release pull request created or updated by this run; empty when none. |
+| `release-pr-number` | Number of the release pull request created or updated by this run; empty when none. |
+| `release-prs` | Release pull requests created or updated by this run, as a JSON array of `{"branch", "number"}` objects; `[]` when none. With `separate-pull-requests: true` a run can produce several; `release-pr-branch` and `release-pr-number` describe the first one. |
 
-The `release-created`, `tag-name` and `version` outputs describe the root package only. A configuration without a root package gets `release-created: false` from every run.
+The `release-created`, `tag-name` and `version` outputs describe the root package only. A configuration without a root package gets `release-created: false` from every run; use `releases` for the tag and the version of each released package. A dry run gives `[]`, `false` and empty values.
+
+A monorepo publishes each released package from `releases`:
+
+```yaml
+  publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases != '[]' }}
+    strategy:
+      matrix:
+        release: ${{ fromJSON(needs.release-please.outputs.releases) }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "publish $RELEASE_PATH at $TAG_NAME"
+        env:
+          RELEASE_PATH: ${{ matrix.release.path }}
+          TAG_NAME: ${{ matrix.release['tag-name'] }}
+```
 
 ## Variables and secrets
 

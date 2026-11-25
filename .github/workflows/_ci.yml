@@ -376,10 +376,20 @@ jobs:
           RELEASE_CREATED: ${{ needs.dry-run-release-please.outputs.release-created }}
           TAG_NAME: ${{ needs.dry-run-release-please.outputs.tag-name }}
           PATHS_RELEASED: ${{ needs.dry-run-release-please.outputs.paths-released }}
+          RELEASES: ${{ needs.dry-run-release-please.outputs.releases }}
+          RELEASE_PR_CREATED: ${{ needs.dry-run-release-please.outputs.release-pr-created }}
+          RELEASE_PR_BRANCH: ${{ needs.dry-run-release-please.outputs.release-pr-branch }}
+          RELEASE_PR_NUMBER: ${{ needs.dry-run-release-please.outputs.release-pr-number }}
+          RELEASE_PRS: ${{ needs.dry-run-release-please.outputs.release-prs }}
         run: |
           echo "packages=$PACKAGES release-created=$RELEASE_CREATED tag-name=$TAG_NAME paths-released=$PATHS_RELEASED"
+          echo "releases=$RELEASES release-pr-created=$RELEASE_PR_CREATED release-pr-branch=$RELEASE_PR_BRANCH release-pr-number=$RELEASE_PR_NUMBER release-prs=$RELEASE_PRS"
           if [ "$PACKAGES" != '["."]' ] || [ "$RELEASE_CREATED" != "false" ] || [ -n "$TAG_NAME" ] || [ "$PATHS_RELEASED" != '[]' ]; then
             echo '::error::dry-run outputs differ: expected packages=["."] release-created=false tag-name= paths-released=[]'
+            exit 1
+          fi
+          if [ "$RELEASES" != '[]' ] || [ "$RELEASE_PR_CREATED" != "false" ] || [ -n "$RELEASE_PR_BRANCH" ] || [ -n "$RELEASE_PR_NUMBER" ] || [ "$RELEASE_PRS" != '[]' ]; then
+            echo '::error::dry-run outputs differ: expected releases=[] release-pr-created=false release-pr-branch= release-pr-number= release-prs=[]'
             exit 1
           fi
 

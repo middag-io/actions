@@ -75,6 +75,21 @@ on:
       paths-released:
         description: Paths of the packages released by this run, as a JSON array (for example ["packages/cli"]); [] when none (always [] in a dry run).
         value: ${{ jobs.release.outputs.paths-released }}
+      releases:
+        description: Releases created by this run, as a JSON array of {"path", "tag-name", "version"} objects, root package (".") included; [] when none.
+        value: ${{ jobs.release.outputs.releases }}
+      release-pr-created:
+        description: true when this run created or updated a release pull request, false otherwise.
+        value: ${{ jobs.release.outputs.release-pr-created }}
+      release-pr-branch:
+        description: Head branch of the release pull request created or updated by this run; empty when none.
+        value: ${{ jobs.release.outputs.release-pr-branch }}
+      release-pr-number:
+        description: Number of the release pull request created or updated by this run; empty when none.
+        value: ${{ jobs.release.outputs.release-pr-number }}
+      release-prs:
+        description: Release pull requests created or updated by this run, as a JSON array of {"branch", "number"} objects; [] when none.
+        value: ${{ jobs.release.outputs.release-prs }}
 
 permissions: {}
 
@@ -100,6 +115,11 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       packages: ${{ steps.release.outputs.packages }}
       paths-released: ${{ steps.release.outputs.paths-released }}
+      releases: ${{ steps.release.outputs.releases }}
+      release-pr-created: ${{ steps.release.outputs.release-pr-created }}
+      release-pr-branch: ${{ steps.release.outputs.release-pr-branch }}
+      release-pr-number: ${{ steps.release.outputs.release-pr-number }}
+      release-prs: ${{ steps.release.outputs.release-prs }}
     steps:
       # release-please reads the configuration and the manifest from the
       # target branch through the GitHub API, not from this checkout. Outside
