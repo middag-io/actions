@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/middag-io/actions/compare/php-library-check-v1.4.0...php-library-check-v1.4.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **php-library-check:** renew the Composer cache key without a lock file ([eaa82f7](https://github.com/middag-io/actions/commit/eaa82f7cb19c923d6e3b90379a27f2eaebcdabef))
+
 ## [1.4.0](https://github.com/middag-io/actions/compare/php-library-check-v1.3.0...php-library-check-v1.4.0) (2026-11-23)
 
 
