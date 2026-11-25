@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/middag-io/actions/compare/release-please-v1.3.0...release-please-v1.4.0) (2026-11-25)
+
+
+### Features
+
+* **release-please:** expose per-package releases and release pull request outputs ([da32e21](https://github.com/middag-io/actions/commit/da32e21836012cb5ba7216016bcb7eb827b789cc))
+
 ## [1.3.0](https://github.com/middag-io/actions/compare/release-please-v1.2.0...release-please-v1.3.0) (2026-11-23)
 
 
