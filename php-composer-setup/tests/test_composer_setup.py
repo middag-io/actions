@@ -1,6 +1,8 @@
 """Tests of scripts/composer_setup.py. Standard library only, no network."""
 
 import contextlib
+import datetime
+import hashlib
 import io
 import json
 import os
@@ -343,6 +345,76 @@ class ComposerAuthTest(unittest.TestCase):
             code, printed = run_quietly(composer_setup.main, ["auth", f"--composer-home={home}"])
         self.assertEqual(code, 1)
         self.assertIn("bearer entry", printed)
+
+
+class CacheKeyTest(unittest.TestCase):
+    """Without composer.lock, the cache key renews with composer.json and the week."""
+
+    MONDAY = datetime.date(2026, 11, 23)
+
+    def fallback(self, composer_json, today):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "composer.json").write_text(composer_json, encoding="utf-8")
+            return composer_setup.cache_key_fallback(directory, today)
+
+    def test_same_inputs_give_the_same_key(self):
+        first = self.fallback('{"require": {"php": ">=8.2"}}', self.MONDAY)
+        second = self.fallback('{"require": {"php": ">=8.2"}}', self.MONDAY.replace(day=29))
+        self.assertEqual(first, second)
+
+    def test_key_changes_when_the_requirements_change(self):
+        before = self.fallback('{"require": {"php": ">=8.2"}}', self.MONDAY)
+        after = self.fallback('{"require": {"php": ">=8.2", "psr/log": "^3.0"}}', self.MONDAY)
+        self.assertNotEqual(before, after)
+
+    def test_key_changes_every_iso_week(self):
+        this_week = self.fallback("{}", self.MONDAY)
+        next_week = self.fallback("{}", self.MONDAY.replace(day=30))
+        self.assertNotEqual(this_week, next_week)
+        self.assertTrue(this_week.endswith("-2026-48"), this_week)
+
+    def test_uses_the_iso_year_at_the_turn_of_the_year(self):
+        # 2027-01-01 is a Friday of ISO week 53 of 2026 (date -u +%G-%V).
+        key = self.fallback("{}", datetime.date(2027, 1, 1))
+        self.assertTrue(key.endswith("-2026-53"), key)
+
+    def test_key_holds_the_sha256_of_composer_json(self):
+        key = self.fallback("{}", self.MONDAY)
+        digest = hashlib.sha256(b"{}").hexdigest()
+        self.assertEqual(key, f"composer-json-{digest}-2026-48")
+
+    def test_writes_the_fallback_output(self):
+        with tempfile.TemporaryDirectory() as directory, tempfile.NamedTemporaryFile("r", suffix=".out") as output:
+            Path(directory, "composer.json").write_text("{}", encoding="utf-8")
+            with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": output.name}), mock.patch.object(
+                composer_setup.Path, "cwd", return_value=Path(directory)
+            ):
+                code, printed = run_quietly(composer_setup.main, ["cache-key", "--working-directory=."])
+            written = Path(output.name).read_text(encoding="utf-8")
+        self.assertEqual(code, 0)
+        self.assertRegex(written, r"^fallback=composer-json-[0-9a-f]{64}-[0-9]{4}-[0-9]{2}\n$")
+        self.assertIn("Cache key part without composer.lock: composer-json-", printed)
+
+    def test_rejects_a_working_directory_without_composer_json(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            composer_setup.Path, "cwd", return_value=Path(directory)
+        ):
+            code, printed = run_quietly(composer_setup.main, ["cache-key", "--working-directory=."])
+        self.assertEqual(code, 1)
+        self.assertIn("::error::working-directory '.' has no composer.json", printed)
+
+
+class ActionCacheKeyTest(unittest.TestCase):
+    """A lock file keeps the key it had; only its absence uses the fallback."""
+
+    def test_cache_key_falls_back_only_without_a_lock(self):
+        text = (Path(__file__).resolve().parents[1] / "action.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "key: php-composer-setup-${{ runner.os }}-php${{ inputs.php-version }}-"
+            "${{ hashFiles(format('{0}/composer.lock', inputs.working-directory)) || steps.cache-key.outputs.fallback }}",
+            text,
+        )
+        self.assertIn("restore-keys: |\n          php-composer-setup-${{ runner.os }}-php${{ inputs.php-version }}-\n", text)
 
 
 class InstallTest(unittest.TestCase):
