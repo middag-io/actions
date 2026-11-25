@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/middag-io/actions/compare/php-composer-setup-v1.4.0...php-composer-setup-v1.4.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **php-composer-setup:** renew the Composer cache key without a lock file ([2391c73](https://github.com/middag-io/actions/commit/2391c7364ba36c7fd1cc85e8775faf1c7377a1a8))
+
 ## [1.4.0](https://github.com/middag-io/actions/compare/php-composer-setup-v1.3.0...php-composer-setup-v1.4.0) (2026-11-23)
 
 
