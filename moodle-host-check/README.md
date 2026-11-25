@@ -42,7 +42,7 @@ Nothing in the repository. The host lives in the temporary directory of the runn
 | `composer-auth` | empty | Composer credentials in the `COMPOSER_AUTH` JSON format, for private dependencies of the code under test. |
 | `dry-run` | `false` | Validate and plan only: no database, no PHP set-up, no clone, no install, no probe. |
 
-Run PostgreSQL 17 as a service of the calling job, pinned by digest, with trust authentication; the service is reachable only from its job.
+Run PostgreSQL 17 as a service of the calling job, pinned by digest, with trust authentication; the service is reachable only from its job. The example pulls the official image from its ECR Public mirror (`public.ecr.aws/docker/library/`), which avoids Docker Hub pull limits on self-hosted runners.
 
 ## Outputs
 
@@ -95,7 +95,7 @@ jobs:
           - { moodle-branch: MOODLE_500_STABLE, php-version: "8.4" }
     services:
       postgres:
-        image: postgres:17@sha256:<digest>
+        image: public.ecr.aws/docker/library/postgres:17@sha256:<digest>
         env:
           POSTGRES_DB: moodle
           POSTGRES_HOST_AUTH_METHOD: trust
