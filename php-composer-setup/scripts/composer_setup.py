@@ -13,12 +13,18 @@ only; run as ``python3 -I``. Subcommands:
   asked, then runs ``composer install`` (or ``composer update`` for the
   highest dependency versions, or ``composer update --prefer-lowest
   --prefer-stable`` for the lowest ones) in the working directory.
+- ``cache-key``: writes the ``fallback`` part of the Composer cache key, for a
+  working directory without ``composer.lock``: the SHA-256 of
+  ``composer.json`` and the ISO week (UTC), so that the key renews when the
+  requirements change and at least once a week.
 
 Secrets are never printed. ``action.yml`` masks them before the ``auth``
 subcommand runs, including each credential inside ``composer-auth``.
 """
 
 import argparse
+import datetime
+import hashlib
 import json
 import os
 import re
@@ -278,8 +284,28 @@ def run_check(args):
         print(f"{mode} run in {args.working_directory}: {outputs['platform-command']}.")
     print(f"{mode} run in {args.working_directory}: {command}.")
     if outputs["install-command"] and args.cache == "true":
-        print(f"{mode} restore and save the Composer download cache, keyed by {args.working_directory}/composer.lock.")
+        print(
+            f"{mode} restore and save the Composer download cache, keyed by {args.working_directory}/composer.lock"
+            " (without it, by composer.json and the ISO week)."
+        )
     write_outputs(outputs)
+
+
+def cache_key_fallback(directory, today=None):
+    """Part of the cache key used when there is no composer.lock: the
+    SHA-256 of composer.json, then the ISO year and week (UTC) of today,
+    as in ``date -u +%G-%V``."""
+    today = today or datetime.datetime.now(datetime.timezone.utc).date()
+    year, week, _ = today.isocalendar()
+    digest = hashlib.sha256((Path(directory) / "composer.json").read_bytes()).hexdigest()
+    return f"composer-json-{digest}-{year:04d}-{week:02d}"
+
+
+def run_cache_key(args):
+    directory = check_working_directory(args.working_directory, Path.cwd())
+    fallback = cache_key_fallback(directory)
+    print(f"Cache key part without composer.lock: {fallback}", flush=True)
+    write_outputs({"fallback": fallback})
 
 
 def parser():
@@ -310,6 +336,8 @@ def parser():
     install.add_argument("--optimize-autoloader", default="false")
     install.add_argument("--dependency-versions", default="locked")
     install.add_argument("--unset-platform-php", default="false")
+    cache_key = commands.add_parser("cache-key")
+    cache_key.add_argument("--working-directory", default=".")
     return root
 
 
@@ -321,6 +349,9 @@ def main(argv=None):
             return 0
         if args.command == "auth":
             run_auth(args)
+            return 0
+        if args.command == "cache-key":
+            run_cache_key(args)
             return 0
         return run_install(args)
     except InputError as error:

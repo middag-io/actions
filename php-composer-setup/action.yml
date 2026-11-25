@@ -59,7 +59,8 @@ inputs:
   cache:
     description: >-
       Restore and save the Composer download cache, keyed by the composer.lock
-      of the working directory (true or false). Used only when install is true.
+      of the working directory, or without one by its composer.json and the
+      ISO week (true or false). Used only when install is true.
     required: false
     default: "true"
   install:
@@ -167,12 +168,27 @@ runs:
       shell: bash
       run: echo "path=$(composer config --global cache-files-dir)" >> "$GITHUB_OUTPUT"
 
+    # A library that commits no composer.lock would get one fixed key per OS
+    # and PHP version, saved once and restored forever. Without a lock, the
+    # key ends with the hash of composer.json and the ISO week, so that it
+    # renews when the requirements change and at least once a week. With a
+    # lock, the key is the hash of the lock, as before.
+    - name: Compute the Composer cache key without a lock file
+      id: cache-key
+      if: ${{ inputs.dry-run != 'true' && inputs.install == 'true' && inputs.cache == 'true' }}
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/scripts/composer_setup.py" cache-key \
+          --working-directory="$WORKING_DIRECTORY"
+
     - name: Cache the Composer downloads
       if: ${{ inputs.dry-run != 'true' && inputs.install == 'true' && inputs.cache == 'true' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.cache-dir.outputs.path }}
-        key: php-composer-setup-${{ runner.os }}-php${{ inputs.php-version }}-${{ hashFiles(format('{0}/composer.lock', inputs.working-directory)) }}
+        key: php-composer-setup-${{ runner.os }}-php${{ inputs.php-version }}-${{ hashFiles(format('{0}/composer.lock', inputs.working-directory)) || steps.cache-key.outputs.fallback }}
         restore-keys: |
           php-composer-setup-${{ runner.os }}-php${{ inputs.php-version }}-
 
