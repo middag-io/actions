@@ -59,6 +59,25 @@ outputs:
   paths-released:
     description: Paths of the packages released by this run, as a JSON array (for example ["packages/cli"]); [] when none (always [] in a dry run).
     value: ${{ steps.release.outputs.paths_released || '[]' }}
+  releases:
+    description: >-
+      Releases created by this run, as a JSON array of {"path", "tag-name", "version"} objects, root package (".")
+      included; [] when none (always [] in a dry run).
+    value: ${{ steps.outputs.outputs.releases || '[]' }}
+  release-pr-created:
+    description: true when this run created or updated a release pull request, false otherwise (always false in a dry run).
+    value: ${{ steps.outputs.outputs.release-pr-created || 'false' }}
+  release-pr-branch:
+    description: Head branch of the release pull request created or updated by this run; empty when none.
+    value: ${{ steps.outputs.outputs.release-pr-branch }}
+  release-pr-number:
+    description: Number of the release pull request created or updated by this run; empty when none.
+    value: ${{ steps.outputs.outputs.release-pr-number }}
+  release-prs:
+    description: >-
+      Release pull requests created or updated by this run, as a JSON array of {"branch", "number"} objects (several
+      with separate-pull-requests); [] when none (always [] in a dry run).
+    value: ${{ steps.outputs.outputs.release-prs || '[]' }}
 
 runs:
   using: composite
@@ -107,6 +126,18 @@ runs:
         config-file: ${{ inputs.config-file }}
         manifest-file: ${{ inputs.manifest-file }}
         target-branch: ${{ inputs.target-branch }}
+
+    # release-please-action names the outputs of a package that is not the
+    # root after its path, which a composite action cannot pass through. The
+    # script turns every output of the release step into the fixed-name
+    # outputs releases and release-pr-*.
+    - name: Report the releases and the release pull requests
+      id: outputs
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        RELEASE_OUTPUTS: ${{ toJSON(steps.release.outputs) }}
+      run: python3 -I "$GITHUB_ACTION_PATH/scripts/release_outputs.py"
 
     # release-please-action sets prs_created and prs only when it created or
     # updated a release pull request in this run. The script reads the
