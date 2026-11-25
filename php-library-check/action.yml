@@ -181,9 +181,11 @@ runs:
     # php-composer-setup comes from the same repository and commit as this
     # action. It validates its own inputs, sets up PHP and Composer, writes
     # composer-auth to the global Composer auth.json of the runner (outside
-    # the checkout), restores the Composer download cache and runs composer
-    # install (or composer update, after removing config.platform.php, when
-    # asked). In a dry run it only validates and reports, like this action.
+    # the checkout), restores the Composer download cache (keyed by
+    # composer.lock, or without one by composer.json and the ISO week) and
+    # runs composer install (or composer update, after removing
+    # config.platform.php, when asked). In a dry run it only validates and
+    # reports, like this action.
     - name: Set up PHP and install the Composer dependencies
       id: setup
       uses: $/php-composer-setup
